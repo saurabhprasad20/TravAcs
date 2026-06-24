@@ -1,0 +1,36 @@
+
+TravAcs Application Blueprint: Essential Travel MVP
+1. The Core Mission & Emotional Context (For the Builder)
+In India, over 70 million visually impaired individuals face daily challenges simply navigating urban spaces. They struggle with everyday tasks—whether it’s accessing essential services like hospitals and banks, shopping for necessities, or enjoying leisure time—and are often forced to rely on limited support. 
+
+2. User Personas
+• The User (TravAcsee): A visually impaired individual seeking safe, dignified, and reliable navigation assistance to essential locations.
+• The TravAcser (Guide): A trained, empathetic sighted volunteer or contractor providing the navigational assistance.
+• The Admin: The central command team ensuring trust, verifying identities, and monitoring safety.
+ 
+3. The “Essential Travel” Workflow (v1.0)
+Phase 1: Trust & Onboarding (Registration)
+• Separate Portals: Distinct registration flows for Users and TravAcsers.
+• mandatory documents: registration can be initiated quickly with google / other logins, but they must complete their profile details and submit them for approval, which may include official documents like ID and UDID
+• The Admin Gatekeeper: Upon registration, accounts are locked in a “Pending” state. No user can book a trip, and no TravAcser can view the feed until an Admin manually verifies their credentials and toggles their account to “Active”.
+Phase 2: Booking the Journey
+•Advance Notice: Users must schedule their trips 1 to 2 days in advance to ensure service availability.
+•Input Requirements: The booking interface must capture specific details: date, time, meeting point, destination, and the purpose of the trip (e.g., Hospital, Bank).
+• Single Service Focus: For this initial version, only the “Essential Travel” module is active.
+Phase 3: The Broadcast & Match
+• Global Request Feed: Once an active User submits a booking, it is pushed to a centralized feed visible to all verified TravAcsers (location/radius matching is bypassed for this version).
+• Claiming the Trip: A TravAcser reviews the feed and accepts a request.
+• Feed Scrubbing: Instantly upon acceptance, the request is permanently hidden from the global feed to prevent double-booking.
+•Notification: The User receives an automated confirmation via SMS, email, or app notification containing their TravAcser’s details.
+Phase 4: The Handshake & Active Journey
+• Authentication (The OTP): When the User and TravAcser meet at the designated location, the TravAcser cannot start the trip immediately. The system generates a unique OTP on the User’s device. The TravAcser must input this OTP into their app to unlock the “Start Journey” state. This ensures absolute verification of the guide’s identity.
+•Journey Spectator Mode: Once the OTP is verified, the app begins pinging the live location periodically.
+◦ Admins have a global dashboard view of the active journey.
+◦ Trusted Contacts (family/friends of the User) receive a secure tracking link to spectate the journey in real-time.
+ 
+4. Technical & Interface Constraints
+• Blind-First UI: The User interface must rely on native OS screen-reading standards (TalkBack/VoiceOver). Buttons must have large touch targets, high contrast, and semantic labels.
+• No Direct Contact Enforcement: The platform must act as the sole communication bridge. Direct contact details must be masked to protect user privacy and enforce professional boundaries.
+• Data Structure Needs: The database must link Users, TravAcsers, and Admin statuses, while generating unique, time-sensitive OTPs and live-tracking URLs upon journey initialization. 
+5. administrative functions:
+• admin view: the admins will have the list of all on-going, completed, pending trips along with the status and they can cancel or delete a trip along with the valid reason string which will be logged. in the initial phase, every trip must go through the admin approval before being confirmed.
