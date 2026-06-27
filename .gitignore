@@ -1,0 +1,14 @@
+# Local run scripts containing project credentials (public-by-design, but kept
+# out of source for hygiene). The committed templates are *.example.
+app/run.ps1
+app/run.sh
+.env
+.env.local
+
+# Supabase local artifacts (if the CLI is used later)
+supabase/.branches/
+supabase/.temp/
+
+# Built artifacts / build logs (don't commit binaries)
+*.apk
+app/build_apk*.log
