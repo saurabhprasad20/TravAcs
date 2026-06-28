@@ -1,0 +1,41 @@
+
+user registration form:
+name, can be fetched from google login if initiated.
+phone no, verify with OTP in the later versions.
+region: equivalent to city, e.g. delhi, Mumbai, pune
+DOB
+Gender
+trusted contacts who should be reached out in case of emergency, up to 3. The list  remains on the user device until we request to fetch it.
+ relationship of emergency contact
+ identity proof: e.g. adhar card.
+ disability proof: e.g. disability card or UDID. will verify the UDID number through the API provided by the ministery in the later versions.
+ profile photo: either fetch from google ID or allow them to put, or both
+ student ID if eligible: optional, can be used to avail student discounts if any will be ongoing
+ Type of Visual Disability
+ 
+User Trip Registration:
+User Information Auto-filled from Profile:
+Full Name
+Email Address
+Phone Number
+
+Trip Details to ask:
+Enter the total number of visually impaired travellers.
+
+Note: One TravAcser can assist a maximum of two TravAcsee users.
+Number of TravAcser: Volunteers Required
+Allowed range: 1 to N. where n=number of users
+System may also suggest the minimum required based on the number of TravAcsee users.
+
+Gender Composition
+Specify the number of Male Travellers or Female Travellers
+
+Trip Date & Time, give options like today, tomorrow, day after tomorrow or enter a costum date.
+Expected Duration, in hours
+Meeting Point with the TravAcser
+Destination / Event Location, and we could put Landmark as optional
+Purpose of the Trip, for example: Medical Appointment
+any Special note or Requirement, for example: Good English reading skills.
+
+Display the estimated bill on the final review page, just before the Submit Trip Request button. The estimate should be calculated based on the expected trip duration entered by the user.
+Note: This is an estimated bill based on the expected duration of your trip. The final amount may vary depending on the actual duration of the trip.

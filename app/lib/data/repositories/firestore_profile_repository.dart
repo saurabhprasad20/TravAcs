@@ -41,6 +41,7 @@ class FirestoreProfileRepository implements ProfileRepository {
   FutureResult<Unit> saveProfile({
     required UserRole role,
     required String fullName,
+    required Region region,
     Gender? gender,
     DateTime? dateOfBirth,
     String? phone,
@@ -56,6 +57,7 @@ class FirestoreProfileRepository implements ProfileRepository {
       // Editable fields (allowed on both create and update by the rules).
       final data = <String, dynamic>{
         'fullName': fullName,
+        'serviceArea': region.wireValue,
         'gender': gender?.wireValue,
         'dateOfBirth':
             dateOfBirth == null ? null : Timestamp.fromDate(dateOfBirth),
@@ -79,6 +81,21 @@ class FirestoreProfileRepository implements ProfileRepository {
       }
 
       await ref.set(data, SetOptions(merge: true));
+      return success(unit);
+    } catch (e) {
+      return failure(mapFirebaseError(e));
+    }
+  }
+
+  @override
+  FutureResult<Unit> setRegion(Region region) async {
+    final uid = _uid;
+    if (uid == null) return failure(const AuthFailure('You are not signed in.'));
+    try {
+      await _profiles.doc(uid).update({
+        'serviceArea': region.wireValue,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
       return success(unit);
     } catch (e) {
       return failure(mapFirebaseError(e));
@@ -112,6 +129,7 @@ class FirestoreProfileRepository implements ProfileRepository {
       dateOfBirth: (d['dateOfBirth'] as Timestamp?)?.toDate(),
       phone: d['phone'] as String?,
       isActive: (d['isActive'] as bool?) ?? true,
+      serviceArea: Region.fromWireOrNull(d['serviceArea'] as String?),
     );
 
     RequesterProfile? requester;

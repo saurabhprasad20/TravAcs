@@ -25,14 +25,12 @@ class ProfileTabScreen extends ConsumerWidget {
               padding: const EdgeInsets.all(16),
               children: [
                 _InfoTile(label: 'Name', value: my.profile.fullName),
-                _InfoTile(
-                  label: 'Role',
-                  value: my.profile.isRequester ? 'Requester' : 'Volunteer',
-                ),
+                _InfoTile(label: 'Role', value: my.profile.role.label),
                 if (my.profile.phone != null)
                   _InfoTile(label: 'Phone', value: my.profile.phone!),
                 if (my.profile.gender != null)
                   _InfoTile(label: 'Gender', value: my.profile.gender!.label),
+                _RegionTile(region: my.profile.serviceArea),
                 if (my.volunteer != null) ...[
                   const Divider(height: 32),
                   _VerificationCard(volunteer: my.volunteer!),
@@ -68,6 +66,72 @@ class _InfoTile extends StatelessWidget {
         subtitle: Text(value, style: Theme.of(context).textTheme.bodyLarge),
       ),
     );
+  }
+}
+
+/// Editable service-region row. Tapping opens a picker; selecting updates the
+/// profile via `setRegion`. Shows "Not set" for legacy accounts.
+class _RegionTile extends ConsumerWidget {
+  const _RegionTile({required this.region});
+  final Region? region;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final value = region?.label ?? 'Not set';
+    final busy = ref.watch(profileControllerProvider).isLoading;
+    return Semantics(
+      button: true,
+      label: 'Region: $value. Double tap to change.',
+      child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        title: Text('Region', style: Theme.of(context).textTheme.labelMedium),
+        subtitle: Text(value, style: Theme.of(context).textTheme.bodyLarge),
+        trailing: const Icon(Icons.edit_outlined),
+        enabled: !busy,
+        onTap: () => _pickRegion(context, ref),
+      ),
+    );
+  }
+
+  Future<void> _pickRegion(BuildContext context, WidgetRef ref) async {
+    final selected = await showModalBottomSheet<Region>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (ctx) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.of(ctx).size.height * 0.7,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text('Select your region',
+                    style: Theme.of(ctx).textTheme.titleMedium),
+              ),
+              Expanded(
+                child: ListView(
+                  children: [
+                    for (final r in Region.options)
+                      RadioListTile<Region>(
+                        value: r,
+                        groupValue: region,
+                        title: Text(r.label),
+                        onChanged: (v) => Navigator.pop(ctx, v),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (selected == null || selected == region) return;
+    final ok =
+        await ref.read(profileControllerProvider.notifier).setRegion(selected);
+    if (ok && context.mounted) {
+      A11y.announce(context, 'Region set to ${selected.label}.');
+    }
   }
 }
 
@@ -136,7 +200,7 @@ class _AvailabilityTile extends ConsumerWidget {
     return SwitchListTile(
       contentPadding: EdgeInsets.zero,
       title: const Text('Available for requests'),
-      subtitle: Text(isActive ? 'You are visible to requesters' : 'Hidden'),
+      subtitle: Text(isActive ? 'You are visible to users' : 'Hidden'),
       value: isActive,
       onChanged: busy
           ? null

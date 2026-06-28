@@ -19,7 +19,7 @@
 | 5 | **FCFS accept** | A **client-side Firestore transaction** guarded by **Security Rules** (no server needed): first writer flips `broadcast→assigned`, others abort. | Strong consistency without a backend hop. |
 | 6 | **Server logic** | **Cloud Functions** only where a server is unavoidable: **FCM fan-out** to volunteers, **trip-OTP hashing/verify**, **admin custom claims**. Requires the **Blaze** plan. | Clients can't multicast push or mint admin claims. |
 | 7 | **App architecture** | **Riverpod** (DI + state) + **layered** (data / domain / presentation) + **Repository pattern**. | SOLID, testable; lets the backend swap (as this migration proved). |
-| 8 | **Matching** | **Broadcast to all approved, active volunteers**; FCFS decides. Docs store `geohash` + `serviceArea` so geo-radius queries can be added later. | Simplest correct model at this scale. |
+| 8 | **Matching** | **Region-scoped broadcast:** both sides pick a fixed **`serviceArea`** (Delhi NCR + states/UTs); a request is broadcast only to approved, active TravAcsers whose `serviceArea` **equals** the request's. FCFS decides. (Optional `geohash` later for finer geo-radius.) | Deterministic, no GPS; right scope for targeted FCM. |
 | 9 | **Aadhaar / Verification** | **No Aadhaar data captured or stored in v1.** Volunteers verified **manually/out-of-band** by admin (sets `verificationStatus`). | Avoid PII/compliance burden now. |
 | 10 | **Billing & Payment** | ₹135/hour, **pro-rated per minute**: `amount = round(durationMinutes / 60 * 135)`. External UPI with **two-sided confirmation** (requester marks **Paid**, volunteer marks **Received**; settled when both). | Matches requirements; mutual trust. |
 | 11 | **Trip start** | **6-digit OTP** generated on assignment, stored **hashed** (via a Cloud Function), shown to the requester, entered + verified by the volunteer. | Proof both parties met. |
@@ -151,6 +151,8 @@ fullName: string
 gender?: 'male'|'female'|'other'|'prefer_not_to_say'
 dateOfBirth?: timestamp
 phone?: string                          // from Auth
+serviceArea: string                     // REQUIRED region (e.g. 'delhi_ncr');
+                                        //   fixed `Region` enum, same list both sides
 isActive: bool                          // volunteer availability
 createdAt, updatedAt: timestamp
 // requester-only:
@@ -174,7 +176,8 @@ expectedDurationMinutes: int
 pickupText, destinationText: string
 pickupGeo?, destGeo?: geopoint          // geo-ready
 requirements?, instructions?: string
-serviceArea?: string                    // geo-ready
+serviceArea: string                     // REQUIRED; copied from the requester's
+                                        //   profile at creation; matching key
 otpHash?: string                        // set by Cloud Function on assignment
 contact: { requesterName, requesterPhone, volunteerName?, volunteerPhone? }  // filled on assignment
 createdAt, updatedAt: timestamp
@@ -221,7 +224,7 @@ Principles (full rules authored in M1):
 
 Node/TypeScript, Admin SDK (bypasses rules; re-checks auth internally). Callable or Firestore-triggered. Shared result `{ ok, code, data? }`.
 
-- **`onRequestCreated` (Firestore trigger, `requests/{id}` onCreate)** — when `status=='broadcast'`, generate a 6-digit OTP, store its **hash** on the request, and **fan out FCM** to all approved+active volunteers' tokens. (OTP plaintext returned to the requester only, via a field they alone can read, or surfaced through the create callable.)
+- **`onRequestCreated` (Firestore trigger, `requests/{id}` onCreate)** — when `status=='broadcast'`, generate a 6-digit OTP, store its **hash** on the request, and **fan out FCM** to approved+active volunteers **whose `serviceArea` == the request's** (region-scoped). (OTP plaintext returned to the requester only, via a field they alone can read, or surfaced through the create callable.)
 - **`acceptRequest(requestId)` (callable, optional hardening)** — the accept can be a pure client transaction (preferred), but a callable variant exists for extra server validation if needed. Internally: transaction `broadcast→assigned`, set `contact.*`, return `ALREADY_TAKEN` if lost.
 - **`startTrip(requestId, otp)` (callable)** — verify `otp` against `otpHash` (bcrypt); assert caller is assigned volunteer & status `assigned`; set `started`, `trips.startedAt`. Rate-limit attempts.
 - **`completeTrip(requestId)` (callable)** — assert caller is a party & status `started`; compute `durationMinutes`, `amountInr`; set `completed`.
@@ -248,7 +251,7 @@ Error `code`s: `NOT_AUTHENTICATED`, `NOT_APPROVED`, `FORBIDDEN`, `ALREADY_TAKEN`
 
 - Native to Firebase. Token lifecycle: on login & refresh, write `devices/{uid}/tokens/{token}`; delete on logout.
 - **Message types** (`data.type`): `new_request`, `assignment`, `trip_started`, `trip_completed`, `payment_marked`, `payment_confirmed`, `rating_received`, `verification_result`.
-- **Fan-out** is server-side in `onRequestCreated` and the payment/assignment functions (Admin SDK `sendEachForMulticast`).
+- **Fan-out** is server-side in `onRequestCreated` and the payment/assignment functions (Admin SDK `sendEachForMulticast`). New-request fan-out is **filtered to the request's `serviceArea`** so only same-region TravAcsers are notified.
 - **In-app realtime** uses **Firestore listeners** (snapshots) on the user's own requests/trips — the source of truth for live UI; FCM is the wake/alert.
 
 ---

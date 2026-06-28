@@ -15,12 +15,16 @@ abstract interface class ProfileRepository {
   FutureResult<Unit> saveProfile({
     required UserRole role,
     required String fullName,
+    required Region region,
     Gender? gender,
     DateTime? dateOfBirth,
     String? phone,
     String? address,
     String? homeLocationText,
   });
+
+  /// Updates the caller's service region (`profiles.serviceArea`).
+  FutureResult<Unit> setRegion(Region region);
 
   /// Toggles a volunteer's availability (`profiles.is_active`).
   FutureResult<Unit> setAvailability(bool isActive);
