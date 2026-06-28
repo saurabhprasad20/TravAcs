@@ -27,6 +27,13 @@ class Assignment {
     this.endedAt,
     this.durationMinutes,
     this.amountInr,
+    this.paymentStatus = PaymentStatus.pending,
+    this.requesterPaidAt,
+    this.travAcserReceivedAt,
+    this.requesterRatingStars,
+    this.requesterRatingFeedback,
+    this.volunteerRatingStars,
+    this.volunteerRatingFeedback,
   });
 
   final String requestId;
@@ -54,4 +61,16 @@ class Assignment {
   final DateTime? endedAt;
   final int? durationMinutes;
   final int? amountInr;
+
+  // Payment + ratings (M6).
+  final PaymentStatus paymentStatus;
+  final DateTime? requesterPaidAt;
+  final DateTime? travAcserReceivedAt;
+  final int? requesterRatingStars; // User's rating of the TravAcser
+  final String? requesterRatingFeedback;
+  final int? volunteerRatingStars; // TravAcser's rating of the User
+  final String? volunteerRatingFeedback;
+
+  bool get ratedByRequester => requesterRatingStars != null;
+  bool get ratedByVolunteer => volunteerRatingStars != null;
 }

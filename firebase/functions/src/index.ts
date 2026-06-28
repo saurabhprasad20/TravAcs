@@ -340,3 +340,122 @@ export const completeTrip = onCall({region: REGION}, async (req) => {
 
   return {ok: true, code: "COMPLETED", amountInr: out.amountInr};
 });
+
+/** Recomputes paymentStatus from the two timestamps. */
+function paymentStatusOf(paid: unknown, received: unknown): string {
+  if (paid && received) return "confirmed";
+  if (paid || received) return "awaiting_other";
+  return "pending";
+}
+
+/** The User marks they have paid a TravAcser (external UPI). */
+export const markPaid = onCall({region: REGION}, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Please sign in.");
+  const {requestId, volunteerId} = req.data ?? {};
+  if (!requestId || !volunteerId) {
+    throw new HttpsError("invalid-argument", "requestId and volunteerId required.");
+  }
+  const reqRef = db.collection("requests").doc(requestId);
+  const assignRef = reqRef.collection("assignments").doc(volunteerId);
+  await db.runTransaction(async (tx) => {
+    const reqDoc = await tx.get(reqRef);
+    if (reqDoc.data()?.requesterId !== uid) {
+      throw new HttpsError("permission-denied", "Only the User can mark Paid.");
+    }
+    const a = (await tx.get(assignRef)).data();
+    if (!a) throw new HttpsError("not-found", "Assignment not found.");
+    if (a.tripStatus !== "completed") {
+      throw new HttpsError("failed-precondition", "The trip is not completed yet.", {code: "INVALID_STATE"});
+    }
+    tx.update(assignRef, {
+      requesterPaidAt: a.requesterPaidAt ?? FieldValue.serverTimestamp(),
+      paymentStatus: paymentStatusOf(true, a.travAcserReceivedAt),
+    });
+  });
+  await pushToUser(volunteerId, {title: "Payment marked", body: "The User marked the payment as Paid."}, {type: "payment_marked", requestId}).catch(() => {});
+  return {ok: true, code: "PAID"};
+});
+
+/** The TravAcser marks they received payment. */
+export const markReceived = onCall({region: REGION}, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Please sign in.");
+  const {requestId} = req.data ?? {};
+  if (!requestId) throw new HttpsError("invalid-argument", "requestId required.");
+  const reqRef = db.collection("requests").doc(requestId);
+  const assignRef = reqRef.collection("assignments").doc(uid);
+  let requesterId: string | undefined;
+  await db.runTransaction(async (tx) => {
+    const a = (await tx.get(assignRef)).data();
+    if (!a) throw new HttpsError("not-found", "You have no assignment here.");
+    if (a.tripStatus !== "completed") {
+      throw new HttpsError("failed-precondition", "The trip is not completed yet.", {code: "INVALID_STATE"});
+    }
+    requesterId = a.requesterId;
+    tx.update(assignRef, {
+      travAcserReceivedAt: a.travAcserReceivedAt ?? FieldValue.serverTimestamp(),
+      paymentStatus: paymentStatusOf(a.requesterPaidAt, true),
+    });
+  });
+  if (requesterId) {
+    await pushToUser(requesterId, {title: "Payment confirmed", body: "The TravAcser marked the payment as Received."}, {type: "payment_marked", requestId}).catch(() => {});
+  }
+  return {ok: true, code: "RECEIVED"};
+});
+
+/** Mutual rating (User↔TravAcser) for a completed assignment. */
+export const submitRating = onCall({region: REGION}, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Please sign in.");
+  const {requestId, volunteerId, stars, feedback} = req.data ?? {};
+  if (!requestId || !volunteerId || typeof stars !== "number") {
+    throw new HttpsError("invalid-argument", "requestId, volunteerId, stars required.");
+  }
+  if (stars < 1 || stars > 5) {
+    throw new HttpsError("invalid-argument", "Stars must be 1–5.");
+  }
+  const reqRef = db.collection("requests").doc(requestId);
+  const assignRef = reqRef.collection("assignments").doc(volunteerId);
+
+  await db.runTransaction(async (tx) => {
+    const reqDoc = await tx.get(reqRef);
+    const r = reqDoc.data();
+    if (!r) throw new HttpsError("not-found", "Request not found.");
+    const a = (await tx.get(assignRef)).data();
+    if (!a) throw new HttpsError("not-found", "Assignment not found.");
+    if (a.tripStatus !== "completed") {
+      throw new HttpsError("failed-precondition", "Rate after the trip is completed.", {code: "INVALID_STATE"});
+    }
+    // Who is rating whom?
+    let raterRole: "requester" | "volunteer";
+    let rateeId: string;
+    if (uid === r.requesterId) {
+      raterRole = "requester";
+      rateeId = volunteerId; // User rates the TravAcser
+    } else if (uid === volunteerId) {
+      raterRole = "volunteer";
+      rateeId = r.requesterId; // TravAcser rates the User
+    } else {
+      throw new HttpsError("permission-denied", "You are not a party to this trip.");
+    }
+    const alreadyKey = raterRole === "requester" ? "requesterRatingStars" : "volunteerRatingStars";
+    if (a[alreadyKey] != null) {
+      throw new HttpsError("already-exists", "You have already rated.", {code: "ALREADY_RATED"});
+    }
+    // Update ratee profile aggregate.
+    const rateeRef = db.collection("profiles").doc(rateeId);
+    const ratee = (await tx.get(rateeRef)).data() ?? {};
+    const count: number = ratee.ratingCount ?? 0;
+    const avg: number = ratee.ratingAvg ?? 0;
+    const newCount = count + 1;
+    const newAvg = Math.round(((avg * count + stars) / newCount) * 10) / 10;
+    tx.update(rateeRef, {ratingAvg: newAvg, ratingCount: newCount});
+    // Write the rating onto the assignment.
+    const fields = raterRole === "requester"
+      ? {requesterRatingStars: stars, requesterRatingFeedback: feedback ?? null}
+      : {volunteerRatingStars: stars, volunteerRatingFeedback: feedback ?? null};
+    tx.update(assignRef, fields);
+  });
+  return {ok: true, code: "RATED"};
+});

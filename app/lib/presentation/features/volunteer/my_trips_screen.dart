@@ -10,6 +10,7 @@ import '../../../domain/entities/assignment.dart';
 import '../../../domain/entities/enums.dart';
 import '../../providers/request_providers.dart';
 import '../requester/request_controller.dart';
+import '../shared/rating_sheet.dart';
 
 /// The TravAcser's accepted trips (their assignments), live.
 class MyTripsScreen extends ConsumerWidget {
@@ -141,12 +142,48 @@ class _TripCard extends ConsumerWidget {
             'Completed · ${a.durationMinutes ?? 0} min · ₹${a.amountInr ?? 0} earned',
             style: Theme.of(context).textTheme.titleSmall,
           ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(child: Text(a.paymentStatus.label)),
+              if (a.travAcserReceivedAt == null)
+                OutlinedButton(
+                  onPressed: busy ? null : () => _markReceived(context, ref),
+                  child: const Text('Mark received'),
+                ),
+            ],
+          ),
           const SizedBox(height: 4),
-          Text('Collect ₹${a.amountInr ?? 0} from the User (UPI). Payment '
-              'confirmation comes next.',
-              style: Theme.of(context).textTheme.bodySmall),
+          a.ratedByVolunteer
+              ? Text('You rated the User ${a.volunteerRatingStars}★')
+              : Align(
+                  alignment: Alignment.centerRight,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.star_border),
+                    label: const Text('Rate the User'),
+                    onPressed: busy ? null : () => _rate(context, ref),
+                  ),
+                ),
         ];
     }
+  }
+
+  Future<void> _markReceived(BuildContext context, WidgetRef ref) async {
+    final ok = await ref
+        .read(requestControllerProvider.notifier)
+        .markReceived(a.requestId);
+    if (!context.mounted) return;
+    ok ? A11y.announce(context, 'Marked received.') : _error(context, ref);
+  }
+
+  Future<void> _rate(BuildContext context, WidgetRef ref) async {
+    final result = await showRatingSheet(context, title: 'Rate the User');
+    if (result == null || !context.mounted) return;
+    final ok = await ref
+        .read(requestControllerProvider.notifier)
+        .submitRating(a.requestId, a.volunteerId, result.$1, result.$2);
+    if (!context.mounted) return;
+    ok ? A11y.announce(context, 'Thanks for rating.') : _error(context, ref);
   }
 
   Future<void> _startDialog(BuildContext context, WidgetRef ref) async {

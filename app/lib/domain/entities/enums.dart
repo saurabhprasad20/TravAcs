@@ -98,6 +98,21 @@ enum TripStatus {
           orElse: () => TripStatus.assigned);
 }
 
+/// Two-sided external-payment state of an assignment (design §6, M6).
+enum PaymentStatus {
+  pending('pending', 'Payment pending'),
+  awaitingOther('awaiting_other', 'Awaiting confirmation'),
+  confirmed('confirmed', 'Payment confirmed');
+
+  const PaymentStatus(this.wireValue, this.label);
+  final String wireValue;
+  final String label;
+
+  static PaymentStatus fromWire(String? value) =>
+      PaymentStatus.values.firstWhere((e) => e.wireValue == value,
+          orElse: () => PaymentStatus.pending);
+}
+
 /// Service region used for deterministic matching: a request only reaches
 /// TravAcsers whose region equals the request's. We cover Delhi NCR as a single
 /// combined region (Delhi folded in); other states/UTs are individual options.
