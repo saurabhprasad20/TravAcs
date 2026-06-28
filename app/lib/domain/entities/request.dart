@@ -23,6 +23,7 @@ class Request {
     required this.meetingPoint,
     required this.destination,
     required this.estimatedAmountInr,
+    this.acceptedCount = 0,
     this.landmark,
     this.purpose,
     this.specialNote,
@@ -60,6 +61,13 @@ class Request {
 
   // Money (snapshot of the estimate at creation).
   final int estimatedAmountInr;
+
+  /// How many TravAcser slots are filled (slot-filling accept).
+  final int acceptedCount;
+
+  int get slotsRemaining =>
+      (numTravAcsers - acceptedCount).clamp(0, numTravAcsers);
+  bool get isFull => acceptedCount >= numTravAcsers;
 
   // Display convenience (set on the requester's own reads).
   final String? requesterName;

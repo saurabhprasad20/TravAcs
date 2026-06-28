@@ -16,7 +16,7 @@
 | 2 | **Backend** | **Firebase** (Auth, Cloud Firestore, Cloud Functions, Storage, FCM, App Check). | One integrated platform; great Flutter SDKs; solves India OTP. |
 | 3 | **Auth** | **Firebase Phone Auth** (SMS OTP). Wrapped behind an `AuthRepository` abstraction. | OTP "just works" for +91 via Google — **no SMS gateway, no DLT**. |
 | 4 | **Database** | **Cloud Firestore** (native mode). | Real-time listeners + **atomic transactions** (needed for FCFS) + Security Rules. |
-| 5 | **FCFS accept** | A **client-side Firestore transaction** guarded by **Security Rules** (no server needed): first writer flips `broadcast→assigned`, others abort. | Strong consistency without a backend hop. |
+| 5 | **Accept (slot-filling FCFS)** | A request needs **N TravAcsers** (1 per 2 users). The **`acceptRequest` Cloud Function** runs a Firestore **transaction** per accept — claims a slot, creates a per-TravAcser assignment + contact pair + OTP, increments `acceptedCount`, flips to `assigned` when full. The transaction guarantees no over-subscription. | Strong consistency; per-TravAcser trips/OTP/payment. |
 | 6 | **Server logic** | **Cloud Functions** only where a server is unavoidable: **FCM fan-out** to volunteers, **trip-OTP hashing/verify**, **admin custom claims**. Requires the **Blaze** plan. | Clients can't multicast push or mint admin claims. |
 | 7 | **App architecture** | **Riverpod** (DI + state) + **layered** (data / domain / presentation) + **Repository pattern**. | SOLID, testable; lets the backend swap (as this migration proved). |
 | 8 | **Matching** | **Region-scoped broadcast:** both sides pick a fixed **`serviceArea`** (Delhi NCR + states/UTs); a request is broadcast only to approved, active TravAcsers whose `serviceArea` **equals** the request's. FCFS decides. (Optional `geohash` later for finer geo-radius.) | Deterministic, no GPS; right scope for targeted FCM. |
@@ -184,7 +184,9 @@ createdAt, updatedAt: timestamp
 ```
 Composite indexes: `(status, createdAt)` for the volunteer "available" feed; `(requesterId, createdAt)`; `(volunteerId, status)`.
 
-**`trips/{requestId}`** (1:1 with an assigned request; same id for easy join)
+> **Slot-filling (M4+):** requests carry `acceptedCount` + `numTravAcsers`; each acceptance is a doc in **`requests/{id}/assignments/{volunteerId}`** (contact pair, denormalized request summary, and — from M5 — per-TravAcser trip fields: started/ended/duration/amount/paymentStatus). The per-TravAcser trip-start OTP plaintext lives in **`requests/{id}/secrets/{volunteerId}`**, readable only by the requester. This **replaces** the single `trips/{requestId}` doc below for the multi-TravAcser model.
+
+**`trips/{requestId}`** (legacy single-TravAcser shape; superseded by per-assignment above)
 ```
 requestId: string
 startedAt?, endedAt?: timestamp
@@ -225,7 +227,7 @@ Principles (full rules authored in M1):
 Node/TypeScript, Admin SDK (bypasses rules; re-checks auth internally). Callable or Firestore-triggered. Shared result `{ ok, code, data? }`.
 
 - **`onRequestCreated` (Firestore trigger, `requests/{id}` onCreate)** — when `status=='broadcast'`, **fan out FCM** to approved+active TravAcsers **whose `serviceCity` == the request's** (region-scoped). It does **not** mint the trip OTP — that happens at **assignment** (M4/M5), tied to the specific volunteer.
-- **`acceptRequest(requestId)` (callable, optional hardening)** — the accept can be a pure client transaction (preferred), but a callable variant exists for extra server validation if needed. Internally: transaction `broadcast→assigned`, set `contact.*`, return `ALREADY_TAKEN` if lost.
+- **`acceptRequest(requestId)` (callable, Admin SDK) — slot-filling** — verifies the caller is an approved+active TravAcser in the request's city, then runs a **transaction**: rejects if the request isn't `broadcast`, the caller already accepted, or all slots are full; otherwise creates `requests/{id}/assignments/{uid}` (contact pair + denormalized summary), writes the per-TravAcser OTP plaintext to `requests/{id}/secrets/{uid}` (requester-readable only), increments `acceptedCount`, and sets `status='assigned'` when `acceptedCount==numTravAcsers`. Pushes the requester. Returns `ALREADY_TAKEN`/`ALREADY_ACCEPTED`/`WRONG_CITY`/`NOT_APPROVED` on failure. The transaction's count read+write prevents over-subscription.
 - **`startTrip(requestId, otp)` (callable)** — verify `otp` against `otpHash` (bcrypt); assert caller is assigned volunteer & status `assigned`; set `started`, `trips.startedAt`. Rate-limit attempts.
 - **`completeTrip(requestId)` (callable)** — assert caller is a party & status `started`; compute `durationMinutes`, `amountInr`; set `completed`.
 - **`markPaid` / `markReceived` (callable)** — role-locked, idempotent; set the respective timestamp; recompute `paymentStatus` (`confirmed` when both); push to counterpart.

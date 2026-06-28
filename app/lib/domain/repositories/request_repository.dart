@@ -1,6 +1,7 @@
 import 'package:fpdart/fpdart.dart';
 
 import '../../core/error/result.dart';
+import '../entities/assignment.dart';
 import '../entities/city.dart';
 import '../entities/enums.dart';
 import '../entities/request.dart';
@@ -34,6 +35,19 @@ abstract interface class RequestRepository {
   /// active TravAcsers; the query + rules enforce the region scope.
   Stream<List<Request>> watchAvailableRequests(City city);
 
-  /// Requester cancels their own request before it starts.
+  /// Requester cancels their own request before anyone has accepted.
   FutureResult<Unit> cancelRequest(String id);
+
+  /// TravAcser claims a slot (calls the `acceptRequest` Cloud Function).
+  FutureResult<Unit> acceptRequest(String requestId);
+
+  /// The signed-in TravAcser's assignments across all requests, newest first.
+  Stream<List<Assignment>> watchMyAssignments();
+
+  /// All TravAcsers who have accepted [requestId] (for the requester's view).
+  Stream<List<Assignment>> watchRequestAssignments(String requestId);
+
+  /// The OTP the requester shares with the TravAcser [volunteerId] (requester
+  /// reads the private secret). Null until accepted / if not permitted.
+  Stream<String?> watchShareOtp(String requestId, String volunteerId);
 }

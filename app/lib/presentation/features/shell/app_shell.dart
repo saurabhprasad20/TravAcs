@@ -8,6 +8,7 @@ import '../profile/profile_tab_screen.dart';
 import '../requester/my_requests_screen.dart';
 import '../requester/new_request_screen.dart';
 import '../volunteer/available_requests_screen.dart';
+import '../volunteer/my_trips_screen.dart';
 import '../../providers/messaging_providers.dart';
 import '../../providers/profile_providers.dart';
 import 'placeholder_tab.dart';
@@ -126,10 +127,7 @@ class _AppShellState extends ConsumerState<AppShell> {
       label: 'My Trips',
       icon: Icons.directions_walk_outlined,
       selectedIcon: Icons.directions_walk,
-      screen: PlaceholderTab(
-        title: 'My Trips',
-        icon: Icons.directions_walk_outlined,
-      ),
+      screen: MyTripsScreen(),
     ),
     _TabDef(
       label: 'Earnings',
