@@ -147,6 +147,38 @@ class FirestoreRequestRepository implements RequestRepository {
   }
 
   @override
+  FutureResult<Unit> markPaid(String requestId, String volunteerId) =>
+      _call('markPaid', {'requestId': requestId, 'volunteerId': volunteerId});
+
+  @override
+  FutureResult<Unit> markReceived(String requestId) =>
+      _call('markReceived', {'requestId': requestId});
+
+  @override
+  FutureResult<Unit> submitRating(
+    String requestId,
+    String volunteerId,
+    int stars,
+    String? feedback,
+  ) =>
+      _call('submitRating', {
+        'requestId': requestId,
+        'volunteerId': volunteerId,
+        'stars': stars,
+        'feedback': feedback,
+      });
+
+  /// Shared helper to invoke a callable and map errors.
+  FutureResult<Unit> _call(String name, Map<String, dynamic> data) async {
+    try {
+      await _functions.httpsCallable(name).call<dynamic>(data);
+      return success(unit);
+    } catch (e) {
+      return failure(mapFirebaseError(e));
+    }
+  }
+
+  @override
   Stream<List<Assignment>> watchMyAssignments() {
     final uid = _uid;
     if (uid == null) return Stream.value(const []);
@@ -208,6 +240,13 @@ class FirestoreRequestRepository implements RequestRepository {
       endedAt: (d['endedAt'] as Timestamp?)?.toDate(),
       durationMinutes: (d['durationMinutes'] as num?)?.toInt(),
       amountInr: (d['amountInr'] as num?)?.toInt(),
+      paymentStatus: PaymentStatus.fromWire(d['paymentStatus'] as String?),
+      requesterPaidAt: (d['requesterPaidAt'] as Timestamp?)?.toDate(),
+      travAcserReceivedAt: (d['travAcserReceivedAt'] as Timestamp?)?.toDate(),
+      requesterRatingStars: (d['requesterRatingStars'] as num?)?.toInt(),
+      requesterRatingFeedback: d['requesterRatingFeedback'] as String?,
+      volunteerRatingStars: (d['volunteerRatingStars'] as num?)?.toInt(),
+      volunteerRatingFeedback: d['volunteerRatingFeedback'] as String?,
     );
   }
 

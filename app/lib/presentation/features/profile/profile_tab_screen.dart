@@ -36,6 +36,17 @@ class ProfileTabScreen extends ConsumerWidget {
                   state: my.profile.serviceArea,
                   city: my.profile.serviceCity,
                 ),
+                Builder(builder: (context) {
+                  final avg = my.volunteer?.ratingAvg ?? my.requester?.ratingAvg ?? 0;
+                  final count =
+                      my.volunteer?.ratingCount ?? my.requester?.ratingCount ?? 0;
+                  return _InfoTile(
+                    label: 'Rating',
+                    value: count > 0
+                        ? '$avg★ ($count review${count == 1 ? '' : 's'})'
+                        : 'No ratings yet',
+                  );
+                }),
                 if (my.volunteer != null) ...[
                   const Divider(height: 32),
                   _VerificationCard(volunteer: my.volunteer!),

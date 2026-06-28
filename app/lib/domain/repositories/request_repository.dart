@@ -56,4 +56,18 @@ abstract interface class RequestRepository {
 
   /// Complete a TravAcser's trip (by that TravAcser or the requester).
   FutureResult<Unit> completeTrip(String requestId, String volunteerId);
+
+  /// The User marks a TravAcser's payment as Paid (two-sided).
+  FutureResult<Unit> markPaid(String requestId, String volunteerId);
+
+  /// The TravAcser marks payment Received (two-sided).
+  FutureResult<Unit> markReceived(String requestId);
+
+  /// Rate the counterpart (1–5 + optional feedback) for a completed assignment.
+  FutureResult<Unit> submitRating(
+    String requestId,
+    String volunteerId,
+    int stars,
+    String? feedback,
+  );
 }

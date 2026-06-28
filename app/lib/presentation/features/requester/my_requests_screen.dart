@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/accessibility/announce.dart';
 import '../../../core/error/failure.dart';
+import '../../../domain/entities/assignment.dart';
 import '../../../domain/entities/enums.dart';
 import '../../../domain/entities/request.dart';
 import '../../providers/request_providers.dart';
+import '../shared/rating_sheet.dart';
 import '../shared/request_card.dart';
 import 'request_controller.dart';
 
@@ -128,21 +130,7 @@ class _AssignmentsSheet extends ConsumerWidget {
                   style: Theme.of(context).textTheme.bodySmall),
               const SizedBox(height: 12),
               for (final a in list)
-                Card(
-                  child: ListTile(
-                    title: Text(a.volunteerName),
-                    subtitle: Text(
-                        '${a.volunteerPhone ?? 'Phone not available'} · ${a.tripStatus.label}'),
-                    trailing: switch (a.tripStatus) {
-                      TripStatus.assigned => _OtpChip(
-                          requestId: requestId, volunteerId: a.volunteerId),
-                      TripStatus.started => const Text('In progress'),
-                      TripStatus.completed || TripStatus.closed =>
-                        Text('₹${a.amountInr ?? 0}',
-                            style: Theme.of(context).textTheme.titleMedium),
-                    },
-                  ),
-                ),
+                _AssignmentTile(requestId: requestId, a: a),
               const SizedBox(height: 8),
               Builder(builder: (context) {
                 final total = list
@@ -160,6 +148,109 @@ class _AssignmentsSheet extends ConsumerWidget {
         ),
       ),
     );
+  }
+}
+
+class _AssignmentTile extends ConsumerWidget {
+  const _AssignmentTile({required this.requestId, required this.a});
+  final String requestId;
+  final Assignment a;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final busy = ref.watch(requestControllerProvider).isLoading;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(a.volunteerName,
+                      style: Theme.of(context).textTheme.titleMedium),
+                ),
+                Text(a.tripStatus.label),
+              ],
+            ),
+            Text(a.volunteerPhone ?? 'Phone not available',
+                style: Theme.of(context).textTheme.bodySmall),
+            const SizedBox(height: 8),
+            ..._content(context, ref, busy),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _content(BuildContext context, WidgetRef ref, bool busy) {
+    switch (a.tripStatus) {
+      case TripStatus.assigned:
+        return [
+          Row(
+            children: [
+              const Text('Code to share: '),
+              _OtpChip(requestId: requestId, volunteerId: a.volunteerId),
+            ],
+          ),
+        ];
+      case TripStatus.started:
+        return [const Text('Trip in progress.')];
+      case TripStatus.completed:
+      case TripStatus.closed:
+        return [
+          Text('₹${a.amountInr ?? 0} · ${a.paymentStatus.label}',
+              style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              if (a.requesterPaidAt == null)
+                OutlinedButton(
+                  onPressed: busy ? null : () => _pay(context, ref),
+                  child: const Text('Mark as Paid'),
+                ),
+              a.ratedByRequester
+                  ? Text('You rated ${a.requesterRatingStars}★')
+                  : OutlinedButton.icon(
+                      icon: const Icon(Icons.star_border),
+                      label: const Text('Rate TravAcser'),
+                      onPressed: busy ? null : () => _rate(context, ref),
+                    ),
+            ],
+          ),
+        ];
+    }
+  }
+
+  Future<void> _pay(BuildContext context, WidgetRef ref) async {
+    final ok = await ref
+        .read(requestControllerProvider.notifier)
+        .markPaid(requestId, a.volunteerId);
+    if (!context.mounted) return;
+    ok ? A11y.announce(context, 'Marked as paid.') : _err(context, ref);
+  }
+
+  Future<void> _rate(BuildContext context, WidgetRef ref) async {
+    final result =
+        await showRatingSheet(context, title: 'Rate ${a.volunteerName}');
+    if (result == null || !context.mounted) return;
+    final ok = await ref
+        .read(requestControllerProvider.notifier)
+        .submitRating(requestId, a.volunteerId, result.$1, result.$2);
+    if (!context.mounted) return;
+    ok ? A11y.announce(context, 'Thanks for rating.') : _err(context, ref);
+  }
+
+  void _err(BuildContext context, WidgetRef ref) {
+    final f = ref.read(requestControllerProvider).error;
+    final msg = f is Failure ? f.message : 'Something went wrong.';
+    A11y.announce(context, msg);
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text(msg)));
   }
 }
 

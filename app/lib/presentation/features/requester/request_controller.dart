@@ -90,6 +90,19 @@ class RequestController extends Notifier<AsyncValue<void>> {
   Future<bool> completeTrip(String requestId, String volunteerId) =>
       _run(() => _repo.completeTrip(requestId, volunteerId));
 
+  /// User marks a TravAcser's payment as Paid.
+  Future<bool> markPaid(String requestId, String volunteerId) =>
+      _run(() => _repo.markPaid(requestId, volunteerId));
+
+  /// TravAcser marks payment Received.
+  Future<bool> markReceived(String requestId) =>
+      _run(() => _repo.markReceived(requestId));
+
+  /// Submit a rating for the counterpart.
+  Future<bool> submitRating(
+          String requestId, String volunteerId, int stars, String? feedback) =>
+      _run(() => _repo.submitRating(requestId, volunteerId, stars, feedback));
+
   Future<bool> _run(FutureResult<Unit> Function() action) async {
     state = const AsyncLoading();
     final res = await action();
