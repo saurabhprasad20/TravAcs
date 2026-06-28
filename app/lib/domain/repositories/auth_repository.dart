@@ -23,6 +23,9 @@ abstract interface class AuthRepository {
     required String smsCode,
   });
 
+  /// Whether the current user carries the `admin` custom claim.
+  Future<bool> isAdmin();
+
   /// Signs the current user out.
   FutureResult<Unit> signOut();
 }
