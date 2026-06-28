@@ -15,5 +15,6 @@ firebase/functions/node_modules/
 *.apk
 app/build_apk*.log
 
-# One-off local admin helper (reads your firebase login; not for the repo)
+# One-off local admin helpers (read your firebase login; not for the repo)
 enable_phone.js
+approve_volunteer.js

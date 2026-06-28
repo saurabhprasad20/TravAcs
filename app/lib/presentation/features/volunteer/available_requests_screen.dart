@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/accessibility/announce.dart';
 import '../../../core/error/failure.dart';
+import '../../../domain/entities/request.dart';
 import '../../providers/profile_providers.dart';
 import '../../providers/request_providers.dart';
+import '../requester/request_controller.dart';
 import '../shared/request_card.dart';
 
-/// TravAcser's live list of open requests in their city. (Accept arrives in M4.)
+/// TravAcser's live list of open requests in their city, with Accept.
 class AvailableRequestsScreen extends ConsumerWidget {
   const AvailableRequestsScreen({super.key});
 
@@ -48,10 +51,7 @@ class AvailableRequestsScreen extends ConsumerWidget {
           itemCount: list.length,
           itemBuilder: (context, i) => RequestCard(
             request: list[i],
-            actions: const [
-              // Accept is implemented in M4 (FCFS).
-              Text('Accept coming soon'),
-            ],
+            actions: [_AcceptButton(request: list[i])],
           ),
         );
       },
@@ -66,4 +66,44 @@ class AvailableRequestsScreen extends ConsumerWidget {
               style: Theme.of(context).textTheme.bodyLarge),
         ),
       );
+}
+
+class _AcceptButton extends ConsumerWidget {
+  const _AcceptButton({required this.request});
+  final Request request;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final busy = ref.watch(requestControllerProvider).isLoading;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text('${request.acceptedCount}/${request.numTravAcsers} filled'),
+        const SizedBox(width: 12),
+        FilledButton(
+          onPressed: busy ? null : () => _accept(context, ref),
+          child: const Text('Accept'),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _accept(BuildContext context, WidgetRef ref) async {
+    final ok =
+        await ref.read(requestControllerProvider.notifier).accept(request.id);
+    if (!context.mounted) return;
+    if (ok) {
+      A11y.announce(context, 'Accepted. See it under My Trips.');
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(const SnackBar(content: Text('Request accepted.')));
+    } else {
+      final f = ref.read(requestControllerProvider).error;
+      final msg = f is Failure ? f.message : 'Could not accept. Try again.';
+      A11y.announce(context, msg);
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text(msg)));
+    }
+  }
 }

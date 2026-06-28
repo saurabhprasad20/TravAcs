@@ -78,20 +78,32 @@ service cloud.firestore {
         && request.resource.data.volunteerId == null
         && request.resource.data.serviceCity is string;
 
-      // Two client-allowed transitions; all others go through Cloud Functions.
-      allow update: if
-        // (a) FCFS accept: an approved volunteer claims an open request.
-        (isApprovedVolunteer()
-          && resource.data.status == 'broadcast'
-          && resource.data.volunteerId == null
-          && request.resource.data.status == 'assigned'
-          && request.resource.data.volunteerId == request.auth.uid)
-        // (b) Requester cancels before the trip starts.
-        || (resource.data.requesterId == request.auth.uid
-          && resource.data.status in ['draft', 'broadcast']
-          && request.resource.data.status == 'cancelled');
+      // The requester may only CANCEL, and only before anyone accepts. Accept,
+      // start, complete and payment transitions are done by Cloud Functions
+      // (Admin SDK), never by clients.
+      allow update: if resource.data.requesterId == request.auth.uid
+        && resource.data.status in ['draft', 'broadcast']
+        && resource.data.get('acceptedCount', 0) == 0
+        && request.resource.data.status == 'cancelled';
 
       allow delete: if false;
+
+      // Per-TravAcser acceptance records — written only by Cloud Functions;
+      // readable by that TravAcser and the request's requester.
+      match /assignments/{vid} {
+        allow read: if isSignedIn() && (
+          vid == request.auth.uid
+          || requestData(requestId).requesterId == request.auth.uid
+          || isAdmin()
+        );
+        allow write: if false;
+      }
+      // Per-TravAcser trip-start OTP — readable ONLY by the requester.
+      match /secrets/{vid} {
+        allow read: if isSignedIn()
+          && requestData(requestId).requesterId == request.auth.uid;
+        allow write: if false;
+      }
     }
 
     // ---- trips (id == requestId) -----------------------------------------

@@ -1,10 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fpdart/fpdart.dart';
 
 import '../../core/error/failure.dart';
 import '../../core/error/firebase_error_mapper.dart';
 import '../../core/error/result.dart';
+import '../../domain/entities/assignment.dart';
 import '../../domain/entities/city.dart';
 import '../../domain/entities/enums.dart';
 import '../../domain/entities/request.dart';
@@ -12,10 +14,11 @@ import '../../domain/repositories/request_repository.dart';
 
 /// Firestore implementation of [RequestRepository].
 class FirestoreRequestRepository implements RequestRepository {
-  FirestoreRequestRepository(this._db, this._auth);
+  FirestoreRequestRepository(this._db, this._auth, this._functions);
 
   final FirebaseFirestore _db;
   final FirebaseAuth _auth;
+  final FirebaseFunctions _functions;
 
   CollectionReference<Map<String, dynamic>> get _requests =>
       _db.collection('requests');
@@ -50,6 +53,7 @@ class FirestoreRequestRepository implements RequestRepository {
         'status': RequestStatus.broadcast.wireValue,
         'serviceArea': serviceState.wireValue,
         'serviceCity': serviceCity.wireValue,
+        'acceptedCount': 0,
         'numTravellers': numTravellers,
         'numTravAcsers': numTravAcsers,
         'numMaleTravellers': numMaleTravellers,
@@ -107,7 +111,78 @@ class FirestoreRequestRepository implements RequestRepository {
     }
   }
 
+  @override
+  FutureResult<Unit> acceptRequest(String requestId) async {
+    try {
+      await _functions
+          .httpsCallable('acceptRequest')
+          .call<dynamic>({'requestId': requestId});
+      return success(unit);
+    } catch (e) {
+      return failure(mapFirebaseError(e));
+    }
+  }
+
+  @override
+  Stream<List<Assignment>> watchMyAssignments() {
+    final uid = _uid;
+    if (uid == null) return Stream.value(const []);
+    return _db
+        .collectionGroup('assignments')
+        .where('volunteerId', isEqualTo: uid)
+        .snapshots()
+        .map((snap) =>
+            snap.docs.map(_toAssignment).whereType<Assignment>().toList());
+  }
+
+  @override
+  Stream<List<Assignment>> watchRequestAssignments(String requestId) {
+    return _requests
+        .doc(requestId)
+        .collection('assignments')
+        .snapshots()
+        .map((snap) =>
+            snap.docs.map(_toAssignment).whereType<Assignment>().toList());
+  }
+
+  @override
+  Stream<String?> watchShareOtp(String requestId, String volunteerId) {
+    return _requests
+        .doc(requestId)
+        .collection('secrets')
+        .doc(volunteerId)
+        .snapshots()
+        .map((doc) => doc.data()?['otp'] as String?);
+  }
+
   // --- mapping ---------------------------------------------------------------
+
+  Assignment? _toAssignment(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+    final d = doc.data();
+    // requestId = the assignment's grandparent doc (requests/{id}/assignments/{vid}).
+    final requestId = doc.reference.parent.parent?.id;
+    final scheduled = (d['scheduledDate'] as Timestamp?)?.toDate();
+    if (requestId == null || scheduled == null) return null;
+    return Assignment(
+      requestId: requestId,
+      volunteerId: (d['volunteerId'] as String?) ?? doc.id,
+      volunteerName: (d['volunteerName'] as String?) ?? '',
+      volunteerPhone: d['volunteerPhone'] as String?,
+      requesterId: (d['requesterId'] as String?) ?? '',
+      requesterName: (d['requesterName'] as String?) ?? '',
+      requesterPhone: d['requesterPhone'] as String?,
+      scheduledDate: scheduled,
+      startTime: (d['startTime'] as String?) ?? '',
+      expectedDurationMinutes: (d['expectedDurationMinutes'] as num?)?.toInt() ?? 60,
+      meetingPoint: (d['meetingPoint'] as String?) ?? '',
+      destination: (d['destination'] as String?) ?? '',
+      landmark: d['landmark'] as String?,
+      numTravellers: (d['numTravellers'] as num?)?.toInt() ?? 1,
+      amountInrEstimate: (d['amountInrEstimate'] as num?)?.toInt() ?? 0,
+      tripStatus: (d['tripStatus'] as String?) ?? 'assigned',
+      acceptedAt: (d['acceptedAt'] as Timestamp?)?.toDate(),
+    );
+  }
 
   List<Request> _mapDocs(QuerySnapshot<Map<String, dynamic>> snap) =>
       snap.docs.map(_toRequest).whereType<Request>().toList(growable: false);
@@ -127,6 +202,7 @@ class FirestoreRequestRepository implements RequestRepository {
       serviceCity: city,
       numTravellers: (d['numTravellers'] as num?)?.toInt() ?? 1,
       numTravAcsers: (d['numTravAcsers'] as num?)?.toInt() ?? 1,
+      acceptedCount: (d['acceptedCount'] as num?)?.toInt() ?? 0,
       numMaleTravellers: (d['numMaleTravellers'] as num?)?.toInt() ?? 0,
       numFemaleTravellers: (d['numFemaleTravellers'] as num?)?.toInt() ?? 0,
       scheduledDate: scheduled,

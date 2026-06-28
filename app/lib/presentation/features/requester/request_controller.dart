@@ -75,6 +75,22 @@ class RequestController extends Notifier<AsyncValue<void>> {
       },
     );
   }
+
+  /// TravAcser claims a slot. Returns true on success.
+  Future<bool> accept(String requestId) async {
+    state = const AsyncLoading();
+    final res = await _repo.acceptRequest(requestId);
+    return res.match(
+      (f) {
+        state = AsyncError(f, StackTrace.current);
+        return false;
+      },
+      (_) {
+        state = const AsyncData(null);
+        return true;
+      },
+    );
+  }
 }
 
 final requestControllerProvider =

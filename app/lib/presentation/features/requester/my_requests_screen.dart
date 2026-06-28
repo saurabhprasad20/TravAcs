@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/accessibility/announce.dart';
 import '../../../core/error/failure.dart';
+import '../../../domain/entities/request.dart';
 import '../../providers/request_providers.dart';
 import '../shared/request_card.dart';
 import 'request_controller.dart';
@@ -40,7 +41,15 @@ class MyRequestsScreen extends ConsumerWidget {
               return RequestCard(
                 request: r,
                 actions: [
-                  if (r.status.isCancellable)
+                  if (r.acceptedCount > 0)
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.group_outlined),
+                      label: Text(
+                          'TravAcsers ${r.acceptedCount}/${r.numTravAcsers}'),
+                      onPressed: () => _showAssignments(context, r),
+                    ),
+                  // Cancel only while no one has accepted yet.
+                  if (r.status.isCancellable && r.acceptedCount == 0)
                     OutlinedButton.icon(
                       icon: const Icon(Icons.cancel_outlined),
                       label: const Text('Cancel'),
@@ -52,6 +61,15 @@ class MyRequestsScreen extends ConsumerWidget {
           );
         },
       ),
+    );
+  }
+
+  void _showAssignments(BuildContext context, Request r) {
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) => _AssignmentsSheet(requestId: r.id),
     );
   }
 
@@ -74,5 +92,85 @@ class MyRequestsScreen extends ConsumerWidget {
     if (confirm != true) return;
     final ok = await ref.read(requestControllerProvider.notifier).cancel(id);
     if (ok && context.mounted) A11y.announce(context, 'Request cancelled.');
+  }
+}
+
+/// Lists the TravAcsers who accepted, with each one's contact + OTP to share.
+class _AssignmentsSheet extends ConsumerWidget {
+  const _AssignmentsSheet({required this.requestId});
+  final String requestId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final assignments = ref.watch(requestAssignmentsProvider(requestId));
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        child: assignments.when(
+          loading: () => const Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator())),
+          error: (e, _) => Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(e is Failure ? e.message : 'Could not load.'),
+          ),
+          data: (list) => Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Your TravAcsers',
+                  style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 4),
+              Text(
+                  'Share each TravAcser\'s code with them in person — they enter '
+                  'it to start the trip.',
+                  style: Theme.of(context).textTheme.bodySmall),
+              const SizedBox(height: 12),
+              for (final a in list)
+                Card(
+                  child: ListTile(
+                    title: Text(a.volunteerName),
+                    subtitle: Text(a.volunteerPhone ?? 'Phone not available'),
+                    trailing: _OtpChip(
+                        requestId: requestId, volunteerId: a.volunteerId),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _OtpChip extends ConsumerWidget {
+  const _OtpChip({required this.requestId, required this.volunteerId});
+  final String requestId;
+  final String volunteerId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final otp = ref.watch(
+        shareOtpProvider((requestId: requestId, volunteerId: volunteerId)));
+    final code = otp.value;
+    return Semantics(
+      label: code == null
+          ? 'Code loading'
+          : 'Code ${A11y.spellDigits(code)}',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.primaryContainer,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          code ?? '••••••',
+          style: Theme.of(context)
+              .textTheme
+              .titleMedium
+              ?.copyWith(letterSpacing: 2, fontWeight: FontWeight.bold),
+        ),
+      ),
+    );
   }
 }

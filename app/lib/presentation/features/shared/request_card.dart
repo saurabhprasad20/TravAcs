@@ -18,7 +18,7 @@ class RequestCard extends StatelessWidget {
     final when =
         '${DateFormat.yMMMEd().format(r.scheduledDate)} · ${r.startTime}';
     final group = '${r.numTravellers} traveller(s) · '
-        '${r.numTravAcsers} TravAcser(s)';
+        '${r.acceptedCount}/${r.numTravAcsers} TravAcser(s) filled';
 
     return Card(
       child: Padding(
