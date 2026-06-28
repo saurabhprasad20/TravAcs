@@ -238,6 +238,7 @@ class _VerificationCard extends StatelessWidget {
           children: [
             Semantics(
               label: 'Verification status: ${status.label}',
+              excludeSemantics: true,
               child: Row(
                 children: [
                   Icon(icon, color: color),

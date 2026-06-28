@@ -26,30 +26,45 @@ class RequestCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(when,
-                      style: Theme.of(context).textTheme.titleMedium),
-                ),
-                _StatusChip(status: r.status),
-              ],
+            // Merge the informational block into a single semantic node so a
+            // screen-reader swipe lands on the card as one coherent summary
+            // instead of fragment by fragment. The [actions] below stay outside
+            // the merge so each keeps its own (button) tap semantics.
+            MergeSemantics(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(when,
+                            style: Theme.of(context).textTheme.titleMedium),
+                      ),
+                      _StatusChip(status: r.status),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  _line(context, Icons.my_location, r.meetingPoint),
+                  _line(
+                      context,
+                      Icons.place_outlined,
+                      r.landmark == null
+                          ? r.destination
+                          : '${r.destination} (${r.landmark})'),
+                  const SizedBox(height: 6),
+                  Text(group, style: Theme.of(context).textTheme.bodyMedium),
+                  if (r.purpose != null && r.purpose!.isNotEmpty)
+                    Text('Purpose: ${r.purpose}',
+                        style: Theme.of(context).textTheme.bodyMedium),
+                  if (r.specialNote != null && r.specialNote!.isNotEmpty)
+                    Text('Note: ${r.specialNote}',
+                        style: Theme.of(context).textTheme.bodySmall),
+                  const SizedBox(height: 8),
+                  Text('Estimated ₹${r.estimatedAmountInr}',
+                      style: Theme.of(context).textTheme.titleSmall),
+                ],
+              ),
             ),
-            const SizedBox(height: 8),
-            _line(context, Icons.my_location, r.meetingPoint),
-            _line(context, Icons.place_outlined,
-                r.landmark == null ? r.destination : '${r.destination} (${r.landmark})'),
-            const SizedBox(height: 6),
-            Text(group, style: Theme.of(context).textTheme.bodyMedium),
-            if (r.purpose != null && r.purpose!.isNotEmpty)
-              Text('Purpose: ${r.purpose}',
-                  style: Theme.of(context).textTheme.bodyMedium),
-            if (r.specialNote != null && r.specialNote!.isNotEmpty)
-              Text('Note: ${r.specialNote}',
-                  style: Theme.of(context).textTheme.bodySmall),
-            const SizedBox(height: 8),
-            Text('Estimated ₹${r.estimatedAmountInr}',
-                style: Theme.of(context).textTheme.titleSmall),
             if (actions != null && actions!.isNotEmpty) ...[
               const SizedBox(height: 8),
               Row(mainAxisAlignment: MainAxisAlignment.end, children: actions!),
@@ -65,7 +80,8 @@ class RequestCard extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, size: 18),
+            // Decorative — the adjacent text carries the meaning.
+            ExcludeSemantics(child: Icon(icon, size: 18)),
             const SizedBox(width: 8),
             Expanded(child: Text(text)),
           ],
@@ -80,23 +96,53 @@ class _StatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final (bg, fg) = switch (status) {
-      RequestStatus.broadcast => (scheme.primaryContainer, scheme.onPrimaryContainer),
-      RequestStatus.assigned ||
-      RequestStatus.started =>
-        (scheme.tertiaryContainer, scheme.onTertiaryContainer),
-      RequestStatus.completed ||
-      RequestStatus.closed =>
-        (scheme.secondaryContainer, scheme.onSecondaryContainer),
-      RequestStatus.cancelled => (scheme.errorContainer, scheme.onErrorContainer),
-      RequestStatus.draft => (scheme.surfaceContainerHighest, scheme.onSurface),
+    // Each status carries both a colour AND an icon so it is never conveyed by
+    // colour alone (M9, §11). The icon is exposed to screen readers via the
+    // chip's [Semantics] label, not the glyph itself.
+    final (bg, fg, icon) = switch (status) {
+      RequestStatus.broadcast => (
+          scheme.primaryContainer,
+          scheme.onPrimaryContainer,
+          Icons.campaign_outlined,
+        ),
+      RequestStatus.assigned || RequestStatus.started => (
+          scheme.tertiaryContainer,
+          scheme.onTertiaryContainer,
+          Icons.directions_walk,
+        ),
+      RequestStatus.completed || RequestStatus.closed => (
+          scheme.secondaryContainer,
+          scheme.onSecondaryContainer,
+          Icons.check_circle_outline,
+        ),
+      RequestStatus.cancelled => (
+          scheme.errorContainer,
+          scheme.onErrorContainer,
+          Icons.cancel_outlined,
+        ),
+      RequestStatus.draft => (
+          scheme.surfaceContainerHighest,
+          scheme.onSurface,
+          Icons.edit_outlined,
+        ),
     };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-          color: bg, borderRadius: BorderRadius.circular(20)),
-      child: Text(status.label,
-          style: TextStyle(color: fg, fontWeight: FontWeight.w600)),
+    return Semantics(
+      label: 'Status: ${status.label}',
+      excludeSemantics: true,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration:
+            BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: fg),
+            const SizedBox(width: 4),
+            Text(status.label,
+                style: TextStyle(color: fg, fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
     );
   }
 }

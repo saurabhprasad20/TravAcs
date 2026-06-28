@@ -46,7 +46,11 @@ class _OtpEntryScreenState extends ConsumerState<OtpEntryScreen> {
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) return;
       setState(() => _secondsLeft = _secondsLeft > 0 ? _secondsLeft - 1 : 0);
-      if (_secondsLeft == 0) t.cancel();
+      if (_secondsLeft == 0) {
+        t.cancel();
+        // The button silently enabling is invisible to TalkBack; announce it.
+        A11y.announce(context, 'You can resend the code now.');
+      }
     });
   }
 
