@@ -347,12 +347,18 @@ Graceful degradation remains: idempotent callables so retries are safe; offline 
 
 ---
 
-## 15. Testing Strategy
-- **Unit/data:** repositories & use cases with **`fake_cloud_firestore`** + **`firebase_auth_mocks`** (FCFS transaction, billing math, OTP/state guards, mapping).
-- **Rules tests:** `@firebase/rules-unit-testing` (emulator) — each role can/can't do the right thing; FCFS transition only valid once.
-- **Functions tests:** emulator + unit tests for `startTrip`/`completeTrip`/`markPaid`/`setVerification`.
-- **Widget/integration:** New Request, Accept, OTP, Rating; happy path via the **Firebase Emulator Suite**.
-- **Accessibility (M9):** `test/accessibility_test.dart` — `meetsGuideline` (tap-target, labeled-tap, text-contrast) + semantic-label assertions on the reusable card/rating widgets; plus a manual TalkBack/VoiceOver pass.
+Phased: **M10a** = pure-Dart suite (`flutter test`, no emulator); **M10b** = emulator-backed rules + functions tests; **M10c** = CI.
+
+- **M10a — Unit/data (done):** runs entirely offline via **`fake_cloud_firestore`** + **`firebase_auth_mocks`** + **`mocktail`**.
+  - `test/domain_test.dart` — billing math (`computeEstimate`), `suggestedTravAcsers`, slot/duration getters, every enum/`Region`/`City` `fromWire` round-trip, `Profile.copyWith`, `Assignment` rating flags.
+  - `test/repository_test.dart` — profile upsert keeps immutable fields (client can't flip `role`/`verificationStatus`), request create writes the right estimate/status, the watch-queries filter by owner/city/status, and callable-backed methods return a `Failure` instead of throwing.
+  - `test/provider_test.dart` — `availableRequestsProvider` filtering (city + approval + already-accepted exclusion) and `myProfileProvider` surfacing a `Failure` as `AsyncError`.
+  - `test/widget_flow_test.dart` — rating-sheet gating + `(stars, feedback)` return; OTP-field validation + resend cooldown.
+  - `test/error_mapper_test.dart` (M8) + `test/accessibility_test.dart` (M9) round out the offline suite.
+- **M10b — Rules tests:** `@firebase/rules-unit-testing` (emulator) — each role can/can't do the right thing; protected-field writes rejected; OTP-secret requester-only.
+- **M10b — Functions tests:** emulator + unit tests for FCFS `acceptRequest`, `startTrip` (OTP + rate-limit), `completeTrip` billing, two-sided payment, `setVerification` admin gate.
+- **M10c — CI:** GitHub Actions runs `flutter test` on every push (+ an optional emulator job).
+- **Accessibility (M9):** `test/accessibility_test.dart` — `meetsGuideline` (tap-target, labeled-tap, text-contrast) + semantic-label assertions; plus a manual TalkBack/VoiceOver pass.
 
 ---
 
