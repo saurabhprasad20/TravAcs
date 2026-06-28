@@ -160,9 +160,8 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
         ..clearSnackBars()
         ..showSnackBar(const SnackBar(content: Text('Request submitted.')));
     } else {
-      final f = ref.read(requestControllerProvider).error;
       _announceError(
-          f is Failure ? f.message : 'Could not submit. Please try again.');
+          failureMessage(ref.read(requestControllerProvider).error));
     }
   }
 

@@ -38,7 +38,7 @@ class AvailableRequestsScreen extends ConsumerWidget {
     return requests.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(
-        child: Text(e is Failure ? e.message : 'Could not load requests.'),
+        child: Text(failureMessage(e)),
       ),
       data: (list) {
         if (list.isEmpty) {
@@ -98,8 +98,7 @@ class _AcceptButton extends ConsumerWidget {
         ..clearSnackBars()
         ..showSnackBar(const SnackBar(content: Text('Request accepted.')));
     } else {
-      final f = ref.read(requestControllerProvider).error;
-      final msg = f is Failure ? f.message : 'Could not accept. Try again.';
+      final msg = failureMessage(ref.read(requestControllerProvider).error);
       A11y.announce(context, msg);
       ScaffoldMessenger.of(context)
         ..clearSnackBars()

@@ -34,7 +34,7 @@ class AdminScreen extends ConsumerWidget {
       body: pending.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(
-          child: Text(e is Failure ? e.message : 'Could not load.'),
+          child: Text(failureMessage(e)),
         ),
         data: (list) {
           if (list.isEmpty) {
@@ -140,8 +140,7 @@ class _PendingCard extends ConsumerWidget {
   }
 
   void _err(BuildContext context, WidgetRef ref) {
-    final f = ref.read(adminControllerProvider).error;
-    final msg = f is Failure ? f.message : 'Action failed.';
+    final msg = failureMessage(ref.read(adminControllerProvider).error);
     A11y.announce(context, msg);
     ScaffoldMessenger.of(context)
       ..clearSnackBars()

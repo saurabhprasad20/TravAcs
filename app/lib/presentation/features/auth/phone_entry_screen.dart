@@ -39,21 +39,11 @@ class _PhoneEntryScreenState extends ConsumerState<PhoneEntryScreen> {
       A11y.announce(context, 'Verification code sent.');
       context.go('/auth/otp?phone=${Uri.encodeComponent(phone)}');
     } else {
-      final failure = ref.read(authControllerProvider).error;
-      final message = failure is Failure
-          ? failure.message
-          : 'Could not send code. Please try again.';
-      // TEMP diagnostic: surface the raw error code so we can see the real
-      // cause on-device (MIUI blocks logcat).
-      final code = failure is Failure ? failure.code : null;
-      final shown = code == null ? message : '[$code] $message';
+      final shown = failureMessage(ref.read(authControllerProvider).error);
       A11y.announce(context, shown);
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(
-          duration: const Duration(seconds: 12),
-          content: Text(shown),
-        ));
+        ..showSnackBar(SnackBar(content: Text(shown)));
     }
   }
 

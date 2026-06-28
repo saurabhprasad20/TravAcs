@@ -4,6 +4,7 @@ import 'package:fpdart/fpdart.dart';
 
 import '../../core/error/firebase_error_mapper.dart';
 import '../../core/error/result.dart';
+import '../../core/error/stream_error.dart';
 import '../../domain/entities/city.dart';
 import '../../domain/entities/enums.dart';
 import '../../domain/entities/pending_volunteer.dart';
@@ -22,7 +23,8 @@ class FirestoreAdminRepository implements AdminRepository {
         .where('role', isEqualTo: 'volunteer')
         .where('verificationStatus', isEqualTo: 'pending')
         .snapshots()
-        .map((snap) => snap.docs.map(_toPending).toList());
+        .map((snap) => snap.docs.map(_toPending).toList())
+        .mapErrorToFailure();
   }
 
   @override

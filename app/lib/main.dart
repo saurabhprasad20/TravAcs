@@ -1,9 +1,12 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app.dart';
 import 'core/config/firebase_init.dart';
+import 'core/error/error_fallback.dart';
+import 'core/error/error_reporter.dart';
 import 'presentation/providers/core_providers.dart';
 
 /// Background/terminated FCM handler. The system tray renders notification
@@ -26,6 +29,21 @@ Future<void> main() async {
     firebaseReady = true;
   } catch (_) {
     firebaseReady = false;
+  }
+
+  // Global error boundary: uncaught errors are logged (Crashlytics) and never
+  // shown raw to the user.
+  FlutterError.onError = (details) {
+    ErrorReporter.reportFatal(details.exception, details.stack, fatal: false);
+    if (kDebugMode) FlutterError.presentError(details);
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    ErrorReporter.reportFatal(error, stack);
+    return true;
+  };
+  // Replace the default red/grey error widget with a calm fallback (release).
+  if (kReleaseMode) {
+    ErrorWidget.builder = (details) => const ErrorFallback();
   }
 
   runApp(

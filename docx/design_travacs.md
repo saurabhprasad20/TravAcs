@@ -311,8 +311,32 @@ Unchanged and mandatory: `Semantics` labels, focus order, `SemanticsService.anno
 
 ---
 
-## 14. Error Handling, Logging & Monitoring
-Repositories map `FirebaseException`/`FirebaseAuthException` → typed `Failure` (+ accessible message). **Crashlytics** for client crashes; **Cloud Functions logs** + **Firestore usage** in the console. Graceful degradation: listener drop → re-subscribe/refresh; idempotent callables so retries are safe; offline reads via Firestore's local cache.
+## 14. Error Handling, Logging & Monitoring (M8)
+**Invariant:** users **never** see a raw failure, error code, or stack trace. Every error the user encounters is a calm, specific, screen-reader-friendly sentence. Raw detail (`code`, original message, `toString()`) is carried **only** in a non-user-facing `debugDetail` field and logged to Crashlytics — never rendered.
+
+**Failure taxonomy** (`core/error/failure.dart`) — sealed `Failure { message, code?, debugDetail?, isRetryable }` with granular subtypes, each with a friendly default `message`:
+- `NetworkFailure` (offline/timeout — retryable) · `AuthFailure` (auth/session/OTP) · `PermissionFailure` (not authorized) · `NotFoundFailure` · `ConflictFailure` (already-exists / slot taken / already-rated) · `RateLimitFailure` (too-many — retryable) · `ValidationFailure` (invalid input) · `UnavailableFailure` (service down / deadline — retryable) · `ServerFailure` (generic server/internal) · `UnexpectedFailure` (unknown — generic message; raw only in `debugDetail`).
+
+**Comprehensive mapper** (`core/error/firebase_error_mapper.dart`) — `mapFirebaseError(Object, [StackTrace?])` converts **any** caught error to a `Failure` and reports it once (non-fatal) to Crashlytics. Order matters: `FirebaseFunctionsException` is checked **before** `FirebaseException` (it is a subclass).
+
+| Source | Code | → Failure |
+|---|---|---|
+| Callable (`FirebaseFunctionsException`) | `unauthenticated` / `permission-denied` / `not-found` / `already-exists` / `resource-exhausted` / `invalid-argument` / `unavailable`·`deadline-exceeded` / `internal`·`unknown` | Auth / Permission / NotFound / Conflict / RateLimit / Validation / Unavailable / Server |
+| Callable | `failed-precondition` | uses the function's **developer-set** message (ours are user-facing, e.g. *"All TravAcser slots are filled."*) |
+| `FirebaseAuthException` | `operation-not-allowed`, `app-not-authorized`, `missing-client-identifier`, `captcha-check-failed`, `quota-exceeded`, `user-disabled`, `invalid-verification-code`, … | mapped to friendly Auth/Validation messages; default → generic `AuthFailure` |
+| `FirebaseException` (Firestore/Storage) | `permission-denied` / `unavailable`·`deadline-exceeded` / `not-found` / `resource-exhausted` / `failed-precondition`(e.g. missing index) | Permission / Unavailable / NotFound / RateLimit / Server; default → `ServerFailure` |
+| `SocketException` / `TimeoutException` / `HandshakeException` | — | `NetworkFailure` |
+| anything else | — | `UnexpectedFailure(debugDetail: error.toString())` |
+
+**Stream-error mapping** (`core/error/stream_error.dart`) — `Stream<T>.mapErrorToFailure()` is applied to every Firestore stream (`watchMyRequests`, `watchAvailableRequests`, `watchMyAssignments`, `watchRequestAssignments`, `watchShareOtp`, `watchPendingVolunteers`) so a `StreamProvider`'s `.error` is **always** a `Failure`.
+
+**Global boundary** (`main.dart` + `core/error/`) — after Firebase init: `FlutterError.onError` and `PlatformDispatcher.instance.onError` route to `ErrorReporter` (Crashlytics, guarded — no-op in tests / when unavailable). In release, `ErrorWidget.builder` renders a friendly `ErrorFallback` widget instead of Flutter's red/grey stack-trace screen (the red box is kept in debug).
+
+**UI surfacing** — screens render errors via `failureMessage(Object?)` → `e is Failure ? e.message : 'Something went wrong. Please try again.'`; both the snackbar and `A11y.announce` use that friendly text. No screen displays `code` or `toString()`.
+
+**Tests** — `test/error_mapper_test.dart` asserts each representative input maps to the expected subtype and that `message` contains **no** raw text/code tokens (locks in the no-leak guarantee). Full suite is M10.
+
+Graceful degradation remains: idempotent callables so retries are safe; offline reads via Firestore's local cache; **Cloud Functions logs** + **Firestore usage** in the console.
 
 ---
 

@@ -79,10 +79,8 @@ class _CompleteProfileScreenState
     if (ok) {
       A11y.announce(context, 'Profile created. Welcome to TravAcs.');
     } else {
-      final failure = ref.read(profileControllerProvider).error;
-      final message = failure is Failure
-          ? failure.message
-          : 'Could not save your profile. Please try again.';
+      final message =
+          failureMessage(ref.read(profileControllerProvider).error);
       A11y.announce(context, message);
       ScaffoldMessenger.of(context)
         ..clearSnackBars()

@@ -22,8 +22,7 @@ class SplashScreen extends ConsumerWidget {
           // Redirect handles the data case; show a brief loader meanwhile.
           data: (_) => const _Loading(),
           error: (error, _) {
-            final message =
-                error is Failure ? error.message : 'Something went wrong.';
+            final message = failureMessage(error);
             return Padding(
               padding: const EdgeInsets.all(24),
               child: Column(

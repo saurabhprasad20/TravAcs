@@ -80,10 +80,7 @@ class _OtpEntryScreenState extends ConsumerState<OtpEntryScreen> {
   }
 
   void _showError() {
-    final failure = ref.read(authControllerProvider).error;
-    final message = failure is Failure
-        ? failure.message
-        : 'Verification failed. Please try again.';
+    final message = failureMessage(ref.read(authControllerProvider).error);
     A11y.announce(context, message);
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
