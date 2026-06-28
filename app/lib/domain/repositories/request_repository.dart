@@ -50,4 +50,10 @@ abstract interface class RequestRepository {
   /// The OTP the requester shares with the TravAcser [volunteerId] (requester
   /// reads the private secret). Null until accepted / if not permitted.
   Stream<String?> watchShareOtp(String requestId, String volunteerId);
+
+  /// TravAcser starts their trip by verifying the OTP (`startTrip` function).
+  FutureResult<Unit> startTrip(String requestId, String otp);
+
+  /// Complete a TravAcser's trip (by that TravAcser or the requester).
+  FutureResult<Unit> completeTrip(String requestId, String volunteerId);
 }

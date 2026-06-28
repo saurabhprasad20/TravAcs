@@ -82,6 +82,22 @@ enum RequestStatus {
       this == RequestStatus.draft || this == RequestStatus.broadcast;
 }
 
+/// Per-TravAcser trip lifecycle within an assignment (design §4.2, M5).
+enum TripStatus {
+  assigned('assigned', 'Assigned'),
+  started('started', 'In progress'),
+  completed('completed', 'Completed'),
+  closed('closed', 'Closed');
+
+  const TripStatus(this.wireValue, this.label);
+  final String wireValue;
+  final String label;
+
+  static TripStatus fromWire(String? value) =>
+      TripStatus.values.firstWhere((e) => e.wireValue == value,
+          orElse: () => TripStatus.assigned);
+}
+
 /// Service region used for deterministic matching: a request only reaches
 /// TravAcsers whose region equals the request's. We cover Delhi NCR as a single
 /// combined region (Delhi folded in); other states/UTs are individual options.

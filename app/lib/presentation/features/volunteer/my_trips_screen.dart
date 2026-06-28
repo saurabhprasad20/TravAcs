@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/accessibility/announce.dart';
+import '../../../core/config/constants.dart';
 import '../../../core/error/failure.dart';
 import '../../../domain/entities/assignment.dart';
+import '../../../domain/entities/enums.dart';
 import '../../providers/request_providers.dart';
+import '../requester/request_controller.dart';
 
 /// The TravAcser's accepted trips (their assignments), live.
 class MyTripsScreen extends ConsumerWidget {
@@ -44,20 +49,31 @@ class MyTripsScreen extends ConsumerWidget {
   }
 }
 
-class _TripCard extends StatelessWidget {
+class _TripCard extends ConsumerWidget {
   const _TripCard({required this.a});
   final Assignment a;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final when = '${DateFormat.yMMMEd().format(a.scheduledDate)} · ${a.startTime}';
+    final busy = ref.watch(requestControllerProvider).isLoading;
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(when, style: Theme.of(context).textTheme.titleMedium),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(when,
+                      style: Theme.of(context).textTheme.titleMedium),
+                ),
+                Text(a.tripStatus.label,
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
+              ],
+            ),
             const SizedBox(height: 6),
             _line(context, Icons.my_location, a.meetingPoint),
             _line(context, Icons.place_outlined,
@@ -77,19 +93,119 @@ class _TripCard extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 8),
-            Text('Your estimated earning: ₹${a.amountInrEstimate}',
-                style: Theme.of(context).textTheme.titleSmall),
-            const SizedBox(height: 8),
-            // Start-trip (OTP verify) arrives in M5.
-            const Align(
-              alignment: Alignment.centerRight,
-              child: Text('Enter OTP to start — coming soon'),
-            ),
+            const SizedBox(height: 12),
+            ..._statusSection(context, ref, busy),
           ],
         ),
       ),
     );
+  }
+
+  List<Widget> _statusSection(BuildContext context, WidgetRef ref, bool busy) {
+    switch (a.tripStatus) {
+      case TripStatus.assigned:
+        return [
+          Text('Your estimated earning: ₹${a.amountInrEstimate}',
+              style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton.icon(
+              icon: const Icon(Icons.play_arrow),
+              label: const Text('Enter OTP & start'),
+              onPressed: busy ? null : () => _startDialog(context, ref),
+            ),
+          ),
+        ];
+      case TripStatus.started:
+        final since = a.startedAt == null
+            ? ''
+            : ' since ${DateFormat.jm().format(a.startedAt!)}';
+        return [
+          Text('In progress$since',
+              style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton.icon(
+              icon: const Icon(Icons.flag_outlined),
+              label: const Text('Complete trip'),
+              onPressed: busy ? null : () => _complete(context, ref),
+            ),
+          ),
+        ];
+      case TripStatus.completed:
+      case TripStatus.closed:
+        return [
+          Text(
+            'Completed · ${a.durationMinutes ?? 0} min · ₹${a.amountInr ?? 0} earned',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          const SizedBox(height: 4),
+          Text('Collect ₹${a.amountInr ?? 0} from the User (UPI). Payment '
+              'confirmation comes next.',
+              style: Theme.of(context).textTheme.bodySmall),
+        ];
+    }
+  }
+
+  Future<void> _startDialog(BuildContext context, WidgetRef ref) async {
+    final controller = TextEditingController();
+    final code = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Start trip'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          maxLength: AppConstants.tripOtpLength,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          decoration: const InputDecoration(
+            labelText: 'Code from the User',
+            hintText: '6-digit code',
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+              child: const Text('Start')),
+        ],
+      ),
+    );
+    if (code == null || code.isEmpty) return;
+    final ok = await ref
+        .read(requestControllerProvider.notifier)
+        .startTrip(a.requestId, code);
+    if (!context.mounted) return;
+    if (ok) {
+      A11y.announce(context, 'Trip started.');
+    } else {
+      _error(context, ref);
+    }
+  }
+
+  Future<void> _complete(BuildContext context, WidgetRef ref) async {
+    final ok = await ref
+        .read(requestControllerProvider.notifier)
+        .completeTrip(a.requestId, a.volunteerId);
+    if (!context.mounted) return;
+    if (ok) {
+      A11y.announce(context, 'Trip completed.');
+    } else {
+      _error(context, ref);
+    }
+  }
+
+  void _error(BuildContext context, WidgetRef ref) {
+    final f = ref.read(requestControllerProvider).error;
+    final msg = f is Failure ? f.message : 'Something went wrong.';
+    A11y.announce(context, msg);
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text(msg)));
   }
 
   Widget _line(BuildContext context, IconData icon, String text) => Padding(
