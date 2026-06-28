@@ -355,8 +355,8 @@ Phased: **M10a** = pure-Dart suite (`flutter test`, no emulator); **M10b** = emu
   - `test/provider_test.dart` — `availableRequestsProvider` filtering (city + approval + already-accepted exclusion) and `myProfileProvider` surfacing a `Failure` as `AsyncError`.
   - `test/widget_flow_test.dart` — rating-sheet gating + `(stars, feedback)` return; OTP-field validation + resend cooldown.
   - `test/error_mapper_test.dart` (M8) + `test/accessibility_test.dart` (M9) round out the offline suite.
-- **M10b — Rules tests:** `@firebase/rules-unit-testing` (emulator) — each role can/can't do the right thing; protected-field writes rejected; OTP-secret requester-only.
-- **M10b — Functions tests:** emulator + unit tests for FCFS `acceptRequest`, `startTrip` (OTP + rate-limit), `completeTrip` billing, two-sided payment, `setVerification` admin gate.
+- **M10b — Rules tests (done):** `firebase/rules-tests/` — `@firebase/rules-unit-testing` against the Firestore emulator (25 tests): each role can/can't do the right thing; protected-field writes rejected; function-only `assignments`/`secrets`; OTP-secret requester-only; rating bounds; device-token privacy.
+- **M10b — Functions tests (done):** `firebase/functions/test/` — `firebase-functions-test` invokes the callables in-process against the Firestore emulator (10 tests): FCFS `acceptRequest`, `startTrip` (OTP + rate-limit), `completeTrip` billing, two-sided payment, `submitRating` average, `setVerification` admin gate. **These caught a real bug:** `startTrip` incremented `otpAttempts` *inside* the transaction it then threw from, so the increment rolled back and the 5-attempt rate limit never engaged — fixed by committing the increment and throwing after the transaction. (Run instructions: `firebase/TESTING.md`.)
 - **M10c — CI:** GitHub Actions runs `flutter test` on every push (+ an optional emulator job).
 - **Accessibility (M9):** `test/accessibility_test.dart` — `meetsGuideline` (tap-target, labeled-tap, text-contrast) + semantic-label assertions; plus a manual TalkBack/VoiceOver pass.
 
