@@ -289,8 +289,15 @@ Requirement→screen traceability identical to product steps 1–9; step 3 broad
 
 ---
 
-## 11. Accessibility Design (first-class)
-Unchanged and mandatory: `Semantics` labels, focus order, `SemanticsService.announce` for status/errors, OTP read digit-by-digit, ≥48dp targets, scalable text, no color-only cues, TalkBack/VoiceOver validation checklist, automated `meetsGuideline` tests. The Requester (blind) flow is screen-reader-complete.
+## 11. Accessibility Design (first-class) — M9
+Mandatory and now implemented:
+- **Semantic labels & roles** on every interactive control; form fields use `labelText` (100% — no hint-only fields). Section titles carry `Semantics(header: true)` for heading-by-heading navigation.
+- **Announcements** (`A11y.announce` → `SemanticsService.announce`) on every status change, success and error — including ones that are otherwise silent to a screen reader: the **OTP resend** button becoming enabled ("You can resend the code now.") and **bottom-tab changes** ("<Tab> tab"). The login/trip OTP is read **digit-by-digit** (`A11y.spellDigits`).
+- **Never colour-only:** status is always paired with text **and** an icon (e.g. the request `_StatusChip` and the verification card), and exposed to screen readers via an explicit `Semantics(label: 'Status: …')`.
+- **Coherent traversal:** reusable cards wrap their informational block in `MergeSemantics` so a swipe lands on one summary node (status + route + time), while action buttons stay outside the merge and keep their own button semantics; decorative leading icons are `ExcludeSemantics`.
+- **Touch & text sizing:** ≥48dp targets (`MaterialTapTargetSize.padded`); OS large-text is respected but **clamped to `textScaler ∈ [1.0, 1.8]`** in `app.dart` so fixed layouts never clip or overlap.
+- **Dialogs:** titled `AlertDialog`s with `autofocus` on the first field; focus returns to the trigger on dismiss.
+- **Verification:** automated `meetsGuideline` tests (`androidTapTargetGuideline`, `labeledTapTargetGuideline`, `textContrastGuideline`) + semantic-label assertions in `test/accessibility_test.dart`, plus a manual TalkBack/VoiceOver pass of the full request→accept→trip→pay→rate flow. The User (blind) flow is screen-reader-complete.
 
 ---
 
@@ -345,7 +352,7 @@ Graceful degradation remains: idempotent callables so retries are safe; offline 
 - **Rules tests:** `@firebase/rules-unit-testing` (emulator) — each role can/can't do the right thing; FCFS transition only valid once.
 - **Functions tests:** emulator + unit tests for `startTrip`/`completeTrip`/`markPaid`/`setVerification`.
 - **Widget/integration:** New Request, Accept, OTP, Rating; happy path via the **Firebase Emulator Suite**.
-- **Accessibility:** `meetsGuideline` + manual TalkBack/VoiceOver pass.
+- **Accessibility (M9):** `test/accessibility_test.dart` — `meetsGuideline` (tap-target, labeled-tap, text-contrast) + semantic-label assertions on the reusable card/rating widgets; plus a manual TalkBack/VoiceOver pass.
 
 ---
 

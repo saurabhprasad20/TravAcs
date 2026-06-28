@@ -106,7 +106,11 @@ class _CompleteProfileScreenState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('I am a', style: Theme.of(context).textTheme.titleMedium),
+                Semantics(
+                  header: true,
+                  child: Text('I am a',
+                      style: Theme.of(context).textTheme.titleMedium),
+                ),
                 const SizedBox(height: 8),
                 Semantics(
                   label: 'Select your role',

@@ -74,7 +74,12 @@ class _AppShellState extends ConsumerState<AppShell> {
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
-        onDestinationSelected: (i) => setState(() => _index = i),
+        onDestinationSelected: (i) {
+          setState(() => _index = i);
+          // Confirm navigation for screen-reader users (the content swaps
+          // silently otherwise).
+          A11y.announce(context, '${tabs[i].label} tab');
+        },
         destinations: [
           for (final t in tabs)
             NavigationDestination(

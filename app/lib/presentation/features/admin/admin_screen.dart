@@ -117,6 +117,7 @@ class _PendingCard extends ConsumerWidget {
         title: Text('Reject ${v.fullName}?'),
         content: TextField(
           controller: controller,
+          autofocus: true,
           decoration: const InputDecoration(labelText: 'Reason (optional)'),
         ),
         actions: [

@@ -63,9 +63,12 @@ class _PhoneEntryScreenState extends ConsumerState<PhoneEntryScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const SizedBox(height: 8),
-                Text(
-                  'Enter your mobile number',
-                  style: theme.textTheme.headlineSmall,
+                Semantics(
+                  header: true,
+                  child: Text(
+                    'Enter your mobile number',
+                    style: theme.textTheme.headlineSmall,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Text(

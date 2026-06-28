@@ -121,8 +121,11 @@ class _AssignmentsSheet extends ConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Your TravAcsers',
-                  style: Theme.of(context).textTheme.titleLarge),
+              Semantics(
+                header: true,
+                child: Text('Your TravAcsers',
+                    style: Theme.of(context).textTheme.titleLarge),
+              ),
               const SizedBox(height: 4),
               Text(
                   'Share each TravAcser\'s code with them in person — they enter '

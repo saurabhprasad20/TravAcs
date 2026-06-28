@@ -483,8 +483,11 @@ class _ReviewSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Review your request',
-                style: Theme.of(context).textTheme.titleLarge),
+            Semantics(
+              header: true,
+              child: Text('Review your request',
+                  style: Theme.of(context).textTheme.titleLarge),
+            ),
             const SizedBox(height: 12),
             _row('When', '${DateFormat.yMMMEd().format(date)} at $time'),
             _row('Duration', durationLabel),
