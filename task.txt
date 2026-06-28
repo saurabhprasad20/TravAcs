@@ -1,0 +1,179 @@
+==============================================================================
+ TravAcs — Firebase setup to get PHONE + OTP LOGIN working and testable
+ Goal of this part: launch app on phone -> enter number -> get OTP ->
+                    verify -> complete profile -> land on the role tabs.
+==============================================================================
+
+There are 3 parts:
+   PART 1 = things YOU do in the Firebase console (10-15 min).
+   PART 2 = the details/commands you share back here.
+   PART 3 = what I do after that (configure + build + install + we test).
+
+------------------------------------------------------------------------------
+ PART 1 — DO THIS IN THE FIREBASE CONSOLE  (https://console.firebase.google.com)
+------------------------------------------------------------------------------
+
+1. CREATE A PROJECT
+   - "Add project" -> name it e.g. "travacs-dev".
+   - Google Analytics: optional (you can disable it, not needed for v1).
+   - After it's created, note the **Project ID** (looks like "travacs-dev-1a2b3").
+     (Project settings -> General -> "Project ID".)
+
+Your project
+View in Google Cloud (opens in new tab)
+Project name
+travacs-dev
+Edit project name
+Project ID Learn more about project IDs
+travacs-dev
+Project number Learn more about project numbers
+376835689559
+ 
+2. ENABLE PHONE AUTHENTICATION
+   - Left menu: Build -> Authentication -> "Get started".
+   - Sign-in method tab -> Add new provider -> **Phone** -> Enable -> Save.
+
+   2a. ADD A TEST PHONE NUMBER (IMPORTANT - lets us test for FREE, no real SMS)
+       - Still in Authentication -> Sign-in method -> Phone -> expand
+         "Phone numbers for testing".
+       - Add a number + a fixed code, e.g.:
+              Phone:  +91 9000000001
+              Code:   123456
+       - Save. When we log in with this number, Firebase accepts code 123456
+         WITHOUT sending a real SMS. (We can switch to your real number later.)
+
+Authentication
+Users
+Selected Tab: Sign-in method
+Templates
+Usage
+Settings
+Extensions
+added phone:
++918979515501
+code: 123456
+caution:
+To prevent abuse, new projects currently have a sent SMS daily quota of 10/day. To increase this quota, please add a billing account to the project.
+Sign-in providers
+Add new provider
+Sign-in providers
+Provider
+Status
+ Phone
+Enabled
+Advanced
+SMS Multi-factor Authentication
+Allow your users to add an extra layer of security to their account. Once enabled, integrated and configured, users can sign in to their account in two steps, using SMS. Learn more about SMS multi-factor authentication (opens in new tab)
+
+3. CREATE FIRESTORE DATABASE
+   - Build -> Firestore Database -> "Create database".
+   - Start in **Production mode** (our security rules will be deployed).
+   - Pick a location near you (e.g. asia-south1 / Mumbai). Create.
+
+Selected Tab: Data
+Rules
+Indexes
+Disaster Recovery
+Usage
+Query Insights
+Dismiss
+Understand query performance
+Identify and troubleshoot queries that require the most time or resources to execute.
+Learn more (opens Firebase documentation in new tab)
+Extensions
+New in Cloud Firestore
+Protect your Cloud Firestore resources from abuse, such as billing fraud or phishing
+Configure App Check
+Dismiss
+Link out menu to features in Google Cloud
+Panel viewQuery builder
+actions for Firestore database
+root navigation
+Edit path
+(default)
+View database details
+Start collection
+ 
+Your database is ready to go. Just add data.
+Database location: asia-south2
+
+4. ADD THE ANDROID APP + REGISTER THE FINGERPRINT
+   - Project Overview (top) -> "Add app" -> Android.
+   - Android package name (EXACTLY):   com.travacs.travacs
+   - App nickname: TravAcs (optional). Register app.
+   - When asked for the SHA-1 (or later under Project settings -> your Android
+     app -> "Add fingerprint"), paste BOTH of these (already generated for your
+     machine's debug key):
+
+         SHA-1:    7C:7B:DE:2E:07:B3:1B:F4:13:DB:EC:6E:40:60:5F:C9:F5:66:F5:22
+         SHA-256:  2C:A6:76:1F:63:7F:C2:F9:9F:30:39:B4:78:7C:86:33:7F:43:00:34:EE:17:F7:07:06:A7:60:38:7E:3E:B8:20
+
+     (SHA-1 is REQUIRED for Phone Auth on Android. SHA-256 is good to add too.)
+   - You can SKIP downloading google-services.json and the Gradle steps the
+     wizard shows — the FlutterFire CLI generates those for us in PART 3.
+
+   NOTE: there is NO SMS gateway and NO DLT registration to do. Firebase sends
+   the OTP via Google. That is the whole reason we moved off Supabase.
+
+Install and run the FlutterFire CLI
+From any directory, run this command:
+$
+dart pub global activate flutterfire_cli
+Copy Flutterfire CLI Installation command
+Then, at the root of your Flutter project directory, run this command:
+$
+flutterfire configure --project=travacs-dev
+Copy Flutterfire CLI Installation command
+This automatically registers your per-platform apps with Firebase and adds a lib/firebase_options.dart configuration file to your Flutter project.
+Return to the previous step
+------------------------------------------------------------------------------
+ PART 2 — SHARE THESE BACK IN THE CHAT
+------------------------------------------------------------------------------
+
+   (A) Your **Firebase Project ID**            (e.g. travacs-dev-1a2b3)
+   (B) The **test phone number + code** you set in step 2a
+       (e.g. +919000000001 / 123456)
+   (C) Confirm you did: Phone auth enabled (1,2), Firestore created (3),
+       Android app added with the SHA-1 (4).
+
+   THEN run this ONE command yourself in this terminal (type it with a leading
+   "!" so I see the result). It opens a browser to log into Firebase:
+
+         ! firebase login
+
+   (If it says firebase is not found, run:  ! npm i -g firebase-tools   first,
+    then  ! firebase login .)
+
+   That's all you need to run. Everything else I do from here.
+
+------------------------------------------------------------------------------
+ PART 3 — WHAT I DO AFTER YOU SHARE THE ABOVE
+------------------------------------------------------------------------------
+   1. flutterfire configure --project=<your project id>
+        -> generates app/lib/firebase_options.dart + google-services.json
+   2. firebase deploy --only firestore        (uploads our security rules)
+   3. flutter build apk  + install on your Redmi (171a26b21220)
+   4. We test the login flow together.
+
+------------------------------------------------------------------------------
+ PART 4 — HOW WE TEST (once the app is on the phone)
+------------------------------------------------------------------------------
+   1. Open TravAcs -> it shows the phone-number screen.
+   2. Enter the TEST number you set (e.g. 9000000001). Tap "Send code".
+   3. Enter the fixed code (e.g. 123456). Tap "Verify and continue".
+   4. First time -> "Complete your profile": pick Requester or Volunteer,
+      fill name (+ address for volunteer) -> "Create profile".
+   5. You land on the WhatsApp-style bottom tabs for that role.
+      - Profile tab works fully (volunteer: verification status + availability).
+      - Other tabs are "coming soon" placeholders (built in M3-M6).
+   6. To test the other role: Profile -> Sign out -> log in again with a
+      DIFFERENT test number and pick the other role.
+
+   (To use your REAL phone number instead of a test number, just leave step 2a
+    out / use your number — Firebase will send you a real SMS. Free monthly
+    quota covers plenty of test logins.)
+
+==============================================================================
+ SUMMARY OF WHAT TO SHARE: (A) Project ID  (B) test number+code  (C) run
+ "! firebase login".  I handle configure + build + install. Then we test.
+==============================================================================

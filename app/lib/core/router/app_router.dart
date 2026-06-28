@@ -7,7 +7,7 @@ import '../../presentation/features/auth/phone_entry_screen.dart';
 import '../../presentation/features/profile/complete_profile_screen.dart';
 import '../../presentation/features/shell/app_shell.dart';
 import '../../presentation/features/startup/splash_screen.dart';
-import '../../presentation/providers/core_providers.dart';
+import '../../presentation/providers/auth_providers.dart';
 import '../../presentation/providers/profile_providers.dart';
 
 /// Auth-aware router (design §7). Redirect rules:
@@ -61,11 +61,11 @@ class _RouterNotifier extends ChangeNotifier {
   final Ref _ref;
 
   String? redirect(BuildContext context, GoRouterState state) {
-    final session = _ref.read(supabaseClientProvider).auth.currentSession;
+    final signedIn = _ref.read(authRepositoryProvider).currentUserId != null;
     final loc = state.matchedLocation;
     final inAuth = loc.startsWith('/auth');
 
-    if (session == null) {
+    if (!signedIn) {
       return inAuth ? null : '/auth/phone';
     }
 

@@ -43,10 +43,17 @@ class _PhoneEntryScreenState extends ConsumerState<PhoneEntryScreen> {
       final message = failure is Failure
           ? failure.message
           : 'Could not send code. Please try again.';
-      A11y.announce(context, message);
+      // TEMP diagnostic: surface the raw error code so we can see the real
+      // cause on-device (MIUI blocks logcat).
+      final code = failure is Failure ? failure.code : null;
+      final shown = code == null ? message : '[$code] $message';
+      A11y.announce(context, shown);
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text(message)));
+        ..showSnackBar(SnackBar(
+          duration: const Duration(seconds: 12),
+          content: Text(shown),
+        ));
     }
   }
 

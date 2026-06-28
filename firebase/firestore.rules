@@ -1,0 +1,119 @@
+rules_version = '2';
+
+// TravAcs Firestore Security Rules (design §5.2). Default-deny: any path not
+// matched is denied. Protected fields (role, verificationStatus, ratings,
+// volunteerId, amounts, otpHash) are NOT client-writable except the single
+// guarded FCFS "accept" transition; everything else is done by Cloud Functions
+// (Admin SDK, which bypasses these rules).
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- helpers ----------------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.admin == true;
+    }
+    function profileData(uid) {
+      return get(/databases/$(database)/documents/profiles/$(uid)).data;
+    }
+    function isApprovedVolunteer() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/profiles/$(request.auth.uid))
+        && profileData(request.auth.uid).role == 'volunteer'
+        && profileData(request.auth.uid).verificationStatus == 'approved'
+        && profileData(request.auth.uid).isActive == true;
+    }
+    function requestData(requestId) {
+      return get(/databases/$(database)/documents/requests/$(requestId)).data;
+    }
+
+    // ---- profiles ---------------------------------------------------------
+    match /profiles/{uid} {
+      allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+
+      // Create your own profile. Role is set once and must be a normal role;
+      // server-managed fields must start at their initial values.
+      allow create: if isSignedIn() && request.auth.uid == uid
+        && request.resource.data.role in ['requester', 'volunteer']
+        && request.resource.data.ratingAvg == 0
+        && request.resource.data.ratingCount == 0
+        && (request.resource.data.role != 'volunteer'
+            || request.resource.data.verificationStatus == 'pending');
+
+      // Update your own profile but never the protected fields.
+      allow update: if isSignedIn() && request.auth.uid == uid
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.ratingAvg == resource.data.ratingAvg
+        && request.resource.data.ratingCount == resource.data.ratingCount
+        && request.resource.data.get('verificationStatus', 'pending')
+             == resource.data.get('verificationStatus', 'pending')
+        && request.resource.data.get('rejectionReason', '')
+             == resource.data.get('rejectionReason', '');
+
+      allow delete: if false;
+    }
+
+    // ---- requests ---------------------------------------------------------
+    match /requests/{requestId} {
+      allow read: if isSignedIn() && (
+        resource.data.requesterId == request.auth.uid
+        || resource.data.volunteerId == request.auth.uid
+        || (resource.data.status == 'broadcast' && isApprovedVolunteer())
+        || isAdmin()
+      );
+
+      allow create: if isSignedIn()
+        && request.resource.data.requesterId == request.auth.uid
+        && request.resource.data.status in ['draft', 'broadcast']
+        && request.resource.data.volunteerId == null;
+
+      // Two client-allowed transitions; all others go through Cloud Functions.
+      allow update: if
+        // (a) FCFS accept: an approved volunteer claims an open request.
+        (isApprovedVolunteer()
+          && resource.data.status == 'broadcast'
+          && resource.data.volunteerId == null
+          && request.resource.data.status == 'assigned'
+          && request.resource.data.volunteerId == request.auth.uid)
+        // (b) Requester cancels before the trip starts.
+        || (resource.data.requesterId == request.auth.uid
+          && resource.data.status in ['draft', 'broadcast']
+          && request.resource.data.status == 'cancelled');
+
+      allow delete: if false;
+    }
+
+    // ---- trips (id == requestId) -----------------------------------------
+    match /trips/{requestId} {
+      allow read: if isSignedIn() && (
+        requestData(requestId).requesterId == request.auth.uid
+        || requestData(requestId).volunteerId == request.auth.uid
+        || isAdmin()
+      );
+      // Trips are created/updated only by Cloud Functions.
+      allow write: if false;
+    }
+
+    // ---- ratings (id == {requestId}_{raterRole}) -------------------------
+    match /ratings/{ratingId} {
+      allow read: if isSignedIn() && (
+        resource.data.raterId == request.auth.uid
+        || resource.data.rateeId == request.auth.uid
+        || isAdmin()
+      );
+      allow create: if isSignedIn()
+        && request.resource.data.raterId == request.auth.uid
+        && request.resource.data.stars is int
+        && request.resource.data.stars >= 1
+        && request.resource.data.stars <= 5;
+      allow update, delete: if false;
+    }
+
+    // ---- devices (FCM tokens) --------------------------------------------
+    match /devices/{uid}/tokens/{token} {
+      allow read, write: if isSignedIn() && request.auth.uid == uid;
+    }
+  }
+}
