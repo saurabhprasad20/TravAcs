@@ -1,0 +1,81 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../domain/entities/city.dart';
+import '../../../domain/entities/enums.dart';
+import '../../../domain/repositories/request_repository.dart';
+import '../../providers/request_providers.dart';
+
+/// Drives request creation + cancellation. Lists update live via streams, so no
+/// explicit invalidation is needed.
+class RequestController extends Notifier<AsyncValue<void>> {
+  @override
+  AsyncValue<void> build() => const AsyncData(null);
+
+  RequestRepository get _repo => ref.read(requestRepositoryProvider);
+
+  /// Returns the new request id on success, or null on failure (error in state).
+  Future<String?> create({
+    required Region serviceState,
+    required City serviceCity,
+    required String requesterName,
+    required int numTravellers,
+    required int numTravAcsers,
+    required int numMaleTravellers,
+    required int numFemaleTravellers,
+    required DateTime scheduledDate,
+    required String startTime,
+    required int expectedDurationMinutes,
+    required String meetingPoint,
+    required String destination,
+    String? landmark,
+    String? purpose,
+    String? specialNote,
+  }) async {
+    state = const AsyncLoading();
+    final res = await _repo.createRequest(
+      serviceState: serviceState,
+      serviceCity: serviceCity,
+      requesterName: requesterName,
+      numTravellers: numTravellers,
+      numTravAcsers: numTravAcsers,
+      numMaleTravellers: numMaleTravellers,
+      numFemaleTravellers: numFemaleTravellers,
+      scheduledDate: scheduledDate,
+      startTime: startTime,
+      expectedDurationMinutes: expectedDurationMinutes,
+      meetingPoint: meetingPoint,
+      destination: destination,
+      landmark: landmark,
+      purpose: purpose,
+      specialNote: specialNote,
+    );
+    return res.match(
+      (f) {
+        state = AsyncError(f, StackTrace.current);
+        return null;
+      },
+      (id) {
+        state = const AsyncData(null);
+        return id;
+      },
+    );
+  }
+
+  Future<bool> cancel(String id) async {
+    state = const AsyncLoading();
+    final res = await _repo.cancelRequest(id);
+    return res.match(
+      (f) {
+        state = AsyncError(f, StackTrace.current);
+        return false;
+      },
+      (_) {
+        state = const AsyncData(null);
+        return true;
+      },
+    );
+  }
+}
+
+final requestControllerProvider =
+    NotifierProvider<RequestController, AsyncValue<void>>(RequestController.new);

@@ -25,6 +25,10 @@ service cloud.firestore {
         && profileData(request.auth.uid).verificationStatus == 'approved'
         && profileData(request.auth.uid).isActive == true;
     }
+    // The caller's (TravAcser's) service city, or '' if unset.
+    function myCity() {
+      return profileData(request.auth.uid).get('serviceCity', '');
+    }
     function requestData(requestId) {
       return get(/databases/$(database)/documents/requests/$(requestId)).data;
     }
@@ -60,14 +64,19 @@ service cloud.firestore {
       allow read: if isSignedIn() && (
         resource.data.requesterId == request.auth.uid
         || resource.data.volunteerId == request.auth.uid
-        || (resource.data.status == 'broadcast' && isApprovedVolunteer())
+        // Region-scoped: an approved TravAcser sees open requests only in their
+        // own city.
+        || (resource.data.status == 'broadcast'
+            && isApprovedVolunteer()
+            && resource.data.serviceCity == myCity())
         || isAdmin()
       );
 
       allow create: if isSignedIn()
         && request.resource.data.requesterId == request.auth.uid
         && request.resource.data.status in ['draft', 'broadcast']
-        && request.resource.data.volunteerId == null;
+        && request.resource.data.volunteerId == null
+        && request.resource.data.serviceCity is string;
 
       // Two client-allowed transitions; all others go through Cloud Functions.
       allow update: if

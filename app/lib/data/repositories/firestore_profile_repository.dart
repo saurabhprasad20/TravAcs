@@ -5,6 +5,7 @@ import 'package:fpdart/fpdart.dart';
 import '../../core/error/failure.dart';
 import '../../core/error/firebase_error_mapper.dart';
 import '../../core/error/result.dart';
+import '../../domain/entities/city.dart';
 import '../../domain/entities/enums.dart';
 import '../../domain/entities/profile.dart';
 import '../../domain/repositories/profile_repository.dart';
@@ -41,7 +42,8 @@ class FirestoreProfileRepository implements ProfileRepository {
   FutureResult<Unit> saveProfile({
     required UserRole role,
     required String fullName,
-    required Region region,
+    required Region state,
+    required City city,
     Gender? gender,
     DateTime? dateOfBirth,
     String? phone,
@@ -57,7 +59,8 @@ class FirestoreProfileRepository implements ProfileRepository {
       // Editable fields (allowed on both create and update by the rules).
       final data = <String, dynamic>{
         'fullName': fullName,
-        'serviceArea': region.wireValue,
+        'serviceArea': state.wireValue,
+        'serviceCity': city.wireValue,
         'gender': gender?.wireValue,
         'dateOfBirth':
             dateOfBirth == null ? null : Timestamp.fromDate(dateOfBirth),
@@ -88,12 +91,13 @@ class FirestoreProfileRepository implements ProfileRepository {
   }
 
   @override
-  FutureResult<Unit> setRegion(Region region) async {
+  FutureResult<Unit> setServiceArea(Region state, City city) async {
     final uid = _uid;
     if (uid == null) return failure(const AuthFailure('You are not signed in.'));
     try {
       await _profiles.doc(uid).update({
-        'serviceArea': region.wireValue,
+        'serviceArea': state.wireValue,
+        'serviceCity': city.wireValue,
         'updatedAt': FieldValue.serverTimestamp(),
       });
       return success(unit);
@@ -130,6 +134,7 @@ class FirestoreProfileRepository implements ProfileRepository {
       phone: d['phone'] as String?,
       isActive: (d['isActive'] as bool?) ?? true,
       serviceArea: Region.fromWireOrNull(d['serviceArea'] as String?),
+      serviceCity: City.fromWire(d['serviceCity'] as String?),
     );
 
     RequesterProfile? requester;

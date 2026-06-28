@@ -1,0 +1,39 @@
+import 'package:fpdart/fpdart.dart';
+
+import '../../core/error/result.dart';
+import '../entities/city.dart';
+import '../entities/enums.dart';
+import '../entities/request.dart';
+
+/// Assistance-request data access (design §5–§6). Matching is region-scoped on
+/// the city; status transitions beyond create/cancel are handled in M4+.
+abstract interface class RequestRepository {
+  /// Creates a `broadcast` request and returns its id.
+  FutureResult<String> createRequest({
+    required Region serviceState,
+    required City serviceCity,
+    required String requesterName,
+    required int numTravellers,
+    required int numTravAcsers,
+    required int numMaleTravellers,
+    required int numFemaleTravellers,
+    required DateTime scheduledDate,
+    required String startTime,
+    required int expectedDurationMinutes,
+    required String meetingPoint,
+    required String destination,
+    String? landmark,
+    String? purpose,
+    String? specialNote,
+  });
+
+  /// The signed-in requester's own requests, newest first (live).
+  Stream<List<Request>> watchMyRequests();
+
+  /// Open (`broadcast`) requests in [city], newest first (live). For approved,
+  /// active TravAcsers; the query + rules enforce the region scope.
+  Stream<List<Request>> watchAvailableRequests(City city);
+
+  /// Requester cancels their own request before it starts.
+  FutureResult<Unit> cancelRequest(String id);
+}

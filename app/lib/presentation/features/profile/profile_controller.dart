@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../domain/entities/city.dart';
 import '../../../domain/entities/enums.dart';
 import '../../../domain/repositories/profile_repository.dart';
 import '../../providers/profile_providers.dart';
@@ -15,7 +16,8 @@ class ProfileController extends Notifier<AsyncValue<void>> {
   Future<bool> save({
     required UserRole role,
     required String fullName,
-    required Region region,
+    required Region serviceState,
+    required City serviceCity,
     Gender? gender,
     DateTime? dateOfBirth,
     String? phone,
@@ -26,7 +28,8 @@ class ProfileController extends Notifier<AsyncValue<void>> {
     final res = await _repo.saveProfile(
       role: role,
       fullName: fullName,
-      region: region,
+      state: serviceState,
+      city: serviceCity,
       gender: gender,
       dateOfBirth: dateOfBirth,
       phone: phone,
@@ -46,9 +49,9 @@ class ProfileController extends Notifier<AsyncValue<void>> {
     );
   }
 
-  Future<bool> setRegion(Region region) async {
+  Future<bool> setServiceArea(Region serviceState, City serviceCity) async {
     state = const AsyncLoading();
-    final res = await _repo.setRegion(region);
+    final res = await _repo.setServiceArea(serviceState, serviceCity);
     return res.match(
       (f) {
         state = AsyncError(f, StackTrace.current);
