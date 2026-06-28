@@ -24,7 +24,7 @@ class MyRequestsScreen extends ConsumerWidget {
       body: requests.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(
-          child: Text(e is Failure ? e.message : 'Could not load requests.'),
+          child: Text(failureMessage(e)),
         ),
         data: (list) {
           if (list.isEmpty) {
@@ -115,7 +115,7 @@ class _AssignmentsSheet extends ConsumerWidget {
               child: Center(child: CircularProgressIndicator())),
           error: (e, _) => Padding(
             padding: const EdgeInsets.all(24),
-            child: Text(e is Failure ? e.message : 'Could not load.'),
+            child: Text(failureMessage(e)),
           ),
           data: (list) => Column(
             mainAxisSize: MainAxisSize.min,
@@ -245,8 +245,7 @@ class _AssignmentTile extends ConsumerWidget {
   }
 
   void _err(BuildContext context, WidgetRef ref) {
-    final f = ref.read(requestControllerProvider).error;
-    final msg = f is Failure ? f.message : 'Something went wrong.';
+    final msg = failureMessage(ref.read(requestControllerProvider).error);
     A11y.announce(context, msg);
     ScaffoldMessenger.of(context)
       ..clearSnackBars()

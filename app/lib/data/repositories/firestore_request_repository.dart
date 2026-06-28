@@ -6,6 +6,7 @@ import 'package:fpdart/fpdart.dart';
 import '../../core/error/failure.dart';
 import '../../core/error/firebase_error_mapper.dart';
 import '../../core/error/result.dart';
+import '../../core/error/stream_error.dart';
 import '../../domain/entities/assignment.dart';
 import '../../domain/entities/city.dart';
 import '../../domain/entities/enums.dart';
@@ -85,7 +86,8 @@ class FirestoreRequestRepository implements RequestRepository {
         .where('requesterId', isEqualTo: uid)
         .orderBy('createdAt', descending: true)
         .snapshots()
-        .map(_mapDocs);
+        .map(_mapDocs)
+        .mapErrorToFailure();
   }
 
   @override
@@ -95,7 +97,8 @@ class FirestoreRequestRepository implements RequestRepository {
         .where('serviceCity', isEqualTo: city.wireValue)
         .orderBy('createdAt', descending: true)
         .snapshots()
-        .map(_mapDocs);
+        .map(_mapDocs)
+        .mapErrorToFailure();
   }
 
   @override
@@ -187,7 +190,8 @@ class FirestoreRequestRepository implements RequestRepository {
         .where('volunteerId', isEqualTo: uid)
         .snapshots()
         .map((snap) =>
-            snap.docs.map(_toAssignment).whereType<Assignment>().toList());
+            snap.docs.map(_toAssignment).whereType<Assignment>().toList())
+        .mapErrorToFailure();
   }
 
   @override
@@ -197,7 +201,8 @@ class FirestoreRequestRepository implements RequestRepository {
         .collection('assignments')
         .snapshots()
         .map((snap) =>
-            snap.docs.map(_toAssignment).whereType<Assignment>().toList());
+            snap.docs.map(_toAssignment).whereType<Assignment>().toList())
+        .mapErrorToFailure();
   }
 
   @override
@@ -207,7 +212,8 @@ class FirestoreRequestRepository implements RequestRepository {
         .collection('secrets')
         .doc(volunteerId)
         .snapshots()
-        .map((doc) => doc.data()?['otp'] as String?);
+        .map((doc) => doc.data()?['otp'] as String?)
+        .mapErrorToFailure();
   }
 
   // --- mapping ---------------------------------------------------------------

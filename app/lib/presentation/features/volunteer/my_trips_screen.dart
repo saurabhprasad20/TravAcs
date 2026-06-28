@@ -25,7 +25,7 @@ class MyTripsScreen extends ConsumerWidget {
       body: assignments.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(
-          child: Text(e is Failure ? e.message : 'Could not load trips.'),
+          child: Text(failureMessage(e)),
         ),
         data: (list) {
           if (list.isEmpty) {
@@ -237,8 +237,7 @@ class _TripCard extends ConsumerWidget {
   }
 
   void _error(BuildContext context, WidgetRef ref) {
-    final f = ref.read(requestControllerProvider).error;
-    final msg = f is Failure ? f.message : 'Something went wrong.';
+    final msg = failureMessage(ref.read(requestControllerProvider).error);
     A11y.announce(context, msg);
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
