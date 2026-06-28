@@ -295,9 +295,9 @@ Unchanged and mandatory: `Semantics` labels, focus order, `SemanticsService.anno
 ---
 
 ## 12. Admin Panel
-- **Firebase Console** for data inspection/support.
-- A **minimal custom admin** (Flutter web or a tiny web app using Firebase Auth + the `admin` claim) that lists `profiles` where `verificationStatus=='pending'` and calls **`setVerification`** to approve/reject (decision-only — **no Aadhaar** in v1).
-- First admin bootstrapped via the `setAdminClaim` Admin SDK script.
+- **Firebase Console** for raw data inspection/support.
+- An **in-app admin screen** (same Flutter app): a user with the **`admin` custom claim** logs in via phone OTP and is **routed to `/admin`** (admin check precedes the requester/volunteer profile routing, so admins need no role profile). The screen lists `profiles` where `role=='volunteer' && verificationStatus=='pending'` (name/phone/region/address — **no Aadhaar** in v1) and **approves/rejects** via the admin-only **`setVerification(uid, decision, reason?)`** callable. Builds to Flutter web too if a standalone console is later wanted.
+- **First admin bootstrapped** with `make_admin.js` (sets the `admin` custom claim by phone via the Identity Toolkit Admin API); the admin then re-logs-in. Identity verification stays out-of-band — this is the decision UI only.
 
 ---
 

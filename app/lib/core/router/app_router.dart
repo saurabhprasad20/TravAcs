@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../presentation/features/admin/admin_screen.dart';
 import '../../presentation/features/auth/otp_entry_screen.dart';
 import '../../presentation/features/auth/phone_entry_screen.dart';
 import '../../presentation/features/profile/complete_profile_screen.dart';
@@ -46,6 +47,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/home',
         builder: (context, state) => const AppShell(),
       ),
+      GoRoute(
+        path: '/admin',
+        builder: (context, state) => const AdminScreen(),
+      ),
     ],
   );
 });
@@ -55,6 +60,7 @@ final routerProvider = Provider<GoRouter>((ref) {
 class _RouterNotifier extends ChangeNotifier {
   _RouterNotifier(this._ref) {
     _ref.listen(authStateChangesProvider, (_, __) => notifyListeners());
+    _ref.listen(isAdminProvider, (_, __) => notifyListeners());
     _ref.listen(myProfileProvider, (_, __) => notifyListeners());
   }
 
@@ -69,7 +75,17 @@ class _RouterNotifier extends ChangeNotifier {
       return inAuth ? null : '/auth/phone';
     }
 
-    // Authenticated: route based on whether a profile exists.
+    // Admins go straight to the Admin screen (no requester/volunteer profile).
+    return _ref.read(isAdminProvider).when(
+          loading: () => loc == '/splash' ? null : '/splash',
+          error: (_, __) => _profileRedirect(loc, inAuth),
+          data: (isAdmin) =>
+              isAdmin ? (loc == '/admin' ? null : '/admin') : _profileRedirect(loc, inAuth),
+        );
+  }
+
+  /// Routing for normal (non-admin) users based on whether a profile exists.
+  String? _profileRedirect(String loc, bool inAuth) {
     return _ref.read(myProfileProvider).when(
           loading: () => loc == '/splash' ? null : '/splash',
           error: (_, __) => loc == '/splash' ? null : '/splash',
@@ -77,7 +93,10 @@ class _RouterNotifier extends ChangeNotifier {
             if (profile == null) {
               return loc == '/complete-profile' ? null : '/complete-profile';
             }
-            if (inAuth || loc == '/splash' || loc == '/complete-profile') {
+            if (inAuth ||
+                loc == '/splash' ||
+                loc == '/complete-profile' ||
+                loc == '/admin') {
               return '/home';
             }
             return null;

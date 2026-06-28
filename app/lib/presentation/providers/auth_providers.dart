@@ -14,3 +14,10 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
 final authStateChangesProvider = StreamProvider<String?>(
   (ref) => ref.watch(authRepositoryProvider).authStateChanges,
 );
+
+/// Whether the signed-in user is an admin (custom claim). Re-evaluated on auth
+/// changes; the router uses it to route admins to the Admin screen.
+final isAdminProvider = FutureProvider<bool>((ref) async {
+  ref.watch(authStateChangesProvider);
+  return ref.watch(authRepositoryProvider).isAdmin();
+});

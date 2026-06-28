@@ -459,3 +459,36 @@ export const submitRating = onCall({region: REGION}, async (req) => {
   });
   return {ok: true, code: "RATED"};
 });
+
+/** Admin approves/rejects a TravAcser (admin custom claim required). */
+export const setVerification = onCall({region: REGION}, async (req) => {
+  if (req.auth?.token?.admin !== true) {
+    throw new HttpsError("permission-denied", "Admin only.");
+  }
+  const {uid, decision, reason} = req.data ?? {};
+  if (!uid || (decision !== "approved" && decision !== "rejected")) {
+    throw new HttpsError("invalid-argument", "uid and decision (approved|rejected) required.");
+  }
+  const ref = db.collection("profiles").doc(uid);
+  const snap = await ref.get();
+  if (!snap.exists || snap.data()?.role !== "volunteer") {
+    throw new HttpsError("not-found", "TravAcser not found.");
+  }
+  await ref.update({
+    verificationStatus: decision,
+    verifiedBy: req.auth!.uid,
+    verifiedAt: FieldValue.serverTimestamp(),
+    rejectionReason: decision === "rejected" ? (reason ?? null) : FieldValue.delete(),
+  });
+  await pushToUser(
+    uid,
+    {
+      title: decision === "approved" ? "You're verified" : "Verification update",
+      body: decision === "approved"
+        ? "You can now view and accept requests."
+        : `Your verification was not approved${reason ? ": " + reason : "."}`,
+    },
+    {type: "verification_result", decision}
+  ).catch(() => {});
+  return {ok: true, code: decision.toUpperCase()};
+});

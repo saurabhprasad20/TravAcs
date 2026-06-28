@@ -18,3 +18,4 @@ app/build_apk*.log
 # One-off local admin helpers (read your firebase login; not for the repo)
 enable_phone.js
 approve_volunteer.js
+make_admin.js
