@@ -112,32 +112,28 @@ class _OtpEntryScreenState extends ConsumerState<OtpEntryScreen> {
                   style: theme.textTheme.titleMedium,
                 ),
                 const SizedBox(height: 24),
-                Semantics(
-                  label: 'One time verification code, '
-                      '${AppConstants.loginOtpLength} digits',
-                  textField: true,
-                  child: TextFormField(
-                    controller: _controller,
-                    keyboardType: TextInputType.number,
-                    autofillHints: const [AutofillHints.oneTimeCode],
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(
-                          AppConstants.loginOtpLength),
-                    ],
-                    decoration: const InputDecoration(
-                      labelText: 'Verification code',
-                    ),
-                    validator: (value) {
-                      final v = value?.trim() ?? '';
-                      if (v.length != AppConstants.loginOtpLength) {
-                        return 'Enter the '
-                            '${AppConstants.loginOtpLength}-digit code';
-                      }
-                      return null;
-                    },
-                    onFieldSubmitted: (_) => isLoading ? null : _verify(),
+                // Label comes from InputDecoration; no wrapping Semantics.
+                TextFormField(
+                  controller: _controller,
+                  keyboardType: TextInputType.number,
+                  autofillHints: const [AutofillHints.oneTimeCode],
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(AppConstants.loginOtpLength),
+                  ],
+                  decoration: const InputDecoration(
+                    labelText: 'Verification code',
+                    hintText: '6-digit code',
                   ),
+                  validator: (value) {
+                    final v = value?.trim() ?? '';
+                    if (v.length != AppConstants.loginOtpLength) {
+                      return 'Enter the '
+                          '${AppConstants.loginOtpLength}-digit code';
+                    }
+                    return null;
+                  },
+                  onFieldSubmitted: (_) => isLoading ? null : _verify(),
                 ),
                 const SizedBox(height: 24),
                 FilledButton(

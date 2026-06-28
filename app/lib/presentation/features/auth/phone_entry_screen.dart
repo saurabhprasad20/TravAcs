@@ -83,31 +83,29 @@ class _PhoneEntryScreenState extends ConsumerState<PhoneEntryScreen> {
                   style: theme.textTheme.bodyMedium,
                 ),
                 const SizedBox(height: 24),
-                Semantics(
-                  label: 'Mobile number, 10 digits',
-                  textField: true,
-                  child: TextFormField(
-                    controller: _controller,
-                    keyboardType: TextInputType.phone,
-                    autofillHints: const [AutofillHints.telephoneNumber],
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(10),
-                    ],
-                    decoration: const InputDecoration(
-                      labelText: 'Mobile number',
-                      prefixText: '$_dialCode ',
-                      hintText: '10-digit number',
-                    ),
-                    validator: (value) {
-                      final v = value?.trim() ?? '';
-                      if (v.length != 10) {
-                        return 'Enter a valid 10-digit mobile number';
-                      }
-                      return null;
-                    },
-                    onFieldSubmitted: (_) => isLoading ? null : _submit(),
+                // The field's own InputDecoration label is the accessible name;
+                // no wrapping Semantics (that would add a phantom edit field).
+                TextFormField(
+                  controller: _controller,
+                  keyboardType: TextInputType.phone,
+                  autofillHints: const [AutofillHints.telephoneNumber],
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(10),
+                  ],
+                  decoration: const InputDecoration(
+                    labelText: 'Mobile number',
+                    prefixText: '$_dialCode ',
+                    hintText: '10-digit number',
                   ),
+                  validator: (value) {
+                    final v = value?.trim() ?? '';
+                    if (v.length != 10) {
+                      return 'Enter a valid 10-digit mobile number';
+                    }
+                    return null;
+                  },
+                  onFieldSubmitted: (_) => isLoading ? null : _submit(),
                 ),
                 const SizedBox(height: 24),
                 FilledButton(

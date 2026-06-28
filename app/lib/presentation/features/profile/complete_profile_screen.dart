@@ -27,6 +27,7 @@ class _CompleteProfileScreenState
   final _homeLocationController = TextEditingController();
 
   UserRole _role = UserRole.requester;
+  Region? _region;
   Gender? _gender;
   DateTime? _dob;
 
@@ -59,6 +60,7 @@ class _CompleteProfileScreenState
     final ok = await ref.read(profileControllerProvider.notifier).save(
           role: _role,
           fullName: _nameController.text.trim(),
+          region: _region!,
           gender: _gender,
           dateOfBirth: _dob,
           phone: phone,
@@ -108,16 +110,16 @@ class _CompleteProfileScreenState
                 Semantics(
                   label: 'Select your role',
                   child: SegmentedButton<UserRole>(
-                    segments: const [
+                    segments: [
                       ButtonSegment(
                         value: UserRole.requester,
-                        label: Text('Requester'),
-                        icon: Icon(Icons.accessibility_new),
+                        label: Text(UserRole.requester.label),
+                        icon: const Icon(Icons.accessibility_new),
                       ),
                       ButtonSegment(
                         value: UserRole.volunteer,
-                        label: Text('Volunteer'),
-                        icon: Icon(Icons.volunteer_activism),
+                        label: Text(UserRole.volunteer.label),
+                        icon: const Icon(Icons.volunteer_activism),
                       ),
                     ],
                     selected: {_role},
@@ -128,7 +130,7 @@ class _CompleteProfileScreenState
                 Text(
                   _role == UserRole.requester
                       ? 'You request travel assistance.'
-                      : 'You provide travel assistance to requesters.',
+                      : 'You provide travel assistance to users.',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
                 const SizedBox(height: 20),
@@ -139,6 +141,24 @@ class _CompleteProfileScreenState
                   validator: (v) => (v == null || v.trim().isEmpty)
                       ? 'Please enter your name'
                       : null,
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<Region>(
+                  value: _region,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Region / service area',
+                    helperText: 'You will be matched within this region.',
+                  ),
+                  items: Region.options
+                      .map((r) => DropdownMenuItem(
+                            value: r,
+                            child: Text(r.label),
+                          ))
+                      .toList(),
+                  onChanged: (r) => setState(() => _region = r),
+                  validator: (r) =>
+                      r == null ? 'Please select your region' : null,
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<Gender>(

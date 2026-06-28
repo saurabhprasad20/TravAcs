@@ -15,6 +15,7 @@ class ProfileController extends Notifier<AsyncValue<void>> {
   Future<bool> save({
     required UserRole role,
     required String fullName,
+    required Region region,
     Gender? gender,
     DateTime? dateOfBirth,
     String? phone,
@@ -25,12 +26,29 @@ class ProfileController extends Notifier<AsyncValue<void>> {
     final res = await _repo.saveProfile(
       role: role,
       fullName: fullName,
+      region: region,
       gender: gender,
       dateOfBirth: dateOfBirth,
       phone: phone,
       address: address,
       homeLocationText: homeLocationText,
     );
+    return res.match(
+      (f) {
+        state = AsyncError(f, StackTrace.current);
+        return false;
+      },
+      (_) {
+        state = const AsyncData(null);
+        ref.invalidate(myProfileProvider);
+        return true;
+      },
+    );
+  }
+
+  Future<bool> setRegion(Region region) async {
+    state = const AsyncLoading();
+    final res = await _repo.setRegion(region);
     return res.match(
       (f) {
         state = AsyncError(f, StackTrace.current);

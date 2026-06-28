@@ -11,6 +11,7 @@ class Profile {
     this.dateOfBirth,
     this.phone,
     this.isActive = true,
+    this.serviceArea,
   });
 
   final String id;
@@ -20,6 +21,10 @@ class Profile {
   final DateTime? dateOfBirth;
   final String? phone;
   final bool isActive;
+
+  /// Service region for matching (same value on both User and TravAcser sides).
+  /// Nullable to tolerate legacy docs created before this field existed.
+  final Region? serviceArea;
 
   bool get isRequester => role == UserRole.requester;
   bool get isVolunteer => role == UserRole.volunteer;
@@ -31,6 +36,7 @@ class Profile {
     DateTime? dateOfBirth,
     String? phone,
     bool? isActive,
+    Region? serviceArea,
   }) {
     return Profile(
       id: id,
@@ -40,6 +46,7 @@ class Profile {
       dateOfBirth: dateOfBirth ?? this.dateOfBirth,
       phone: phone ?? this.phone,
       isActive: isActive ?? this.isActive,
+      serviceArea: serviceArea ?? this.serviceArea,
     );
   }
 }
