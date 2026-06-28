@@ -242,7 +242,11 @@ export const startTrip = onCall({region: REGION}, async (req) => {
   const assignRef = reqRef.collection("assignments").doc(uid);
   const secretRef = reqRef.collection("secrets").doc(uid);
 
-  await db.runTransaction(async (tx) => {
+  // A wrong OTP must INCREMENT the attempt counter — so we cannot throw inside
+  // the transaction on that path (throwing rolls the increment back, which
+  // would defeat the rate limit). Instead we commit the increment and signal
+  // the caller to throw afterwards.
+  const verdict = await db.runTransaction(async (tx) => {
     const assignDoc = await tx.get(assignRef);
     if (!assignDoc.exists) {
       throw new HttpsError("not-found", "You have not accepted this trip.");
@@ -259,14 +263,19 @@ export const startTrip = onCall({region: REGION}, async (req) => {
     const expected = secretDoc.exists ? (secretDoc.data() as {otp?: string}).otp : undefined;
     if (!expected || otp !== expected) {
       tx.update(assignRef, {otpAttempts: attempts + 1});
-      throw new HttpsError("permission-denied", "That code is incorrect. Please check with the User.", {code: "OTP_INVALID"});
+      return "OTP_INVALID" as const;
     }
     tx.update(assignRef, {
       tripStatus: "started",
       startedAt: FieldValue.serverTimestamp(),
     });
     tx.delete(secretRef); // OTP consumed
+    return "STARTED" as const;
   });
+
+  if (verdict === "OTP_INVALID") {
+    throw new HttpsError("permission-denied", "That code is incorrect. Please check with the User.", {code: "OTP_INVALID"});
+  }
 
   const reqSnap = await reqRef.get();
   const requesterId = reqSnap.data()?.requesterId;
