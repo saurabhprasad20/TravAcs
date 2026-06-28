@@ -224,3 +224,119 @@ export const acceptRequest = onCall({region: REGION}, async (req) => {
 
   return {ok: true, code: "ACCEPTED", slotsRemaining: out.need - out.filled};
 });
+
+/**
+ * A TravAcser starts their trip by entering the OTP the User shared. Verified
+ * server-side against the requester-only secret (the TravAcser can't read it).
+ */
+export const startTrip = onCall({region: REGION}, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Please sign in.");
+  const requestId: string | undefined = req.data?.requestId;
+  const otp: string | undefined = req.data?.otp;
+  if (!requestId || !otp) {
+    throw new HttpsError("invalid-argument", "requestId and otp are required.");
+  }
+
+  const reqRef = db.collection("requests").doc(requestId);
+  const assignRef = reqRef.collection("assignments").doc(uid);
+  const secretRef = reqRef.collection("secrets").doc(uid);
+
+  await db.runTransaction(async (tx) => {
+    const assignDoc = await tx.get(assignRef);
+    if (!assignDoc.exists) {
+      throw new HttpsError("not-found", "You have not accepted this trip.");
+    }
+    const a = assignDoc.data() as FirebaseFirestore.DocumentData;
+    if (a.tripStatus !== "assigned") {
+      throw new HttpsError("failed-precondition", "This trip can no longer be started.", {code: "INVALID_STATE"});
+    }
+    const attempts: number = a.otpAttempts ?? 0;
+    if (attempts >= 5) {
+      throw new HttpsError("resource-exhausted", "Too many incorrect attempts. Ask the User to re-share the code later.", {code: "RATE_LIMITED"});
+    }
+    const secretDoc = await tx.get(secretRef);
+    const expected = secretDoc.exists ? (secretDoc.data() as {otp?: string}).otp : undefined;
+    if (!expected || otp !== expected) {
+      tx.update(assignRef, {otpAttempts: attempts + 1});
+      throw new HttpsError("permission-denied", "That code is incorrect. Please check with the User.", {code: "OTP_INVALID"});
+    }
+    tx.update(assignRef, {
+      tripStatus: "started",
+      startedAt: FieldValue.serverTimestamp(),
+    });
+    tx.delete(secretRef); // OTP consumed
+  });
+
+  const reqSnap = await reqRef.get();
+  const requesterId = reqSnap.data()?.requesterId;
+  if (requesterId) {
+    await pushToUser(
+      requesterId,
+      {title: "Trip started", body: "A TravAcser has started a trip."},
+      {type: "trip_started", requestId}
+    ).catch((e) => logger.warn("push failed", e));
+  }
+  return {ok: true, code: "STARTED"};
+});
+
+/**
+ * Completes a TravAcser's trip (by that TravAcser or the requester). Computes
+ * the actual duration and bill. When every assignment is completed, the request
+ * is marked completed.
+ */
+export const completeTrip = onCall({region: REGION}, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Please sign in.");
+  const requestId: string | undefined = req.data?.requestId;
+  const volunteerId: string | undefined = req.data?.volunteerId;
+  if (!requestId || !volunteerId) {
+    throw new HttpsError("invalid-argument", "requestId and volunteerId are required.");
+  }
+
+  const reqRef = db.collection("requests").doc(requestId);
+  const assignRef = reqRef.collection("assignments").doc(volunteerId);
+
+  const out = await db.runTransaction(async (tx) => {
+    const reqDoc = await tx.get(reqRef);
+    if (!reqDoc.exists) throw new HttpsError("not-found", "Request not found.");
+    const r = reqDoc.data() as FirebaseFirestore.DocumentData;
+    // Authorize: the TravAcser themselves or the requester.
+    if (uid !== volunteerId && uid !== r.requesterId) {
+      throw new HttpsError("permission-denied", "You cannot complete this trip.");
+    }
+    const assignDoc = await tx.get(assignRef);
+    if (!assignDoc.exists) throw new HttpsError("not-found", "Assignment not found.");
+    const a = assignDoc.data() as FirebaseFirestore.DocumentData;
+    if (a.tripStatus !== "started") {
+      throw new HttpsError("failed-precondition", "This trip is not in progress.", {code: "INVALID_STATE"});
+    }
+    const startedAt: FirebaseFirestore.Timestamp | undefined = a.startedAt;
+    const startMs = startedAt ? startedAt.toMillis() : Date.now();
+    const minutes = Math.max(1, Math.round((Date.now() - startMs) / 60000));
+    const amountInr = Math.round((minutes / 60) * HOURLY_RATE_INR);
+    tx.update(assignRef, {
+      tripStatus: "completed",
+      endedAt: FieldValue.serverTimestamp(),
+      durationMinutes: minutes,
+      amountInr,
+      paymentStatus: "pending",
+    });
+    return {requesterId: r.requesterId, amountInr};
+  });
+
+  // If all assignments are now completed, mark the request completed.
+  const assignsSnap = await reqRef.collection("assignments").get();
+  const allDone = assignsSnap.docs.every((d) => d.data().tripStatus === "completed");
+  if (allDone) {
+    await reqRef.update({status: "completed", updatedAt: FieldValue.serverTimestamp()});
+  }
+
+  // Notify both parties.
+  await Promise.all([
+    pushToUser(out.requesterId, {title: "Trip completed", body: `Amount: ₹${out.amountInr}.`}, {type: "trip_completed", requestId}).catch(() => {}),
+    pushToUser(volunteerId, {title: "Trip completed", body: `You earned ₹${out.amountInr}.`}, {type: "trip_completed", requestId}).catch(() => {}),
+  ]);
+
+  return {ok: true, code: "COMPLETED", amountInr: out.amountInr};
+});

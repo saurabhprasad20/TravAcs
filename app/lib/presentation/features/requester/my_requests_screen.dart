@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/accessibility/announce.dart';
 import '../../../core/error/failure.dart';
+import '../../../domain/entities/enums.dart';
 import '../../../domain/entities/request.dart';
 import '../../providers/request_providers.dart';
 import '../shared/request_card.dart';
@@ -130,11 +131,30 @@ class _AssignmentsSheet extends ConsumerWidget {
                 Card(
                   child: ListTile(
                     title: Text(a.volunteerName),
-                    subtitle: Text(a.volunteerPhone ?? 'Phone not available'),
-                    trailing: _OtpChip(
-                        requestId: requestId, volunteerId: a.volunteerId),
+                    subtitle: Text(
+                        '${a.volunteerPhone ?? 'Phone not available'} · ${a.tripStatus.label}'),
+                    trailing: switch (a.tripStatus) {
+                      TripStatus.assigned => _OtpChip(
+                          requestId: requestId, volunteerId: a.volunteerId),
+                      TripStatus.started => const Text('In progress'),
+                      TripStatus.completed || TripStatus.closed =>
+                        Text('₹${a.amountInr ?? 0}',
+                            style: Theme.of(context).textTheme.titleMedium),
+                    },
                   ),
                 ),
+              const SizedBox(height: 8),
+              Builder(builder: (context) {
+                final total = list
+                    .where((a) => a.amountInr != null)
+                    .fold<int>(0, (s, a) => s + (a.amountInr ?? 0));
+                if (total == 0) return const SizedBox.shrink();
+                return Align(
+                  alignment: Alignment.centerRight,
+                  child: Text('Total so far: ₹$total',
+                      style: Theme.of(context).textTheme.titleMedium),
+                );
+              }),
             ],
           ),
         ),

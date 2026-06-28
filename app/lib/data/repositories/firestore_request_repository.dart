@@ -124,6 +124,29 @@ class FirestoreRequestRepository implements RequestRepository {
   }
 
   @override
+  FutureResult<Unit> startTrip(String requestId, String otp) async {
+    try {
+      await _functions
+          .httpsCallable('startTrip')
+          .call<dynamic>({'requestId': requestId, 'otp': otp});
+      return success(unit);
+    } catch (e) {
+      return failure(mapFirebaseError(e));
+    }
+  }
+
+  @override
+  FutureResult<Unit> completeTrip(String requestId, String volunteerId) async {
+    try {
+      await _functions.httpsCallable('completeTrip').call<dynamic>(
+          {'requestId': requestId, 'volunteerId': volunteerId});
+      return success(unit);
+    } catch (e) {
+      return failure(mapFirebaseError(e));
+    }
+  }
+
+  @override
   Stream<List<Assignment>> watchMyAssignments() {
     final uid = _uid;
     if (uid == null) return Stream.value(const []);
@@ -179,8 +202,12 @@ class FirestoreRequestRepository implements RequestRepository {
       landmark: d['landmark'] as String?,
       numTravellers: (d['numTravellers'] as num?)?.toInt() ?? 1,
       amountInrEstimate: (d['amountInrEstimate'] as num?)?.toInt() ?? 0,
-      tripStatus: (d['tripStatus'] as String?) ?? 'assigned',
+      tripStatus: TripStatus.fromWire(d['tripStatus'] as String?),
       acceptedAt: (d['acceptedAt'] as Timestamp?)?.toDate(),
+      startedAt: (d['startedAt'] as Timestamp?)?.toDate(),
+      endedAt: (d['endedAt'] as Timestamp?)?.toDate(),
+      durationMinutes: (d['durationMinutes'] as num?)?.toInt(),
+      amountInr: (d['amountInr'] as num?)?.toInt(),
     );
   }
 

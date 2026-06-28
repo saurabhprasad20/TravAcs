@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:fpdart/fpdart.dart';
 
+import '../../../core/error/result.dart';
 import '../../../domain/entities/city.dart';
 import '../../../domain/entities/enums.dart';
 import '../../../domain/repositories/request_repository.dart';
@@ -77,9 +79,20 @@ class RequestController extends Notifier<AsyncValue<void>> {
   }
 
   /// TravAcser claims a slot. Returns true on success.
-  Future<bool> accept(String requestId) async {
+  Future<bool> accept(String requestId) =>
+      _run(() => _repo.acceptRequest(requestId));
+
+  /// TravAcser starts their trip with the OTP the User shared.
+  Future<bool> startTrip(String requestId, String otp) =>
+      _run(() => _repo.startTrip(requestId, otp));
+
+  /// Complete a TravAcser's trip.
+  Future<bool> completeTrip(String requestId, String volunteerId) =>
+      _run(() => _repo.completeTrip(requestId, volunteerId));
+
+  Future<bool> _run(FutureResult<Unit> Function() action) async {
     state = const AsyncLoading();
-    final res = await _repo.acceptRequest(requestId);
+    final res = await action();
     return res.match(
       (f) {
         state = AsyncError(f, StackTrace.current);

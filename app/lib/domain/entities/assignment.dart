@@ -1,3 +1,5 @@
+import 'enums.dart';
+
 /// One TravAcser's acceptance of a request (`requests/{id}/assignments/{vid}`).
 /// Holds the contact pair (both parties can read their own assignment) plus a
 /// denormalized request summary for the TravAcser's "My Trips" list. The
@@ -21,6 +23,10 @@ class Assignment {
     this.requesterPhone,
     this.landmark,
     this.acceptedAt,
+    this.startedAt,
+    this.endedAt,
+    this.durationMinutes,
+    this.amountInr,
   });
 
   final String requestId;
@@ -40,7 +46,12 @@ class Assignment {
   final int numTravellers;
   final int amountInrEstimate;
 
-  /// 'assigned' | 'started' | 'completed' | 'closed' (formalized in M5).
-  final String tripStatus;
+  final TripStatus tripStatus;
   final DateTime? acceptedAt;
+
+  // Trip (M5).
+  final DateTime? startedAt;
+  final DateTime? endedAt;
+  final int? durationMinutes;
+  final int? amountInr;
 }
