@@ -1,6 +1,7 @@
 import 'package:fpdart/fpdart.dart';
 
 import '../../core/error/result.dart';
+import '../entities/city.dart';
 import '../entities/enums.dart';
 import '../entities/profile.dart';
 
@@ -15,7 +16,8 @@ abstract interface class ProfileRepository {
   FutureResult<Unit> saveProfile({
     required UserRole role,
     required String fullName,
-    required Region region,
+    required Region state,
+    required City city,
     Gender? gender,
     DateTime? dateOfBirth,
     String? phone,
@@ -23,8 +25,8 @@ abstract interface class ProfileRepository {
     String? homeLocationText,
   });
 
-  /// Updates the caller's service region (`profiles.serviceArea`).
-  FutureResult<Unit> setRegion(Region region);
+  /// Updates the caller's service state + city (`serviceArea` + `serviceCity`).
+  FutureResult<Unit> setServiceArea(Region state, City city);
 
   /// Toggles a volunteer's availability (`profiles.is_active`).
   FutureResult<Unit> setAvailability(bool isActive);

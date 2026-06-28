@@ -1,7 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/accessibility/announce.dart';
 import '../profile/profile_tab_screen.dart';
+import '../requester/my_requests_screen.dart';
+import '../requester/new_request_screen.dart';
+import '../volunteer/available_requests_screen.dart';
+import '../../providers/messaging_providers.dart';
 import '../../providers/profile_providers.dart';
 import 'placeholder_tab.dart';
 
@@ -17,6 +24,36 @@ class AppShell extends ConsumerStatefulWidget {
 
 class _AppShellState extends ConsumerState<AppShell> {
   int _index = 0;
+  final List<StreamSubscription<dynamic>> _subs = [];
+
+  @override
+  void initState() {
+    super.initState();
+    // Register this device for push and react to token refresh / foreground
+    // messages. Runs once the user is in the shell (authenticated + profiled).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final messaging = ref.read(messagingRepositoryProvider);
+      messaging.registerToken();
+      _subs.add(messaging.onTokenRefresh.listen(messaging.onRefresh));
+      _subs.add(messaging.onForegroundMessage.listen((m) {
+        final text = m.notification?.body ?? m.notification?.title;
+        if (text != null && mounted) {
+          A11y.announce(context, text);
+          ScaffoldMessenger.of(context)
+            ..clearSnackBars()
+            ..showSnackBar(SnackBar(content: Text(text)));
+        }
+      }));
+    });
+  }
+
+  @override
+  void dispose() {
+    for (final s in _subs) {
+      s.cancel();
+    }
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -55,20 +92,13 @@ class _AppShellState extends ConsumerState<AppShell> {
       label: 'Request',
       icon: Icons.add_circle_outline,
       selectedIcon: Icons.add_circle,
-      screen: PlaceholderTab(
-        title: 'New Request',
-        icon: Icons.add_location_alt_outlined,
-        note: 'Create assistance requests — coming in the next milestone',
-      ),
+      screen: NewRequestScreen(),
     ),
     _TabDef(
       label: 'My Requests',
       icon: Icons.list_alt_outlined,
       selectedIcon: Icons.list_alt,
-      screen: PlaceholderTab(
-        title: 'My Requests',
-        icon: Icons.list_alt_outlined,
-      ),
+      screen: MyRequestsScreen(),
     ),
     _TabDef(
       label: 'History',
@@ -90,11 +120,7 @@ class _AppShellState extends ConsumerState<AppShell> {
       label: 'Available',
       icon: Icons.explore_outlined,
       selectedIcon: Icons.explore,
-      screen: PlaceholderTab(
-        title: 'Available Requests',
-        icon: Icons.explore_outlined,
-        note: 'Browse and accept requests — coming in the next milestone',
-      ),
+      screen: AvailableRequestsScreen(),
     ),
     _TabDef(
       label: 'My Trips',

@@ -60,6 +60,28 @@ enum VerificationStatus {
       };
 }
 
+/// Lifecycle of an assistance request (design §4.2).
+enum RequestStatus {
+  draft('draft', 'Draft'),
+  broadcast('broadcast', 'Open'),
+  assigned('assigned', 'Assigned'),
+  started('started', 'In progress'),
+  completed('completed', 'Completed'),
+  closed('closed', 'Closed'),
+  cancelled('cancelled', 'Cancelled');
+
+  const RequestStatus(this.wireValue, this.label);
+  final String wireValue;
+  final String label;
+
+  static RequestStatus fromWire(String value) =>
+      RequestStatus.values.firstWhere((e) => e.wireValue == value);
+
+  bool get isOpen => this == RequestStatus.broadcast;
+  bool get isCancellable =>
+      this == RequestStatus.draft || this == RequestStatus.broadcast;
+}
+
 /// Service region used for deterministic matching: a request only reaches
 /// TravAcsers whose region equals the request's. We cover Delhi NCR as a single
 /// combined region (Delhi folded in); other states/UTs are individual options.

@@ -1,3 +1,4 @@
+import 'city.dart';
 import 'enums.dart';
 
 /// Core user profile (design §5.2 `profiles`). Pure domain entity — no
@@ -12,6 +13,7 @@ class Profile {
     this.phone,
     this.isActive = true,
     this.serviceArea,
+    this.serviceCity,
   });
 
   final String id;
@@ -22,13 +24,19 @@ class Profile {
   final String? phone;
   final bool isActive;
 
-  /// Service region for matching (same value on both User and TravAcser sides).
-  /// Nullable to tolerate legacy docs created before this field existed.
+  /// Service **state** (e.g. Delhi NCR, Maharashtra). Nullable for legacy docs.
   final Region? serviceArea;
+
+  /// Service **city** within [serviceArea] — the matching key (a User matches
+  /// only TravAcsers in the same city). Nullable for legacy docs.
+  final City? serviceCity;
 
   bool get isRequester => role == UserRole.requester;
   bool get isVolunteer => role == UserRole.volunteer;
   bool get isAdmin => role == UserRole.admin;
+
+  /// True once both state and city are set (required for creating/matching).
+  bool get hasServiceArea => serviceArea != null && serviceCity != null;
 
   Profile copyWith({
     String? fullName,
@@ -37,6 +45,7 @@ class Profile {
     String? phone,
     bool? isActive,
     Region? serviceArea,
+    City? serviceCity,
   }) {
     return Profile(
       id: id,
@@ -47,6 +56,7 @@ class Profile {
       phone: phone ?? this.phone,
       isActive: isActive ?? this.isActive,
       serviceArea: serviceArea ?? this.serviceArea,
+      serviceCity: serviceCity ?? this.serviceCity,
     );
   }
 }

@@ -224,7 +224,7 @@ Principles (full rules authored in M1):
 
 Node/TypeScript, Admin SDK (bypasses rules; re-checks auth internally). Callable or Firestore-triggered. Shared result `{ ok, code, data? }`.
 
-- **`onRequestCreated` (Firestore trigger, `requests/{id}` onCreate)** — when `status=='broadcast'`, generate a 6-digit OTP, store its **hash** on the request, and **fan out FCM** to approved+active volunteers **whose `serviceArea` == the request's** (region-scoped). (OTP plaintext returned to the requester only, via a field they alone can read, or surfaced through the create callable.)
+- **`onRequestCreated` (Firestore trigger, `requests/{id}` onCreate)** — when `status=='broadcast'`, **fan out FCM** to approved+active TravAcsers **whose `serviceCity` == the request's** (region-scoped). It does **not** mint the trip OTP — that happens at **assignment** (M4/M5), tied to the specific volunteer.
 - **`acceptRequest(requestId)` (callable, optional hardening)** — the accept can be a pure client transaction (preferred), but a callable variant exists for extra server validation if needed. Internally: transaction `broadcast→assigned`, set `contact.*`, return `ALREADY_TAKEN` if lost.
 - **`startTrip(requestId, otp)` (callable)** — verify `otp` against `otpHash` (bcrypt); assert caller is assigned volunteer & status `assigned`; set `started`, `trips.startedAt`. Rate-limit attempts.
 - **`completeTrip(requestId)` (callable)** — assert caller is a party & status `started`; compute `durationMinutes`, `amountInr`; set `completed`.

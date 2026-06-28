@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/accessibility/announce.dart';
 import '../../../core/error/failure.dart';
+import '../../../domain/entities/city.dart';
 import '../../../domain/entities/enums.dart';
 import '../../providers/core_providers.dart';
 import 'profile_controller.dart';
@@ -27,7 +28,8 @@ class _CompleteProfileScreenState
   final _homeLocationController = TextEditingController();
 
   UserRole _role = UserRole.requester;
-  Region? _region;
+  Region? _serviceState;
+  City? _serviceCity;
   Gender? _gender;
   DateTime? _dob;
 
@@ -60,7 +62,8 @@ class _CompleteProfileScreenState
     final ok = await ref.read(profileControllerProvider.notifier).save(
           role: _role,
           fullName: _nameController.text.trim(),
-          region: _region!,
+          serviceState: _serviceState!,
+          serviceCity: _serviceCity!,
           gender: _gender,
           dateOfBirth: _dob,
           phone: phone,
@@ -144,21 +147,43 @@ class _CompleteProfileScreenState
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<Region>(
-                  value: _region,
+                  value: _serviceState,
                   isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Region / service area',
-                    helperText: 'You will be matched within this region.',
-                  ),
+                  decoration: const InputDecoration(labelText: 'State'),
                   items: Region.options
                       .map((r) => DropdownMenuItem(
                             value: r,
                             child: Text(r.label),
                           ))
                       .toList(),
-                  onChanged: (r) => setState(() => _region = r),
+                  onChanged: (r) => setState(() {
+                    _serviceState = r;
+                    _serviceCity = null; // reset dependent city
+                  }),
                   validator: (r) =>
-                      r == null ? 'Please select your region' : null,
+                      r == null ? 'Please select your state' : null,
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<City>(
+                  value: _serviceCity,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'City',
+                    helperText: 'You are matched with people in this city.',
+                  ),
+                  items: (_serviceState == null
+                          ? const <City>[]
+                          : City.forState(_serviceState!))
+                      .map((c) => DropdownMenuItem(
+                            value: c,
+                            child: Text(c.label),
+                          ))
+                      .toList(),
+                  onChanged: _serviceState == null
+                      ? null
+                      : (c) => setState(() => _serviceCity = c),
+                  validator: (c) =>
+                      c == null ? 'Please select your city' : null,
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<Gender>(
