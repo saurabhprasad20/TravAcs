@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/config/constants.dart';
-import 'core/config/env.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'presentation/providers/core_providers.dart';
 
 /// Root application widget. Uses `MaterialApp.router` wired to the
 /// Riverpod-provided [routerProvider].
@@ -13,8 +13,8 @@ class TravAcsApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (!Env.isConfigured) {
-      return const _MisconfiguredApp();
+    if (!ref.watch(firebaseReadyProvider)) {
+      return const _NotConfiguredApp();
     }
 
     final router = ref.watch(routerProvider);
@@ -28,10 +28,10 @@ class TravAcsApp extends ConsumerWidget {
   }
 }
 
-/// Shown when SUPABASE_URL / SUPABASE_ANON_KEY were not provided via
-/// `--dart-define`. Fails fast with a clear, accessible message.
-class _MisconfiguredApp extends StatelessWidget {
-  const _MisconfiguredApp();
+/// Shown when Firebase failed to initialize — almost always because
+/// `flutterfire configure` hasn't been run to generate firebase_options.dart.
+class _NotConfiguredApp extends StatelessWidget {
+  const _NotConfiguredApp();
 
   @override
   Widget build(BuildContext context) {
@@ -43,10 +43,10 @@ class _MisconfiguredApp extends StatelessWidget {
           padding: const EdgeInsets.all(24),
           child: Center(
             child: Text(
-              'Missing configuration.\n\n'
-              'Run with:\n'
-              '--dart-define=SUPABASE_URL=...\n'
-              '--dart-define=SUPABASE_ANON_KEY=...',
+              'Firebase is not configured.\n\n'
+              'Run:\n'
+              '  flutterfire configure\n\n'
+              'to generate lib/firebase_options.dart for your project.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyLarge,
             ),

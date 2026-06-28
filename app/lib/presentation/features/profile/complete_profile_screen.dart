@@ -53,7 +53,8 @@ class _CompleteProfileScreenState
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
-    final phone = ref.read(supabaseClientProvider).auth.currentUser?.phone;
+    // Firebase stores the verified number; prefill it on the profile.
+    final phone = ref.read(firebaseAuthProvider).currentUser?.phoneNumber;
 
     final ok = await ref.read(profileControllerProvider.notifier).save(
           role: _role,

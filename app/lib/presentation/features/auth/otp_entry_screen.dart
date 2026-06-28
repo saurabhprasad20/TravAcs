@@ -53,10 +53,9 @@ class _OtpEntryScreenState extends ConsumerState<OtpEntryScreen> {
   Future<void> _verify() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
-    final ok = await ref.read(authControllerProvider.notifier).verifyOtp(
-          phone: widget.phone,
-          token: _controller.text.trim(),
-        );
+    final ok = await ref
+        .read(authControllerProvider.notifier)
+        .verifyOtp(_controller.text.trim());
     if (!mounted) return;
 
     if (ok) {

@@ -1,27 +1,27 @@
 import 'package:fpdart/fpdart.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/error/result.dart';
 
-/// Authentication abstraction (design §7). v1 uses phone + OTP as the primary
-/// login. The interface is intentionally provider-agnostic so an
-/// email/password method (a future alternate) can be added without touching
-/// the domain or UI layers.
+/// Authentication abstraction (design §7). v1 uses Firebase Phone Auth (SMS
+/// OTP). Framework-free: exposes only the user id, not any SDK type, so the
+/// backend can be swapped (as the Supabase→Firebase migration did) without
+/// touching the domain or UI.
 abstract interface class AuthRepository {
-  /// The current session, or null if signed out.
-  Session? get currentSession;
+  /// The current user's id (Firebase uid), or null if signed out.
+  String? get currentUserId;
 
-  /// The current user, or null if signed out.
-  User? get currentUser;
+  /// Emits the current uid on sign-in / sign-out / token refresh (null = out).
+  Stream<String?> get authStateChanges;
 
-  /// Emits on sign-in, sign-out and token refresh.
-  Stream<AuthState> get authStateChanges;
+  /// Starts phone verification: triggers an SMS to [phone] (E.164, e.g.
+  /// +9198XXXXXXXX) and returns a `verificationId` to pair with the code.
+  FutureResult<String> requestOtp(String phone);
 
-  /// Sends an SMS OTP to [phone] (E.164, e.g. +9198XXXXXXXX).
-  FutureResult<Unit> requestOtp(String phone);
-
-  /// Verifies the SMS [token] for [phone], establishing a session.
-  FutureResult<Unit> verifyOtp({required String phone, required String token});
+  /// Completes sign-in with the [smsCode] for a prior [verificationId].
+  FutureResult<Unit> verifyOtp({
+    required String verificationId,
+    required String smsCode,
+  });
 
   /// Signs the current user out.
   FutureResult<Unit> signOut();

@@ -10,13 +10,17 @@ assistance. Accessibility-first.
 
 ## Stack
 Flutter + Riverpod (layered: data / domain / presentation, Repository pattern) ·
-Supabase (Postgres + Auth + Storage + Realtime + Edge Functions) · phone+OTP auth ·
-FCM push (from M3).
+**Firebase** (Phone Auth, Cloud Firestore, Cloud Functions, Storage, FCM, App Check).
+
+> **Backend history:** v1 was first built on Supabase; we migrated to Firebase to
+> remove backend friction — chiefly **phone-OTP for +91 numbers** (Firebase sends
+> SMS via Google with **no DLT**). The Supabase version is preserved on the
+> **`master_old`** git branch.
 
 ## Repository layout
 ```
 app/        Flutter application
-supabase/   Version-controlled DB schema (migrations) — see supabase/README.md
+firebase/   Firestore rules + indexes + (later) Cloud Functions — see firebase/README.md
 admin/      Admin web page (lands in M7)
 docx/       Design & requirements docs
 ```
@@ -24,50 +28,49 @@ docx/       Design & requirements docs
 ## Implementation status (see design §17)
 | Milestone | Status |
 |-----------|--------|
-| M0 Scaffold + layered structure | ✅ done |
-| M1 DB schema, RLS, phone-OTP auth | ✅ done |
-| M2 Profiles, registration, role shell | ✅ done |
-| M3 Requests + broadcast + FCM | ⏳ next |
+| M0 Deps swap + scaffolding (Firebase) | ✅ code done |
+| M1 Firestore rules + phone-OTP auth | ✅ code done |
+| M2 Firestore profiles + role shell | ✅ code done |
+| (gate) `flutterfire configure` + build on device | ⏳ needs Firebase project |
+| M3 Requests + broadcast + FCM | ⬜ planned |
 | M4 FCFS accept · M5 Trip OTP/billing · M6 Two-sided payment · M7 Admin · M8 Hardening | ⬜ planned |
 
-What works today: phone-OTP login → one-time complete-profile → role-based
-bottom-tab shell (WhatsApp/Instagram style). Requester/Volunteer feature tabs are
-accessible placeholders; the Profile tab is fully functional (incl. volunteer
-verification status + availability toggle). All backend tables/columns for later
-milestones already exist, so no rework is needed.
+What works (once configured): phone-OTP login → one-time complete-profile →
+role-based bottom-tab shell. Feature tabs are accessible placeholders; the
+Profile tab is fully functional.
 
 ## Getting started
 
-### 1. Backend (one-time)
-Apply the SQL in `supabase/` to the project and enable phone auth — see
-[`supabase/README.md`](supabase/README.md).
+### 1. Create + wire the Firebase project (one-time)
+See [`firebase/README.md`](firebase/README.md). In short:
+- Create a Firebase project; enable **Phone** auth; create **Firestore**.
+- Add an Android app (`com.travacs.travacs`) and register your **SHA-1**.
+- Generate config:
+  ```powershell
+  dart pub global activate flutterfire_cli
+  cd app
+  flutterfire configure --project=YOUR_FIREBASE_PROJECT_ID
+  ```
+  This writes `app/lib/firebase_options.dart` + `android/app/google-services.json`.
+- Deploy rules: `firebase deploy --only firestore` (from `firebase/`).
 
 ### 2. Run the app
 ```powershell
 cd app
 flutter pub get
-dart run build_runner build --delete-conflicting-outputs   # generates freezed/json
-# then either:
-./run.ps1            # convenience script (copy run.ps1.example first)
-# or pass creds directly:
-flutter run `
-  --dart-define=SUPABASE_URL=https://grtltamvmrgdybmwhszi.supabase.co `
-  --dart-define=SUPABASE_ANON_KEY=sb_publishable_QCKZDeae68h960cmvfKj8w_FOi1fpLT
+flutter run        # to a connected device/emulator
 ```
-
-> The Supabase URL + publishable key are public-by-design (the key ships in the
-> client); RLS protects the data. They're passed via `--dart-define` and kept out
-> of committed source (`run.ps1` is gitignored).
+Until `flutterfire configure` is run, the app shows a "Firebase not configured" screen.
 
 ### Quality gates
 ```powershell
 cd app
-flutter analyze      # currently clean
-flutter test         # unit tests
+flutter analyze    # currently clean
+flutter test
 ```
 
 ## Notes
-- **No SMS in dev without a gateway:** OTP login requires the Supabase phone
-  provider + an SMS gateway (MSG91/Twilio). Until configured, the app builds and
-  navigates but can't complete a real login.
-- **First admin:** promote a user via SQL — see `supabase/README.md`.
+- **No SMS gateway / DLT needed** — Firebase Phone Auth handles OTP for India.
+- **Plan:** Auth + Firestore + profiles run on the free **Spark** plan; **Cloud
+  Functions (M3+) need the Blaze plan.**
+- **First admin:** set the `admin` custom claim (M7).

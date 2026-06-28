@@ -1,98 +1,95 @@
-# TravAcs — End-to-End Development Design
+# TravAcs — End-to-End Development Design (Firebase)
 
-> **Status:** Approved design for v1 (initial release).
+> **Status:** Approved design for v1 (initial release). **Backend: Firebase.**
 > **Audience:** Engineering team building TravAcs one-shot, top-to-bottom.
 > **Companion docs:** `appRequirements.md` (product vision & requirements), `EngPrinciples.md` (engineering standards).
-> **How to use this document:** Sections 1–16 are the *what & how*. Section 17 is the *build order* — follow it sequentially. Each milestone is self-contained and depends only on earlier milestones, so the app can be built without going back and forth.
+> **History:** v1 was first designed on Supabase; we migrated to **Firebase** to remove backend friction — most importantly **phone-OTP for Indian (+91) numbers**, which Firebase Phone Auth delivers through Google's own infrastructure with **no DLT registration** required of us (Supabase needed a third-party SMS gateway + India DLT). The earlier Supabase implementation is preserved on the `master_old` git branch.
+> **How to use this document:** Sections 1–16 are the *what & how*. Section 17 is the *build order* — follow it sequentially.
 
 ---
 
 ## 0. Locked Decisions (read first)
 
-These decisions are final for v1. Everything below assumes them.
-
 | # | Area | Decision | Why |
 |---|------|----------|-----|
-| 1 | **Mobile** | **Flutter** (Android + iOS, single codebase) | Required by constraints; strong a11y. |
-| 2 | **Backend** | **Supabase** (Postgres, Auth, Storage, Realtime, Edge Functions) | Low cost, fast dev, fits <1000 users. |
-| 3 | **Push** | **Firebase Cloud Messaging (FCM)** | New-request / assignment / trip updates. |
-| 4 | **Auth** | **Phone number + OTP** as the primary login (Supabase Auth phone provider + an SMS gateway — **MSG91** recommended for India, or Twilio). Wrapped behind an `AuthRepository` abstraction; **email+password** is a future alternate login. | Phone-centric audience; matches docs. |
-| 5 | **Admin** | **Supabase Studio** for ops + a **minimal custom web page** for volunteer approve/reject (decision-only). | Cheapest, fastest; no second heavy codebase. |
-| 6 | **Matching** | **Broadcast to all active/available volunteers**; FCFS decides. Schema is **geo-ready** (lat/long + `service_area`) for later PostGIS radius matching. | Simplest correct model at this scale. |
-| 7 | **App architecture** | **Riverpod** (DI + state) + **layered** (data / domain / presentation) + **Repository pattern**. | SOLID, testable, low boilerplate. |
-| 8 | **Aadhaar / Verification** | **No Aadhaar data captured or stored in v1** (images or number) — compliance is deferred. Volunteers are verified **manually / out-of-band** by admin, who toggles `approved`/`rejected`. Aadhaar capture is a documented **future** feature. | Avoid PII/compliance burden now. |
-| 9 | **Billing & Payment** | ₹135/hour, **pro-rated per minute**: `amount = round(duration_minutes / 60 * 135)`. Payment external (UPI) with **two-sided confirmation**: Requester marks **Paid**, Volunteer marks **Received**; settled only when both. | Matches requirements; mutual trust. |
-| 10 | **FCFS** | Enforced server-side by a **single atomic conditional `UPDATE`** in a Postgres RPC. First writer wins; others get "already taken." | Guaranteed consistency. |
-| 11 | **Trip start** | **6-digit OTP** generated on assignment, stored **hashed**, shown to Requester, entered+verified by volunteer server-side. | Proof both parties met. |
+| 1 | **Mobile** | **Flutter** (Android + iOS, single codebase). | Required by constraints; strong a11y. |
+| 2 | **Backend** | **Firebase** (Auth, Cloud Firestore, Cloud Functions, Storage, FCM, App Check). | One integrated platform; great Flutter SDKs; solves India OTP. |
+| 3 | **Auth** | **Firebase Phone Auth** (SMS OTP). Wrapped behind an `AuthRepository` abstraction. | OTP "just works" for +91 via Google — **no SMS gateway, no DLT**. |
+| 4 | **Database** | **Cloud Firestore** (native mode). | Real-time listeners + **atomic transactions** (needed for FCFS) + Security Rules. |
+| 5 | **FCFS accept** | A **client-side Firestore transaction** guarded by **Security Rules** (no server needed): first writer flips `broadcast→assigned`, others abort. | Strong consistency without a backend hop. |
+| 6 | **Server logic** | **Cloud Functions** only where a server is unavoidable: **FCM fan-out** to volunteers, **trip-OTP hashing/verify**, **admin custom claims**. Requires the **Blaze** plan. | Clients can't multicast push or mint admin claims. |
+| 7 | **App architecture** | **Riverpod** (DI + state) + **layered** (data / domain / presentation) + **Repository pattern**. | SOLID, testable; lets the backend swap (as this migration proved). |
+| 8 | **Matching** | **Broadcast to all approved, active volunteers**; FCFS decides. Docs store `geohash` + `serviceArea` so geo-radius queries can be added later. | Simplest correct model at this scale. |
+| 9 | **Aadhaar / Verification** | **No Aadhaar data captured or stored in v1.** Volunteers verified **manually/out-of-band** by admin (sets `verificationStatus`). | Avoid PII/compliance burden now. |
+| 10 | **Billing & Payment** | ₹135/hour, **pro-rated per minute**: `amount = round(durationMinutes / 60 * 135)`. External UPI with **two-sided confirmation** (requester marks **Paid**, volunteer marks **Received**; settled when both). | Matches requirements; mutual trust. |
+| 11 | **Trip start** | **6-digit OTP** generated on assignment, stored **hashed** (via a Cloud Function), shown to the requester, entered + verified by the volunteer. | Proof both parties met. |
+| 12 | **Plan/cost** | v1 **foundations (Auth + Firestore + profiles) run on the free Spark plan.** **Blaze** is needed once Cloud Functions ship (FCM fan-out, M3+). Phone Auth has a monthly free verification quota; budget a small per-SMS cost beyond it. | Keep cost minimal early. |
 
 ---
 
 ## 1. Introduction & Goals
 
 ### 1.1 Product summary
-TravAcs connects **visually impaired users ("Requesters")** with **verified volunteers ("TravAcsers")** who provide short-duration, paid travel/mobility assistance (e.g., home → metro station). v1 prioritizes **accessibility, reliability, simplicity, and low cost** over feature richness.
+TravAcs connects **visually impaired users ("Requesters")** with **verified volunteers ("TravAcsers")** who provide short-duration, paid travel/mobility assistance (e.g., home → metro station). v1 prioritizes **accessibility, reliability, simplicity, and low cost**.
 
 ### 1.2 Success criteria (v1)
-A user can end-to-end:
-1. Register as Requester or Volunteer.
-2. Volunteer completes Aadhaar verification (admin-approved).
+1. Register as Requester or Volunteer (phone-OTP).
+2. Volunteer verified (admin-approved, manual).
 3. Requester creates an assistance request.
-4. A volunteer accepts (FCFS, server-guaranteed single winner).
+4. A volunteer accepts (FCFS, transaction-guaranteed single winner).
 5. Trip starts via OTP and is completed; duration & amount computed.
-6. Payment coordinated externally (UPI) and confirmed.
+6. Payment coordinated externally (UPI), two-sided confirmation.
 7. Both parties rate each other.
 8. The entire Requester flow is fully usable with a screen reader.
 
 ### 1.3 In scope (v1)
-Registration, profiles, request lifecycle, FCFS assignment, OTP trip start, completion + billing calc, external-payment confirmation, mutual ratings, push notifications, admin verification, accessibility.
+Registration, profiles, request lifecycle, FCFS assignment, OTP trip start, completion + billing, external-payment confirmation, mutual ratings, push notifications, admin verification, accessibility.
 
 ### 1.4 Explicit non-goals (v1)
 - ❌ In-app payments / wallet / commission.
 - ❌ Real-time GPS live tracking on a map.
-- ❌ Aadhaar capture/storage (verification is manual/out-of-band for v1; Aadhaar feature deferred for compliance).
-- ❌ Email+password login (phone+OTP only in v1; email is a future alternate).
-- ❌ Geo-radius matching (broadcast-all for now; geo-ready schema).
-- ❌ In-app chat (parties use phone numbers shared on assignment).
-- ❌ Large-scale infra / multi-region.
+- ❌ Aadhaar capture/storage (manual verification for v1).
+- ❌ Email/social login (phone+OTP only in v1).
+- ❌ Geo-radius matching (broadcast-all for now; geo-ready docs).
+- ❌ In-app chat (phone numbers shared on assignment).
 
-### 1.5 Key constraints (from requirements)
-Single codebase; minimal infra cost; <1000 users initially; production-grade quality; accessibility is mandatory, not optional. **One recurring cost is accepted:** per-SMS charges for phone-OTP auth via the SMS gateway (negligible at <1000 users).
+### 1.5 Key constraints
+Single codebase; minimal infra cost; <1000 users initially; production-grade quality; accessibility mandatory. Phone-OTP uses Firebase's free verification quota first, then a small per-SMS cost.
 
 ---
 
 ## 2. High-Level Architecture
 
 ```
-┌─────────────────────────────┐        ┌──────────────────────────────────────────┐
-│        Flutter App          │        │                 Supabase                   │
-│  (Android / iOS)            │        │                                            │
-│                             │  HTTPS │  ┌────────────┐   ┌──────────────────────┐ │
-│  presentation (Riverpod)    │◄──────►│  │ Auth (JWT) │   │ Postgres + RLS       │ │
-│  domain (use cases/models)  │  REST  │  └────────────┘   │  profiles, requests, │ │
-│  data (repos + Supabase SDK)│  +RT   │  ┌────────────┐   │  trips, ratings...   │ │
-│                             │        │  │ Storage    │   └──────────────────────┘ │
-│  ┌───────────────────────┐  │        │  │ (unused v1 │   ┌──────────────────────┐ │
-│  │ FCM SDK (push tokens) │  │        │  │  reserved) │   │ Edge Functions / RPC │ │
-│  └───────────┬───────────┘  │        │  └────────────┘   │ accept_request,      │ │
-└──────────────┼──────────────┘        │  ┌────────────┐   │ start_trip,          │ │
-               │                       │  │ Realtime   │   │ complete_trip, ...   │ │
-               │   push                │  └────────────┘   └───────────┬──────────┘ │
-               │                       └──────────────────────────────┼────────────┘
-        ┌──────▼───────┐                                       fan-out │ (server key)
-        │     FCM      │◄──────────────────────────────────────────────┘
-        └──────────────┘
+┌─────────────────────────────┐        ┌────────────────────────────────────────────┐
+│        Flutter App          │        │                  Firebase                    │
+│  (Android / iOS)            │        │                                              │
+│                             │        │  ┌──────────────┐   ┌──────────────────────┐ │
+│  presentation (Riverpod)    │◄──SDK─►│  │ Firebase Auth│   │ Cloud Firestore       │ │
+│  domain (use cases/models)  │        │  │ (Phone OTP)  │   │  profiles, requests,  │ │
+│  data (repos + Firebase SDK)│        │  └──────────────┘   │  trips, ratings,      │ │
+│                             │        │  ┌──────────────┐   │  devices              │ │
+│  ┌───────────────────────┐  │        │  │ App Check    │   │  + Security Rules     │ │
+│  │ FCM SDK (push tokens) │  │        │  └──────────────┘   └──────────────────────┘ │
+│  └───────────┬───────────┘  │        │  ┌──────────────┐   ┌──────────────────────┐ │
+└──────────────┼──────────────┘        │  │ Storage      │   │ Cloud Functions      │ │
+               │                       │  │ (unused v1)  │   │ onRequestCreate→FCM, │ │
+               │   push                │  └──────────────┘   │ startTrip(OTP),      │ │
+               │                       │                     │ setVerification, ... │ │
+        ┌──────▼───────┐               │                     └───────────┬──────────┘ │
+        │     FCM      │◄──────────────────────────────────────────────┘            │
+        └──────────────┘               └──────────────────────────────────────────────┘
                                   ┌──────────────────────────────┐
-                                  │  Minimal Admin Web Page      │
-                                  │  (volunteer approve/reject)  │──► Supabase (admin role)
+                                  │ Firebase Console + minimal   │
+                                  │ admin (approve/reject)       │
                                   └──────────────────────────────┘
 ```
 
 **Trust boundaries**
-- The **Flutter client is untrusted**: it only ever uses the *anon* key + a logged-in user JWT. RLS enforces what each user can read/write.
-- **Mutating, consistency-critical operations** (accept, start, complete, mark-paid, mark-received, submit rating, broadcast) run **server-side** as `SECURITY DEFINER` RPCs / Edge Functions. The client never updates `status`, `volunteer_id`, `amount`, `payment_status`, or `verification_status` directly.
-- **Storage** is provisioned but **not used in v1** (no Aadhaar capture); reserved for the future verification-document feature.
-- **FCM server key** and **service-role key** live only in Edge Function secrets / admin backend — never in the app.
-- **Admin** uses a separate authenticated context with an `admin` role; the only privileged client surface.
+- The **Flutter client is untrusted**: it talks to Firestore directly, and **Security Rules** decide every read/write. The FCFS state transition is a client transaction whose validity is enforced by rules.
+- **Privileged/server-only work** runs in **Cloud Functions** (Admin SDK, bypasses rules): FCM fan-out, trip-OTP hashing/verification, setting `admin`/verification, any cross-user writes.
+- **Admin** identity = a Firebase Auth **custom claim** (`admin: true`), set only by a Cloud Function / Admin SDK.
+- **App Check** attests that traffic comes from your genuine app, protecting Firestore/Functions from abuse.
 
 ---
 
@@ -100,497 +97,280 @@ Single codebase; minimal infra cost; <1000 users initially; production-grade qua
 
 | Layer | Choice | Rationale |
 |-------|--------|-----------|
-| Mobile UI | Flutter 3.x (stable) | Single codebase, mature a11y (`Semantics`). |
-| State / DI | **Riverpod** (`flutter_riverpod`, `riverpod_annotation`) | Compile-safe DI, testable, less boilerplate than Bloc. |
-| Backend | Supabase (`supabase_flutter`) | Auth + Postgres + Storage + Realtime + Functions in one. |
-| Auth | Supabase **phone provider** + SMS gateway (**MSG91** for India, or Twilio) | Phone+OTP primary login. |
-| DB | PostgreSQL (managed by Supabase) | Relational integrity, RLS, transactions for FCFS. |
-| Server logic | Postgres RPC (PL/pgSQL) + Supabase Edge Functions (TypeScript/Deno) | Atomic DB ops in RPC; external calls (FCM) in Edge Functions. |
-| Push | FCM (`firebase_messaging`, `firebase_core`) | Cross-platform push. |
-| Routing | `go_router` | Declarative, deep-link & redirect friendly (auth/role gating). |
-| Models | `freezed` + `json_serializable` | Immutable models, value equality, safe JSON. |
-| Forms/validation | Flutter form + small validators in domain layer | Keep rules testable & UI-agnostic. |
-| Storage | Supabase Storage (private buckets) | Reserved; **unused in v1** (Aadhaar deferred). |
-| Admin web | Plain HTML/JS (or tiny React+Vite) calling Supabase JS SDK | Minimal surface; ships fast. |
-| Tests | `flutter_test`, `mocktail`, `integration_test` | Unit/widget/integration coverage. |
-
-> Add specific package versions to `pubspec.yaml` at build time; pin to current stable.
+| Mobile UI | Flutter 3.x | Single codebase, mature a11y. |
+| State / DI | **Riverpod** | Compile-safe DI, testable. |
+| Firebase core | `firebase_core` + **FlutterFire CLI** (`flutterfire configure` → `firebase_options.dart`) | Per-environment config. |
+| Auth | `firebase_auth` (Phone) | OTP for +91 with no gateway/DLT. |
+| Database | `cloud_firestore` | Real-time + transactions + rules. |
+| Functions | `cloud_functions` (client) + **Cloud Functions for Firebase** (Node/TS, Admin SDK) | Server-only logic. |
+| Push | `firebase_messaging` (FCM) | Native to Firebase. |
+| Integrity | `firebase_app_check` | Anti-abuse attestation. |
+| Storage | `firebase_storage` | Reserved; **unused in v1**. |
+| Routing | `go_router` | Auth/role-gated navigation. |
+| Models | `freezed` + `json_serializable` (+ Firestore converters) | Immutable, type-safe. |
+| Tests | `flutter_test`, `mocktail`, `fake_cloud_firestore`, `firebase_auth_mocks` | Unit/widget/data tests without a live backend. |
 
 ---
 
 ## 4. Domain Model & Roles
 
 ### 4.1 Roles
-- **Requester** (visually impaired user) — creates requests, starts/ends trips, rates, pays externally.
-- **TravAcser** (volunteer) — verifies via Aadhaar, accepts requests, runs the trip, confirms payment, rates.
-- **Admin** — approves/rejects volunteer verification; ops oversight.
+- **Requester** — creates requests, starts/ends trips, rates, pays externally.
+- **TravAcser (Volunteer)** — verified manually, accepts requests, runs the trip, confirms payment, rates.
+- **Admin** — approves/rejects volunteer verification (Firebase `admin` custom claim).
 
-A `profiles.role` enum (`requester` | `volunteer` | `admin`) is the single source of truth, set at registration (admin assigned out-of-band).
+Role is stored on the user's `profiles/{uid}` document (`role` field) and is the source of truth for Security Rules; admin is additionally a custom claim.
 
 ### 4.2 Request lifecycle (state machine)
 ```
- draft ──submit──► broadcast ──accept(FCFS)──► assigned ──verifyOTP──► started ──complete──► completed ──rate(both)──► closed
-   │                   │                          │                       │
-   └──cancel──►cancelled  └──(timeout/cancel)──►cancelled   └──cancel──►cancelled (pre-start only)
+ draft → broadcast → assigned → started → completed → closed
+   │         │           │          │
+   └─cancel─►cancelled (allowed only before 'started')
 ```
-- **draft** → optional client-side staging; may be skipped (create directly as `broadcast`).
-- **broadcast** → visible to all eligible volunteers; FCM fan-out sent.
-- **assigned** → exactly one volunteer attached (atomic); contact details exchanged; OTP generated.
-- **started** → OTP verified, `started_at` recorded.
-- **completed** → trip ended, `ended_at`, `duration_minutes`, `amount` recorded.
-- **closed** → both ratings submitted (or rating window passed).
-- **cancelled** → terminal; allowed only before `started`.
-
-Allowed transitions are enforced **server-side** in the RPCs (reject any out-of-order transition).
+Transitions are enforced by **Security Rules** (allowed field/status deltas) and, for OTP/payment, by **Cloud Functions**.
 
 ### 4.3 Volunteer verification (state machine)
 ```
- pending ──admin approve──► approved
-    │
-    └──admin reject──► rejected ──(admin re-review)──► pending
+ pending → approved          (admin)
+    └────→ rejected → (admin re-review) → pending
 ```
-Verification is **manual / out-of-band** in v1: the app captures **no Aadhaar data**. A volunteer's profile starts `pending`; the admin verifies identity through an external process (offline document check, call, etc.) and toggles `approved`/`rejected` (with an optional reason) in the admin page. Only `approved` volunteers can see/accept requests (enforced in `accept_request` and the available-requests query/RLS).
+Manual/out-of-band in v1; **no Aadhaar captured**. Only `approved` volunteers can read `broadcast` requests or win an accept (enforced in rules).
 
 ---
 
-## 5. Database Design (PostgreSQL)
+## 5. Data Model (Cloud Firestore)
 
-> All tables in schema `public`. UUID PKs (`gen_random_uuid()`), `created_at`/`updated_at timestamptz default now()`. RLS **enabled on every table** (Section 5.4). Enums defined first.
+> Firestore is schemaless documents; this is the **enforced shape** (via Security Rules + app DTOs). Money is integer INR. Timestamps are Firestore `Timestamp`. IDs are auto-IDs unless noted. **No Aadhaar fields.**
 
-### 5.1 Enums
-```sql
-create type user_role         as enum ('requester','volunteer','admin');
-create type gender_type        as enum ('male','female','other','prefer_not_to_say');
-create type verification_status as enum ('pending','approved','rejected');
-create type request_status     as enum ('draft','broadcast','assigned','started','completed','closed','cancelled');
-create type payment_status     as enum ('pending','awaiting_other','confirmed');
-create type rater_role         as enum ('requester','volunteer');
+### 5.1 Collections
+
+**`profiles/{uid}`** (doc id = Firebase Auth uid)
+```
+role: 'requester' | 'volunteer'        // 'admin' lives in a custom claim
+fullName: string
+gender?: 'male'|'female'|'other'|'prefer_not_to_say'
+dateOfBirth?: timestamp
+phone?: string                          // from Auth
+isActive: bool                          // volunteer availability
+createdAt, updatedAt: timestamp
+// requester-only:
+homeLocationText?: string
+// volunteer-only:
+address?: string
+verificationStatus?: 'pending'|'approved'|'rejected'
+rejectionReason?: string
+ratingAvg: number, ratingCount: int
+```
+> Role-specific fields live on the same doc (one read). Sub-objects could be used, but flat fields keep rules simple.
+
+**`requests/{requestId}`**
+```
+requesterId: uid
+volunteerId?: uid                       // null until assigned
+status: 'draft'|'broadcast'|'assigned'|'started'|'completed'|'closed'|'cancelled'
+scheduledDate: timestamp
+startTime: string  (HH:mm)
+expectedDurationMinutes: int
+pickupText, destinationText: string
+pickupGeo?, destGeo?: geopoint          // geo-ready
+requirements?, instructions?: string
+serviceArea?: string                    // geo-ready
+otpHash?: string                        // set by Cloud Function on assignment
+contact: { requesterName, requesterPhone, volunteerName?, volunteerPhone? }  // filled on assignment
+createdAt, updatedAt: timestamp
+```
+Composite indexes: `(status, createdAt)` for the volunteer "available" feed; `(requesterId, createdAt)`; `(volunteerId, status)`.
+
+**`trips/{requestId}`** (1:1 with an assigned request; same id for easy join)
+```
+requestId: string
+startedAt?, endedAt?: timestamp
+durationMinutes?: int
+hourlyRateInr: int (=135 snapshot)
+amountInr?: int
+completedBy?: uid
+paymentStatus: 'pending'|'awaiting_other'|'confirmed'
+requesterPaidAt?, volunteerReceivedAt?: timestamp
+createdAt, updatedAt: timestamp
 ```
 
-### 5.2 Tables
+**`ratings/{requestId}_{raterRole}`** (deterministic id ⇒ one rating per side)
+```
+requestId, raterId, rateeId: string
+raterRole: 'requester'|'volunteer'
+stars: 1..5
+feedback?: string
+createdAt: timestamp
+```
 
-**`profiles`** — one row per auth user (PK = `auth.users.id`).
-| column | type | notes |
-|--------|------|-------|
-| id | uuid PK | = `auth.uid()` |
-| role | user_role | not null |
-| full_name | text | not null |
-| gender | gender_type | |
-| date_of_birth | date | |
-| phone | text | shared with counterpart on assignment |
-| is_active | boolean | default true (volunteer availability toggle) |
-| created_at / updated_at | timestamptz | |
+**`devices/{uid}/tokens/{token}`** — FCM tokens (subcollection per user). `platform`, `updatedAt`.
 
-**`volunteer_profiles`** — 1:1 with a volunteer `profiles` row.
-| column | type | notes |
-|--------|------|-------|
-| profile_id | uuid PK FK→profiles.id | |
-| address | text | |
-| verification_status | verification_status | default 'pending' (**no Aadhaar data stored in v1**) |
-| verified_by | uuid FK→profiles.id (admin) | nullable |
-| verified_at | timestamptz | nullable |
-| rejection_reason | text | nullable |
-| rating_avg | numeric(2,1) | denormalized, updated on rating |
-| rating_count | int | default 0 |
+### 5.2 Security Rules (the heart of authz — replaces RLS)
+Principles (full rules authored in M1):
+- **profiles:** a user can `read/write` only `profiles/{uid == request.auth.uid}`. **`role` is immutable after creation; `verificationStatus`/`rejectionReason`/`ratingAvg`/`ratingCount` are NOT client-writable** (only Cloud Functions/admin). Counterpart name+phone are exposed via the request's `contact` map (written server-side on assignment), so no broad profile reads.
+- **requests:** `create` allowed when `requesterId == uid` and `status in ('draft','broadcast')`. `read` allowed to the owner, the assigned volunteer, or — when `status=='broadcast'` — an **approved, active volunteer** (rules `get()` the caller's profile). The **accept transition** is the only client update on someone else's-visible request: allowed iff `resource.status=='broadcast' && resource.volunteerId==null && request.status=='assigned' && request.volunteerId==uid && isApprovedVolunteer()` and no other protected field changes. All other status changes go through Cloud Functions.
+- **trips / ratings:** read if a party to the request; writes via Cloud Functions (trips) or constrained client writes (ratings: id must equal `{requestId}_{role}`, `raterId==uid`).
+- **devices:** read/write own subtree only.
+- Helper functions in rules: `isSignedIn()`, `myProfile()`, `isApprovedVolunteer()`, `isAdmin()` (`request.auth.token.admin == true`).
 
-**`requester_profiles`** — 1:1 with a requester `profiles` row.
-| column | type | notes |
-|--------|------|-------|
-| profile_id | uuid PK FK→profiles.id | |
-| home_location_text | text | optional saved location |
-| home_lat / home_lng | double precision | nullable (geo-ready) |
-| rating_avg | numeric(2,1) | |
-| rating_count | int | default 0 |
-
-**`requests`** — the core entity.
-| column | type | notes |
-|--------|------|-------|
-| id | uuid PK | |
-| requester_id | uuid FK→profiles.id | not null |
-| volunteer_id | uuid FK→profiles.id | nullable until assigned |
-| status | request_status | not null default 'broadcast' |
-| scheduled_date | date | not null |
-| start_time | time | not null |
-| expected_duration_minutes | int | not null |
-| pickup_text | text | not null |
-| pickup_lat / pickup_lng | double precision | nullable (geo-ready) |
-| destination_text | text | not null |
-| dest_lat / dest_lng | double precision | nullable |
-| requirements | text | assistance needs |
-| instructions | text | nullable |
-| otp_hash | text | nullable; set on assignment |
-| service_area | text | nullable; geo-ready filter |
-| created_at / updated_at | timestamptz | |
-
-Indexes: `(status)`, `(requester_id)`, `(volunteer_id)`, `(scheduled_date)`, partial index `where status='broadcast'`.
-
-**`trips`** — 1:1 with an assigned/started request (split from `requests` to keep request immutable-ish & query timings cleanly).
-| column | type | notes |
-|--------|------|-------|
-| id | uuid PK | |
-| request_id | uuid FK→requests.id unique | not null |
-| started_at | timestamptz | nullable |
-| ended_at | timestamptz | nullable |
-| duration_minutes | int | computed on complete |
-| hourly_rate_inr | int | snapshot = 135 |
-| amount_inr | int | computed |
-| completed_by | uuid FK→profiles.id | who pressed complete |
-| payment_status | payment_status | default 'pending' → `awaiting_other` (one side marked) → `confirmed` (both marked) |
-| requester_paid_at | timestamptz | nullable; set when requester marks **Paid** |
-| volunteer_received_at | timestamptz | nullable; set when volunteer marks **Received** |
-| created_at / updated_at | timestamptz | |
-
-> Snapshotting `hourly_rate_inr` per trip means future rate changes don't rewrite history.
-
-**`ratings`** — mutual; max one per (trip, rater_role).
-| column | type | notes |
-|--------|------|-------|
-| id | uuid PK | |
-| trip_id | uuid FK→trips.id | not null |
-| rater_id | uuid FK→profiles.id | |
-| ratee_id | uuid FK→profiles.id | |
-| rater_role | rater_role | not null |
-| stars | int check (1..5) | not null |
-| feedback | text | nullable |
-| created_at | timestamptz | |
-| | unique(trip_id, rater_role) | one rating per side |
-
-**`devices`** — FCM tokens for fan-out.
-| column | type | notes |
-|--------|------|-------|
-| id | uuid PK | |
-| profile_id | uuid FK→profiles.id | |
-| fcm_token | text unique | |
-| platform | text | 'android'/'ios' |
-| updated_at | timestamptz | |
-
-**`notifications`** (optional audit) — log of sent pushes for debugging/observability.
-| id | profile_id | type | payload jsonb | created_at |
-
-### 5.3 Derived/computed rules
-- `duration_minutes = round(extract(epoch from (ended_at - started_at))/60)`; floor at 1.
-- `amount_inr = round(duration_minutes / 60.0 * hourly_rate_inr)`.
-- **Payment is two-sided**: `payment_status = 'pending'` when neither timestamp set, `'awaiting_other'` when exactly one of `requester_paid_at`/`volunteer_received_at` is set, `'confirmed'` only when **both** are set. Derived inside the `mark_paid`/`mark_received` RPCs.
-- Rating aggregates updated transactionally in `submit_rating` (recompute avg/count on the ratee profile).
-
-### 5.4 Row Level Security (policy matrix)
-
-| Table | Requester | Volunteer | Admin | Notes |
-|-------|-----------|-----------|-------|-------|
-| profiles | R/W own | R/W own; **read counterpart of an assigned request** (via view) | all | No cross-user reads except assigned counterpart. |
-| volunteer_profiles | – | R/W own (cannot set `verification_status`) | all | `verification_status` writable **only** by admin/RPC. |
-| requester_profiles | R/W own | read counterpart (assigned) | all | |
-| requests | R/W own (create; cancel pre-start) | **read** where `status='broadcast'` AND volunteer approved; read own assigned | all | Status changes only via RPC. |
-| trips | read own (as requester) | read own (as volunteer) | all | Mutations via RPC only. |
-| ratings | insert own as requester; read own | insert own as volunteer; read own | all | One per side enforced by unique constraint. |
-| devices | R/W own | R/W own | all | |
-| notifications | read own | read own | all | Insert by server only. |
-
-Implementation notes:
-- Use `auth.uid()` in policies.
-- Consistency-critical writes go through `SECURITY DEFINER` functions that **bypass RLS but re-check authorization internally** (e.g., "is caller an approved volunteer?", "is caller the requester of this request?").
-- A safe **view** `assigned_counterpart_contacts` exposes only `full_name` + `phone` of the counterpart once a request is `assigned`+, so contact sharing doesn't require broad `profiles` read access.
+> Firestore transactions + these rules give the FCFS guarantee: two volunteers accepting concurrently both run a transaction; the first commits (`broadcast→assigned`), the second's transaction re-reads the now-`assigned` doc and its rule check fails / it aborts.
 
 ---
 
-## 6. Server-Side Logic (RPC / Edge Functions)
+## 6. Server-Side Logic (Cloud Functions for Firebase)
 
-All are idempotent where noted and return a typed result `{ ok: boolean, code: string, data?: ... }`. **Status transitions are validated inside each function.**
+Node/TypeScript, Admin SDK (bypasses rules; re-checks auth internally). Callable or Firestore-triggered. Shared result `{ ok, code, data? }`.
 
-### 6.1 `accept_request(request_id)` — Postgres RPC (`SECURITY DEFINER`) — **FCFS core**
-```sql
--- pseudocode
-1. caller := auth.uid()
-2. assert caller is a volunteer with verification_status='approved' (else code='NOT_APPROVED')
-3. UPDATE requests
-     SET volunteer_id = caller,
-         status = 'assigned',
-         otp_hash = crypt(:plain_otp, gen_salt('bf')),
-         updated_at = now()
-     WHERE id = request_id
-       AND status = 'broadcast'
-       AND volunteer_id IS NULL
-     RETURNING id;          -- the atomic guard
-4. if 0 rows updated -> return { ok:false, code:'ALREADY_TAKEN' }
-5. INSERT into trips(request_id, hourly_rate_inr=135)
-6. return { ok:true, code:'ASSIGNED' }   -- plain OTP delivered to REQUESTER only (step below)
-```
-- The **single conditional UPDATE is the concurrency guarantee** — Postgres row locking makes exactly one concurrent caller succeed; the rest match 0 rows.
-- The **plain OTP is generated server-side** and stored hashed; it is delivered to the **Requester's** client (via the request payload visible only to the requester), never to the volunteer.
-- After success, an Edge Function fans out an "assignment" push to both parties (contact details for each other).
+- **`onRequestCreated` (Firestore trigger, `requests/{id}` onCreate)** — when `status=='broadcast'`, generate a 6-digit OTP, store its **hash** on the request, and **fan out FCM** to all approved+active volunteers' tokens. (OTP plaintext returned to the requester only, via a field they alone can read, or surfaced through the create callable.)
+- **`acceptRequest(requestId)` (callable, optional hardening)** — the accept can be a pure client transaction (preferred), but a callable variant exists for extra server validation if needed. Internally: transaction `broadcast→assigned`, set `contact.*`, return `ALREADY_TAKEN` if lost.
+- **`startTrip(requestId, otp)` (callable)** — verify `otp` against `otpHash` (bcrypt); assert caller is assigned volunteer & status `assigned`; set `started`, `trips.startedAt`. Rate-limit attempts.
+- **`completeTrip(requestId)` (callable)** — assert caller is a party & status `started`; compute `durationMinutes`, `amountInr`; set `completed`.
+- **`markPaid` / `markReceived` (callable)** — role-locked, idempotent; set the respective timestamp; recompute `paymentStatus` (`confirmed` when both); push to counterpart.
+- **`submitRating` (callable or guarded client write)** — write rating, recompute ratee aggregates in a transaction; close request when both rated.
+- **`setVerification(uid, decision, reason?)` (callable, admin-only)** — set volunteer `verificationStatus`; push `verificationResult`.
+- **`setAdminClaim(uid)` (one-off, Admin SDK script)** — bootstrap the first admin.
 
-### 6.2 `start_trip(request_id, otp)` — RPC
-- Assert caller is the assigned volunteer; request `status='assigned'`.
-- Verify `otp` against `otp_hash` (`crypt`). On mismatch → `OTP_INVALID` (rate-limit attempts: max 5).
-- Set `requests.status='started'`, `trips.started_at=now()`. Return ok. Push "trip started" to requester.
-
-### 6.3 `complete_trip(request_id)` — RPC
-- Assert caller is requester **or** assigned volunteer; status `started`.
-- Set `ended_at=now()`, compute `duration_minutes`, `amount_inr` (Section 5.3), `requests.status='completed'`, `completed_by=caller`.
-- Return `{ amount_inr, duration_minutes }`. Push "trip completed + amount" to both.
-
-### 6.4 Payment — two-sided confirmation (two RPCs)
-**`mark_paid(request_id)`** — caller must be the **requester** of a `completed` trip. Sets `requester_paid_at=now()` (idempotent). Recomputes `payment_status` (Section 5.3). Pushes `payment_marked` to the volunteer ("Requester marked Paid").
-
-**`mark_received(request_id)`** — caller must be the **assigned volunteer** of a `completed` trip. Sets `volunteer_received_at=now()` (idempotent). Recomputes `payment_status`. Pushes `payment_marked` to the requester ("Volunteer marked Received").
-
-When **both** timestamps are set, `payment_status='confirmed'` and a `payment_confirmed` push goes to both parties. Neither side can set the other's flag (enforced by the role check). Marking is **completion-of-trust only** — it does not move money (payment is external UPI).
-
-### 6.5 `submit_rating(request_id, stars, feedback)` — RPC
-- Assert caller is a party to the trip; trip `completed`/`closed`.
-- Derive `rater_role`, `ratee_id`. Insert rating (unique per side). Recompute ratee aggregates.
-- If both sides have rated → set `requests.status='closed'`. Return ok.
-
-### 6.6 `broadcast_request(request_id)` — Edge Function (TypeScript)
-- Triggered after request creation (client calls it, or DB trigger → function).
-- Loads FCM tokens of **all approved, active volunteers** (later: filtered by `service_area`/geo).
-- Sends FCM data+notification messages (pickup, destination, timing, duration). Writes `notifications` audit rows. Best-effort; failures logged, not fatal to request creation.
-
-### 6.7 Error contract (shared)
-`code` values: `NOT_AUTHENTICATED`, `NOT_APPROVED`, `FORBIDDEN`, `ALREADY_TAKEN`, `INVALID_STATE`, `OTP_INVALID`, `RATE_LIMITED`, `NOT_FOUND`, `OK`. The client maps each to an accessible, screen-reader-announced message.
+Error `code`s: `NOT_AUTHENTICATED`, `NOT_APPROVED`, `FORBIDDEN`, `ALREADY_TAKEN`, `INVALID_STATE`, `OTP_INVALID`, `RATE_LIMITED`, `NOT_FOUND`, `OK`.
 
 ---
 
 ## 7. Authentication & Authorization
 
-- **Supabase Auth, phone number + OTP (primary).** Flow: user enters phone → `signInWithOtp(phone)` sends an SMS code via the configured gateway (**MSG91**/Twilio in the Supabase phone provider) → user enters code → `verifyOtp` returns a session. The phone number is the primary identity (`auth.users.phone` ↔ `profiles.phone`).
-- **First-time sign-up vs login** is unified: same OTP flow; if no `profiles` row exists post-verify, the app routes to a one-time **complete-profile** step (role choice + name/gender/DOB/address) which creates the `profiles` (+ role-specific) row via a post-verify RPC or `handle_new_user` trigger.
-- **Session**: `supabase_flutter` persists/refreshes JWT; app boots into a splash that resolves auth + profile + role, then routes.
-- **`AuthRepository` abstraction** (domain interface) with a `SupabaseAuthRepository` implementation. Methods: `requestOtp(phone)`, `verifyOtp(phone, code)`, `signOut`, `currentUser`, `onAuthStateChanged`. **Email+password later** = add `signInWithEmail`/`signUpWithEmail` to the same interface + extend the impl; **domain & UI untouched**.
-- **OTP UX/security**: resend cooldown, attempt limits, and accessible code entry (Section 11). SMS-OTP rate limiting relies on Supabase Auth + gateway controls.
-- **Authorization** = RLS + in-RPC checks (Section 5.4 / 6). The client never trusts itself for permission decisions.
-- **Role gating** in `go_router` redirect: unauthenticated → auth flow; volunteer not-approved → limited shell (verification screen only for request features).
+- **Firebase Phone Auth.** Flow: `verifyPhoneNumber(phone)` → Firebase sends SMS (handles +91 via Google, **no DLT**) → user enters code → `signInWithCredential(PhoneAuthProvider.credential(verificationId, smsCode))` → session. On Android, **SHA-1/SHA-256** must be registered in the Firebase project and **Play Integrity/App Check** enabled (Firebase auto-uses reCAPTCHA fallback). On iOS, APNs + URL scheme are configured by FlutterFire.
+- **First sign-in vs login** is unified; if `profiles/{uid}` doesn't exist post-auth, route to **complete-profile** (role + fields) which creates the doc.
+- **`AuthRepository`** interface: `requestOtp(phone) → verificationId`, `verifyOtp(verificationId, code)`, `signOut`, `currentUser`, `authStateChanges`. (Email/social can be added later behind the same interface.)
+- **Authorization** = Security Rules + custom claims (`admin`). Role checks in rules `get()` the profile doc.
+- **App Check** enforced on Firestore + Functions in production.
 
 ---
 
-## 8. Notifications
+## 8. Notifications (FCM)
 
-- **FCM setup**: `firebase_core` + `firebase_messaging`; Android `google-services.json`, iOS `GoogleService-Info.plist` + APNs key. Request notification permission (iOS/Android 13+) with an accessible rationale.
-- **Token lifecycle**: on login & on token refresh, upsert into `devices` (`profile_id`, `fcm_token`, `platform`). Remove on logout.
-- **Message types** (data payload `type`): `new_request`, `assignment`, `trip_started`, `trip_completed`, `payment_marked` (one side marked Paid/Received), `payment_confirmed` (both sides marked), `rating_received`, `verification_result`.
-- **Server fan-out** via `broadcast_request` Edge Function + targeted sends from other RPCs' companion functions, using the FCM server key (secret).
-- **In-app Realtime fallback**: clients subscribe (Supabase Realtime) to their own `requests`/`trips` rows so status changes reflect live even if a push is missed. Realtime is the source of truth for **UI state**; FCM is for **wake/alert**.
-- **Accessibility**: every notification tap deep-links (`go_router`) to the relevant screen; in-app changes are announced via `SemanticsService.announce`.
+- Native to Firebase. Token lifecycle: on login & refresh, write `devices/{uid}/tokens/{token}`; delete on logout.
+- **Message types** (`data.type`): `new_request`, `assignment`, `trip_started`, `trip_completed`, `payment_marked`, `payment_confirmed`, `rating_received`, `verification_result`.
+- **Fan-out** is server-side in `onRequestCreated` and the payment/assignment functions (Admin SDK `sendEachForMulticast`).
+- **In-app realtime** uses **Firestore listeners** (snapshots) on the user's own requests/trips — the source of truth for live UI; FCM is the wake/alert.
 
 ---
 
 ## 9. Flutter App Architecture
 
-### 9.1 Folder structure
 ```
 lib/
-  main.dart
-  app.dart                      # MaterialApp.router, theme, a11y config
-  core/
-    config/                     # env, supabase init, constants (rate=135)
-    error/                      # Failure types, Result<T>
-    router/                     # go_router + redirects (auth/role)
-    theme/                      # high-contrast, large-text-friendly theme
-    utils/                      # validators, formatters, otp display
-    accessibility/              # semantic helpers, announce()
+  main.dart                      # Firebase.initializeApp(options) + ProviderScope
+  app.dart
+  firebase_options.dart          # generated by `flutterfire configure`
+  core/{config,error,router,theme,utils,accessibility}
   data/
-    models/                     # freezed DTOs + json
-    datasources/                # SupabaseClient wrappers (auth, db, storage, rpc)
-    repositories/               # *RepositoryImpl (implements domain interfaces)
-  domain/
-    entities/                   # pure domain models
-    repositories/               # abstract interfaces (AuthRepository, RequestRepository...)
-    usecases/                   # CreateRequest, AcceptRequest, StartTrip, CompleteTrip...
-  presentation/
-    providers/                  # Riverpod providers (DI wiring)
-    features/
-      auth/                     # screens + controllers (Notifier)
-      requester/                # tabs: new_request, my_requests, history, profile
-      volunteer/                # tabs: available, my_trips, earnings, profile
-      shared/                   # rating, trip_detail, otp widgets
+    models/                      # freezed DTOs + Firestore (from/to)Map converters
+    datasources/                 # thin wrappers over FirebaseAuth / FirebaseFirestore / Functions
+    repositories/                # FirebaseAuthRepository, FirestoreProfileRepository, ...
+  domain/{entities,repositories,usecases}
+  presentation/{providers,features/{auth,profile,shell,...}}
 ```
-
-### 9.2 Layer responsibilities (SOLID)
-- **domain** — pure Dart: entities, repository **interfaces**, use cases (one responsibility each). No Flutter/Supabase imports. Fully unit-testable.
-- **data** — implements domain interfaces against Supabase; maps DTO↔entity; converts errors to `Failure`. Repository pattern isolates the SDK (Dependency Inversion).
-- **presentation** — Riverpod `Notifier`/`AsyncNotifier` controllers call use cases; widgets render state. No business logic in widgets.
-- **DI** — Riverpod providers wire datasource → repository impl → use case → controller. Swappable in tests via `ProviderScope` overrides.
-
-### 9.3 Error & result handling
-- Use a `Result<T> = Success<T> | Failure` (or `fpdart`/`Either`) returned by repositories/use cases. Controllers translate into `AsyncValue`. Every `Failure` carries an accessible, user-facing message + the server `code`.
-
-### 9.4 Configuration
-- `--dart-define` for `SUPABASE_URL`, `SUPABASE_ANON_KEY`, env name. No secrets in source. Hourly rate (`135`) is a server snapshot but mirrored as a display constant.
+- **domain** stays framework-free (entities, repository interfaces, use cases) — unchanged by the backend swap.
+- **data** implements the interfaces against Firebase; maps Firestore docs ↔ entities; converts `FirebaseAuthException`/`FirebaseException` → `Failure`.
+- **presentation** Riverpod controllers call use cases; widgets render `AsyncValue`.
+- Config: `firebase_options.dart` per environment (dev/prod via flavors or separate apps); `hourlyRateInr=135` constant mirrors server.
 
 ---
 
 ## 10. App Navigation & Screens
 
-### 10.1 Shell — WhatsApp/Instagram style
-A persistent **bottom `NavigationBar`** over an **`IndexedStack`** (preserves each tab's state; one widget subtree per tab). The visible body changes by selected tab; the bar stays fixed. Tabs differ by role (resolved at login).
-
-### 10.2 Requester tabs
-| Tab | Screen | Purpose / requirement mapping |
-|-----|--------|-------------------------------|
-| 1. Home | **New Request** | Step 2: date, start time, duration, pickup, destination, requirements, instructions → create + `broadcast_request`. |
-| 2. Requests | **My Requests** | Live status (Realtime): broadcast/assigned/started/completed. Shows assigned volunteer contact + **OTP to share** once assigned. Actions: "Complete trip", **"Mark as Paid"** (after completion), "Rate". |
-| 3. History | **Trip History** | Past trips, amounts, ratings given. |
-| 4. Profile | **Profile** | Edit profile, saved home location, sign out. |
-
-### 10.3 Volunteer tabs
-| Tab | Screen | Purpose |
-|-----|--------|---------|
-| 1. Available | **Available Requests** | Live list of `broadcast` requests; **Accept** → `accept_request` (FCFS). Disabled until verified. |
-| 2. Trips | **My Trips** | Assigned/active: requester contact, **Enter OTP → Start**, **Complete**, **Mark as Received** (payment), **Rate**. |
-| 3. Earnings | **Earnings/History** | Completed trips + amounts + ratings received. |
-| 4. Profile | **Profile + Verification** | See verification status `pending/approved/rejected` + reason (verification handled by admin out-of-band — **no Aadhaar upload in v1**); availability toggle (`is_active`). |
-
-### 10.4 Cross-cutting screens
-Splash/auth-resolver, Sign in, Sign up (role pick), Trip detail, Rating sheet (1–5 + feedback), OTP entry (volunteer) / OTP display (requester).
-
-### 10.5 Requirement → screen traceability
-| Requirement step | Screen/action |
-|---|---|
-| 1 Registration | Phone+OTP login → complete-profile (role) + profile creation |
-| 2 Request creation | Requester New Request |
-| 3 Notification | `broadcast_request` → FCM → volunteer Available tab |
-| 4 Acceptance (FCFS) | Volunteer Accept → `accept_request` |
-| 5 Assignment confirm | Contact exchange on both Requests/Trips screens |
-| 6 Trip start (OTP) | Requester shows OTP / Volunteer enters → `start_trip` |
-| 7 Completion | Either party → `complete_trip` (amount shown) |
-| 8 Payment | External UPI; Requester `mark_paid` + Volunteer `mark_received` (two-sided) |
-| 9 Ratings | Rating sheet both sides → `submit_rating` |
+WhatsApp/Instagram-style **bottom `NavigationBar` over `IndexedStack`**, role-specific tabs. (Unchanged from product intent.)
+- **Requester:** New Request · My Requests (live Firestore stream: status, contact, OTP to share, Complete, **Mark Paid**, Rate) · History · Profile.
+- **Volunteer:** Available (live `status==broadcast` stream; **Accept** via transaction) · My Trips (Enter OTP→Start, Complete, **Mark Received**, Rate) · Earnings · Profile (+ verification status, availability toggle).
+Requirement→screen traceability identical to product steps 1–9; step 3 broadcast now = `onRequestCreated` Cloud Function → FCM.
 
 ---
 
 ## 11. Accessibility Design (first-class)
-
-The **Requester is blind** — their entire flow must be screen-reader-complete; the volunteer flow must also be accessible.
-
-- **Semantics**: every interactive widget has a clear `Semantics(label, hint)`; images/icons have labels; decorative elements `excludeSemantics`.
-- **Screen-reader-first Requester flows**: New Request and OTP sharing designed for TalkBack/VoiceOver linear traversal; logical **focus order**; group related fields.
-- **Announcements**: status changes, errors, and successes use `SemanticsService.announce()` (e.g., "Volunteer assigned. Your OTP is 4 8 2 1 0 7", read digit-by-digit).
-- **No color-only cues**: status conveyed by text/icon + label, not color alone; meets WCAG AA contrast in the theme.
-- **Targets & text**: ≥48dp touch targets; supports OS large-font/bold-text without breaking layout (avoid fixed heights; use scalable text).
-- **Forms**: every field labeled + error text announced; time/date pickers have accessible alternatives (text entry fallback).
-- **OTP (two contexts)**: (a) **login OTP** — phone & SMS-code entry fields fully labeled, with autofill/SMS-autoread where available and an accessible resend control; (b) **trip-start OTP** — display screen reads digits individually; entry screen labels each box.
-- **Validation checklist** (in `EngPrinciples` spirit) per release: full Requester journey with TalkBack (Android) and VoiceOver (iOS); keyboard/switch navigation; large-text mode; high-contrast mode.
-- **Automated a11y tests**: `flutter_test` accessibility guidelines checks (`meetsGuideline(textContrastGuideline, labeledTapTargetGuideline, androidTapTargetGuideline)`).
+Unchanged and mandatory: `Semantics` labels, focus order, `SemanticsService.announce` for status/errors, OTP read digit-by-digit, ≥48dp targets, scalable text, no color-only cues, TalkBack/VoiceOver validation checklist, automated `meetsGuideline` tests. The Requester (blind) flow is screen-reader-complete.
 
 ---
 
 ## 12. Admin Panel
-
-### 12.1 Supabase Studio (ops)
-Day-to-day data inspection, manual fixes, and analytics SQL run in Studio with the project owner account. Used for: viewing requests/trips, supporting users, ad-hoc reports.
-
-### 12.2 Minimal custom verification page
-A single-purpose web page (plain HTML/JS or a tiny React+Vite app) for **volunteer approve/reject** (decision-only — **no Aadhaar/document handling in v1**).
-
-- **Auth**: admin signs in via Supabase Auth; `profiles.role='admin'`.
-- **List**: query `volunteer_profiles where verification_status='pending'` (admin RLS allows) with the volunteer's name/phone/address.
-- **Review**: admin verifies identity through an **external/out-of-band process** (offline document check, phone call, etc.) — the app shows no Aadhaar.
-- **Decision**: calls an admin-only RPC `set_verification(profile_id, decision, reason?)` that sets `verification_status`, `verified_by`, `verified_at`, optional `rejection_reason`, and pushes `verification_result` to the volunteer.
-- **Security**: page uses the **anon key + admin JWT** only; never the service-role key in the browser. All privileged writes go through the RPC with internal role checks.
-- **Future**: when Aadhaar capture returns, add a private-bucket upload + short-TTL signed-URL preview here.
+- **Firebase Console** for data inspection/support.
+- A **minimal custom admin** (Flutter web or a tiny web app using Firebase Auth + the `admin` claim) that lists `profiles` where `verificationStatus=='pending'` and calls **`setVerification`** to approve/reject (decision-only — **no Aadhaar** in v1).
+- First admin bootstrapped via the `setAdminClaim` Admin SDK script.
 
 ---
 
 ## 13. Security & Privacy
-
-- **RLS on every table** (Section 5.4); default-deny.
-- **Consistency-critical writes only via `SECURITY DEFINER` RPCs** with internal authorization — clients can't set `status`, `volunteer_id`, `amount`, `verification_status`, `payment_status`, or the payment timestamps.
-- **No Aadhaar / minimal PII**: v1 stores **no Aadhaar image or number** (compliance deferred). Identity verification is manual/out-of-band; only `verification_status` is persisted. This sharply reduces PII exposure.
-- **Auth (phone+OTP)**: SMS-OTP issued/verified by Supabase Auth + gateway; rely on provider rate-limiting + app-side resend cooldown to deter abuse. Phone numbers are PII — protected by RLS like other profile data.
-- **PII minimization**: counterpart contact (`name`,`phone`) exposed **only after assignment**, via the restricted `assigned_counterpart_contacts` view.
-- **Trip OTP** stored hashed (`crypt`/bcrypt); attempt rate-limiting; never sent to the volunteer. (Distinct from the login SMS OTP.)
-- **Secrets**: FCM server key, SMS-gateway key, and service-role key only in Edge Function/admin secrets; app ships only anon key.
-- **Transport**: HTTPS/TLS everywhere (Supabase default).
-- **Safety for vulnerable users**: only **verified** volunteers can accept; mutual ratings build trust; design hook for future "report user"/block. Cancellations allowed pre-start.
-- **Data retention**: no Aadhaar data to retain in v1; trip/rating data retained for history. (Aadhaar retention policy to be defined when that feature returns.)
-- **Input validation** both client (UX) and server (trust) sides.
+- **Security Rules on every collection** (default-deny); transitions/protected fields locked down (§5.2).
+- **Cloud Functions** (Admin SDK) for all privileged writes; clients can't set `role`, `verificationStatus`, `volunteerId` (except the guarded accept), `amountInr`, `paymentStatus`, or `otpHash`.
+- **App Check** on Firestore + Functions; **no Aadhaar / minimal PII**; counterpart contact shared only via the request `contact` map after assignment.
+- **Trip OTP** hashed server-side (bcrypt), never sent to the volunteer (distinct from the Firebase login SMS OTP).
+- **Secrets** (FCM/admin) live in Cloud Functions config; the app ships only the public Firebase config (safe by design, protected by rules + App Check).
+- **Safety for vulnerable users:** only verified volunteers can accept; mutual ratings; report/block hook for later.
 
 ---
 
 ## 14. Error Handling, Logging & Monitoring
-
-- **Client**: repositories convert exceptions → typed `Failure`; controllers surface accessible messages + announce; no raw stack traces to users. Global error boundary logs to console/crash reporting.
-- **Crash/observability**: integrate Sentry or Firebase Crashlytics (low cost) for the app; Supabase logs (Postgres/Edge Function) for backend; `notifications` table as a push-audit trail.
-- **Graceful degradation**: Realtime drop → fall back to pull-to-refresh; FCM miss → Realtime/refresh still updates state; offline → cached read where safe, clear "no connection" announcements; all mutating actions are **idempotent** so retries are safe.
-- **FCFS race observability**: log `ALREADY_TAKEN` counts to validate the model under load.
+Repositories map `FirebaseException`/`FirebaseAuthException` → typed `Failure` (+ accessible message). **Crashlytics** for client crashes; **Cloud Functions logs** + **Firestore usage** in the console. Graceful degradation: listener drop → re-subscribe/refresh; idempotent callables so retries are safe; offline reads via Firestore's local cache.
 
 ---
 
 ## 15. Testing Strategy
-
-Per `EngPrinciples` (unit testing for business-critical workflows):
-
-- **Unit (domain/data)** — highest priority:
-  - **FCFS**: simulate concurrent `accept_request` (integration against a test DB) → exactly one success.
-  - **Billing**: `amount_inr` across durations (1 min, 59 min, 60, 90, 135) — boundary/rounding.
-  - **OTP**: hash/verify, wrong-OTP rate limit, state guards.
-  - **Two-sided payment**: `mark_paid`/`mark_received` each idempotent; `payment_status` only `confirmed` when both timestamps set; role checks (requester can't mark received & vice-versa).
-  - **State machine**: reject illegal transitions in every RPC.
-  - Repository mapping & error translation (with `mocktail`).
-- **Widget** — New Request form validation, Available→Accept, OTP entry/display, Rating sheet.
-- **Accessibility** — `meetsGuideline` checks on key screens; manual TalkBack/VoiceOver pass per release (Section 11 checklist).
-- **Integration** (`integration_test`) — happy path: phone-OTP login → complete profile → create → accept → trip-OTP start → complete → mark paid + mark received → rate → closed.
-- **Backend** — pgTAP or SQL tests for RLS (each role can/can't do the right things) and RPCs.
-- **Coverage target**: business-critical paths (accept/start/complete/billing/RLS) ~100%; overall pragmatic.
+- **Unit/data:** repositories & use cases with **`fake_cloud_firestore`** + **`firebase_auth_mocks`** (FCFS transaction, billing math, OTP/state guards, mapping).
+- **Rules tests:** `@firebase/rules-unit-testing` (emulator) — each role can/can't do the right thing; FCFS transition only valid once.
+- **Functions tests:** emulator + unit tests for `startTrip`/`completeTrip`/`markPaid`/`setVerification`.
+- **Widget/integration:** New Request, Accept, OTP, Rating; happy path via the **Firebase Emulator Suite**.
+- **Accessibility:** `meetsGuideline` + manual TalkBack/VoiceOver pass.
 
 ---
 
 ## 16. Environments, Config & CI/CD
-
-- **Two Supabase projects**: `dev` and `prod` (separate keys/URLs via `--dart-define`).
-- **Phone auth provider**: configure the Supabase Auth **phone provider** with the SMS gateway (MSG91/Twilio) credentials per environment; keep `dev` on a test/low-volume sender. Gateway keys stored as Supabase secrets, never in the app.
-- **DB migrations**: Supabase CLI migrations (`supabase/migrations/*.sql`) — enums, tables, RLS, RPCs, triggers all version-controlled; never hand-edit prod. RPCs/policies are code-reviewed.
-- **Edge Functions**: in `supabase/functions/`, deployed via CLI; secrets via `supabase secrets set`.
-- **Flutter builds**: Android App Bundle + iOS build; signing configs out of source.
-- **CI** (GitHub Actions or similar): `flutter analyze`, `flutter test`, build check, migration lint on PR.
-- **Release notes for stores**: declare data collection accurately (phone number + profile data; **no Aadhaar/document collection in v1**); complete iOS/Android accessibility & privacy questionnaires.
+- **Two Firebase projects:** `travacs-dev` and `travacs-prod` (FlutterFire flavors / separate `firebase_options`).
+- **Firestore Rules + indexes** version-controlled in `firebase/` (`firestore.rules`, `firestore.indexes.json`); deploy via `firebase deploy --only firestore`.
+- **Cloud Functions** in `firebase/functions/` (TypeScript); deploy via `firebase deploy --only functions` (**Blaze plan required**).
+- **Emulator Suite** for local dev/test (Auth, Firestore, Functions).
+- **Android:** register **SHA-1/SHA-256** per environment (required for Phone Auth/App Check); `google-services.json`. **iOS:** `GoogleService-Info.plist` + APNs key.
+- **CI:** `flutter analyze` + `flutter test` + rules/functions emulator tests on PR.
+- **Store privacy:** declares phone number + profile data; **no Aadhaar** in v1.
 
 ---
 
-## 17. Phased Delivery Roadmap (build in this order)
-
-Each milestone is independently shippable/testable and depends only on earlier ones — follow top to bottom.
+## 17. Phased Delivery Roadmap (Firebase)
 
 **M0 — Foundations**
-- Create Flutter project; add Riverpod, supabase_flutter, go_router, freezed, firebase. Set up `core/` (config, theme, router, error, accessibility helpers). Init dev/prod Supabase projects + CLI.
+- Reuse the Flutter app structure (presentation/domain unchanged). Swap deps to Firebase. Create `travacs-dev` Firebase project; `flutterfire configure` → `firebase_options.dart`; register Android SHA-1; enable Phone Auth. `core/` (config, theme, router, error, a11y) reused as-is.
 
-**M1 — DB schema, RLS, Auth**
-- Migrations: enums, all tables, indexes, RLS policies, `assigned_counterpart_contacts` view, profile-creation trigger/RPC.
-- Configure Supabase phone provider + SMS gateway. `AuthRepository` + **phone-OTP request/verify**, sign-out; splash/auth-resolver; complete-profile gate; role-gated router.
+**M1 — Firestore model, Rules, Auth**
+- `firebase/firestore.rules` + `firestore.indexes.json` (collections + helpers §5). Enable **App Check**.
+- `AuthRepository` (phone OTP via `firebase_auth`); splash/auth-resolver; complete-profile gate; role-gated router. (Reuse existing screens; swap the repo impls.)
 
-**M2 — Profiles & Registration**
-- Requester & Volunteer profile creation/edit; **no Aadhaar capture**; availability toggle (`is_active`). Verification status surfaced (read-only) on volunteer profile.
+**M2 — Profiles & Registration + Shell**
+- `FirestoreProfileRepository` (`profiles/{uid}` read/write via Rules; availability toggle). Reuse complete-profile screen, profile tab, and the role-based tab shell. Verification status surfaced.
 
-**M3 — Request creation + Broadcast + FCM**
-- New Request screen + `RequestRepository.create`; `broadcast_request` Edge Function; FCM token registration (`devices`); volunteer Available list (Realtime). Notifications wired.
+**M3 — Requests + Broadcast + FCM**
+- New Request → `requests` create; `onRequestCreated` Cloud Function (OTP hash + FCM fan-out); volunteer "Available" live stream; FCM token registration. **(Blaze plan on.)**
 
-**M4 — FCFS Acceptance**
-- `accept_request` RPC (atomic UPDATE); volunteer Accept action; assignment push; contact exchange via view; OTP generated. Concurrency test proves single-winner.
+**M4 — FCFS Accept**
+- Client **Firestore transaction** `broadcast→assigned` + rules; assignment push; `contact` map populated. Concurrency test (rules + emulator) proves single-winner.
 
-**M5 — Trip start/complete + Billing**
-- OTP display (requester) / entry (volunteer) → `start_trip`; `complete_trip` (duration + amount); status surfaced live on both sides.
+**M5 — Trip OTP/Start/Complete + Billing**
+- `startTrip` (OTP verify) + `completeTrip` (duration + amount) callables; live status on both sides.
 
-**M6 — Payment (two-sided) + Ratings**
-- `mark_paid` (requester) + `mark_received` (volunteer) RPCs + both UI actions; `payment_status` derivation + `payment_confirmed` push when both. Mutual Rating sheet → `submit_rating`; aggregates; request `closed`.
+**M6 — Two-sided Payment + Ratings**
+- `markPaid`/`markReceived` callables + UI; `submitRating` + aggregates; request `closed`.
 
 **M7 — Admin verification**
-- Admin RPC `set_verification`; minimal admin web page (list pending volunteers, approve/reject + reason — **decision-only, no Aadhaar**); `verification_result` push. Enforce "approved-only can accept."
+- `setVerification` (admin claim) + minimal admin web; `verificationResult` push; "approved-only can accept" enforced in rules.
 
-**M8 — Accessibility hardening, tests, release**
-- Full TalkBack/VoiceOver pass on every screen; automated a11y checks; complete unit/widget/integration/backend test suites; crash reporting; store builds + privacy/a11y submissions.
-
----
-
-## 18. Future Extensions (post-v1, no redesign needed)
-
-- **Aadhaar verification (document capture)** — add a private Storage bucket + upload flow + admin signed-URL review; `volunteer_profiles` gains a document reference. Compliance review first; storage component already reserved.
-- **Email+password alternate login** — add methods to `AuthRepository` + extend the Supabase impl; no domain/UI changes.
-- **Geo-radius matching** — enable PostGIS; use existing `*_lat/*_lng` + `service_area`; filter `broadcast_request` & Available query by radius.
-- **In-app payments / commission** — add a payment provider behind a `PaymentRepository`; `trips.payment_status` already models lifecycle.
-- **Live GPS tracking** — new `trip_locations` table + Realtime; map UI.
-- **In-app chat / report-user / blocklist** — safety features for trust.
-- **Scaling** — Supabase plan upgrade, read replicas, partition `requests`/`trips` by date when volume grows; the layered architecture and server-side RPCs absorb this without client rewrites.
+**M8 — Hardening, tests, release**
+- Full TalkBack/VoiceOver pass; rules/functions/widget/integration tests on the Emulator Suite; Crashlytics; store builds.
 
 ---
 
-*End of design. Build by following Section 17; all decisions needed for one-shot execution are captured above.*
+## 18. Future Extensions (no redesign needed)
+- **Email/social login** — add to `AuthRepository` + new impl.
+- **Geo-radius matching** — `geohash` queries (e.g. `geoflutterfire`) over existing geo fields.
+- **In-app payments / commission** — `PaymentRepository`; `paymentStatus` already models lifecycle.
+- **Live GPS tracking** — `trips/{id}/locations` subcollection + listeners.
+- **Aadhaar verification** — Firebase Storage upload + signed access + admin review (Storage already reserved).
+- **Scale** — Firestore scales horizontally; add composite indexes and shard hot counters as needed.
+
+---
+
+*End of design. Build by following Section 17; the layered architecture means the Supabase→Firebase swap is concentrated in the `data/` layer + backend, with `domain/` and most of `presentation/` reused. The prior Supabase design/implementation is preserved on `master_old`.*
