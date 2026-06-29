@@ -44,8 +44,9 @@
    touch targets ≥48dp; OS text scale is clamped to **[1.0, 1.8]** in `app/lib/app.dart`.
    `test/accessibility_test.dart` guards this with `meetsGuideline`.
 3. **Privileged writes are server-only.** Clients can NOT set `role`, `verificationStatus`,
-   `ratingAvg/ratingCount`, `volunteerId`, amounts, or OTP secrets. All state transitions
-   (accept → start → complete → pay → rate → verify) go through **Cloud Functions** (Admin SDK) and
+   `ratingAvg/ratingCount`, `volunteerId`, or amounts. Trips auto-start at their scheduled time
+   (no OTP, M12). All state transitions (accept → end → reschedule → cancel → pay → rate → verify) go
+   through **Cloud Functions** (Admin SDK) and
    are enforced by **Firestore Security Rules** (`firebase/firestore.rules`).
 4. **Work milestone-by-milestone; checkpoint each.** Create a branch `master_m<n>` per milestone and
    push it. See [Milestone history](#milestone-history).
@@ -140,14 +141,14 @@ Dart (entities + repository **interfaces**); `data` implements those interfaces 
 | `myRequestsProvider` | StreamProvider | requester's own requests |
 | `myAssignmentsProvider` | StreamProvider | TravAcser's accepted trips (collectionGroup) |
 | `availableRequestsProvider` | StreamProvider | open requests in the TravAcser's city, minus already-accepted (empty unless approved + city set) |
-| `requestAssignmentsProvider` / `shareOtpProvider` | StreamProvider.family | per-request assignments / the requester-only OTP |
+| `requestAssignmentsProvider` | StreamProvider.family | per-request assignments (requester's view) |
 | `pendingVolunteersProvider` | StreamProvider | admin: volunteers awaiting verification |
 | `functionsProvider` | Provider | `FirebaseFunctions.instanceFor(region: 'asia-south2')` |
 
 ### Controllers (actions) — `*_controller.dart`
 `authControllerProvider` (requestOtp/verifyOtp/signOut) · `profileControllerProvider`
-(save/setServiceArea/setAvailability) · `requestControllerProvider` (create/cancel/accept/startTrip/
-completeTrip/markPaid/markReceived/submitRating) · `adminControllerProvider` (approve/reject).
+(save/setServiceArea/setAvailability) · `requestControllerProvider` (create/cancel/accept/reschedule/
+cancelTrip/completeTrip/markPaid/markReceived/submitRating) · `adminControllerProvider` (approve/reject).
 
 ### Repositories — interface in `domain/repositories/`, impl in `data/repositories/`
 - **AuthRepository** → `FirebaseAuthRepository`: Phone-OTP (`verifyPhoneNumber` bridged to a Future),
@@ -177,24 +178,30 @@ completeTrip/markPaid/markReceived/submitRating) · `adminControllerProvider` (a
 | Path | Written by | Key fields |
 |---|---|---|
 | `profiles/{uid}` | client (editable) + functions (protected) | role, fullName, gender?, dateOfBirth?, phone?, isActive, serviceArea, serviceCity, ratingAvg, ratingCount; **volunteer:** address?, verificationStatus, verifiedBy?, rejectionReason?; **requester:** homeLocationText? |
-| `requests/{id}` | client create; functions transition | requesterId, status, serviceArea, serviceCity, numTravellers, numTravAcsers, acceptedCount, scheduledDate, startTime, expectedDurationMinutes, meetingPoint, destination, estimatedAmountInr, … |
-| `requests/{id}/assignments/{volunteerId}` | **functions only** | contact pair, denormalized request summary, tripStatus, startedAt/endedAt, durationMinutes, amountInr, paymentStatus, requesterPaidAt/travAcserReceivedAt, otpAttempts, ratings |
-| `requests/{id}/secrets/{volunteerId}` | **functions only** | `otp` (6-digit) — **readable only by the requester**, deleted after use |
+| `requests/{id}` | client create; functions transition | requesterId, status, serviceArea, serviceCity, numTravellers, numTravAcsers, acceptedCount, genderPreference, scheduledDate, startTime, **scheduledStartAt** (auto-start anchor), expectedDurationMinutes, meetingPoint, destination, estimatedAmountInr, … |
+| `requests/{id}/assignments/{volunteerId}` | **functions only** | contact pair, denormalized summary (incl. genderPreference, scheduledStartAt), tripStatus (assigned/started/completed/closed/cancelled), startedAt/endedAt, durationMinutes, amountInr, paymentStatus, requesterPaidAt/travAcserReceivedAt, ratings |
 | `devices/{uid}/tokens/{token}` | client (self) | FCM tokens |
 | `ratings/{id}`, `trips/{id}` | (rules present; ratings are primarily stored on the assignment) | audit/future use |
+
+> **No OTP / `secrets` subcollection** since M12 — trips auto-start at `scheduledStartAt`.
 
 **Rules helpers** (`firebase/firestore.rules`): `isSignedIn()`, `isAdmin()` (`token.admin==true`),
 `isApprovedVolunteer()` (role volunteer + approved + active), `myCity()`. Requests are **region-scoped**
 (an approved TravAcser sees only `broadcast` requests where `serviceCity == myCity()`). The requester
-can only **cancel before any accept**. `assignments`/`secrets`/`trips` are **function-only writes**.
+can only **cancel before any accept** (client-side); `assignments`/`trips` are **function-only writes**.
+A **collection-group** rule (`match /{path=**}/assignments/{vid}`) lets a TravAcser list their own
+assignments — it gates on `resource.data.volunteerId == request.auth.uid` (a doc-id check errors during
+a list, since the path wildcard is null then).
 
 ### Cloud Functions — `firebase/functions/src/index.ts` (region `asia-south2`)
+Trips **auto-start at `scheduledStartAt`** (time-derived; no OTP, no scheduled function).
 | Function | Type | What it does / key guards |
 |---|---|---|
 | `onRequestCreated` | Firestore onCreate `requests/{id}` | Fan-out FCM to approved+active TravAcsers in the same city; prunes dead tokens. |
-| `acceptRequest` | onCall | FCFS slot fill in a transaction: must be approved+active TravAcser, request `broadcast` + same city + not full + not already accepted; creates assignment + requester-only OTP; auto-transitions request to `assigned` when full. |
-| `startTrip` | onCall | Transaction: assignment must be `assigned`; **OTP rate-limit ≤5 attempts**; verify OTP, set `started`, delete secret. ⚠️ The wrong-OTP `otpAttempts` increment is **committed before throwing** (M10b fix) — do not move the throw back inside the transaction or the rate limit silently breaks. |
-| `completeTrip` | onCall | Caller = TravAcser or requester; bills from elapsed time; marks `completed`; marks the request completed when all assignments are done. |
+| `acceptRequest` | onCall | FCFS slot fill in a transaction: must be approved+active TravAcser, request `broadcast` + same city + not full + not already accepted; creates the assignment (denormalizing genderPreference + scheduledStartAt); auto-transitions request to `assigned` when full. **No OTP.** |
+| `completeTrip` | onCall | End a trip — caller = TravAcser **or** requester; only valid once `now >= scheduledStartAt`; bills from `scheduledStartAt`; marks `completed`; marks the request completed when no active assignment remains. |
+| `rescheduleTrip` | onCall | **Requester-only**, before start; updates the request + all assignments' schedule (date/startTime/scheduledStartAt). |
+| `cancelTrip` | onCall | Either party. Requester → cancels the whole request + assignments. TravAcser → cancels their assignment, decrements `acceptedCount`, reopens the request to `broadcast`. |
 | `markPaid` / `markReceived` | onCall | Two-sided payment state machine (`pending`→`awaiting_other`→`confirmed`). `markPaid` is requester-only. |
 | `submitRating` | onCall | Mutual 1–5 rating after `completed`; updates the ratee's rolling `ratingAvg`/`ratingCount`; blocks duplicates. |
 | `setVerification` | onCall | **Admin-claim only**; approves/rejects a TravAcser; pushes the result. |
@@ -218,11 +225,13 @@ friction).
 | **M9** | **Accessibility pass** — text-scale clamp, status-not-colour-only, MergeSemantics, announcements, `meetsGuideline` tests | `master_m9` |
 | **M10** | **Automated tests** — M10a 53 offline tests; M10b 25 rules + 10 functions emulator tests; M10c GitHub Actions CI | `master_m10`, `master_m10a/b/c` |
 | **M11** | **Store-release prep (Android)** — **PLANNED, PAUSED.** See `docx/m11-store-release-plan.md`. | — |
+| **M12** | **Feature-completion / gap-fill** — fixed the collection-group rules bug (My Trips), built real History tabs (replacing placeholders), made the active-trip lifecycle first-class, **removed OTP** (trips auto-start at `scheduledStartAt`; either party ends), added **reschedule** (User) + **cancel** (both sides), and redesigned the request form (gender-preference dropdown, TravAcser slider, dropped landmark + male/female split). | `master_m12` |
 
 > Note: `docx/design_travacs.md` §17 uses an older roadmap numbering; the **branches above are the
 > authoritative record** of what actually shipped.
 >
-> The `startTrip` rate-limit fix from M10b is **already deployed** to `travacs-dev` (`asia-south2`).
+> M12 removed `startTrip`/OTP entirely (trips auto-start by time). The M12 rules + functions are
+> deployed to `travacs-dev` (`asia-south2`).
 
 ---
 
@@ -335,7 +344,7 @@ cd C:\Users\sauprasad\travacs\TravAcs\firebase
 npm --prefix functions run build
 
 firebase deploy --only functions --project travacs-dev            # all functions
-firebase deploy --only functions:startTrip --project travacs-dev  # one function
+firebase deploy --only functions:acceptRequest --project travacs-dev  # one function
 firebase deploy --only firestore:rules --project travacs-dev      # security rules
 firebase deploy --only firestore --project travacs-dev            # rules + indexes
 ```
@@ -383,13 +392,14 @@ the public Actions API.
   (b) **`INTERNET` and `POST_NOTIFICATIONS` are only in the debug/profile manifests, not the main
   `AndroidManifest.xml`** — a *release* build would have **no network** and no FCM on Android 13+.
   Also: default launcher icon, no R8/minify, Crashlytics Gradle plugin not applied.
-- **Deferred on-device passes:** the M8 error-handling runtime check (airplane mode, wrong OTP,
-  full-slot accept, denied permission, forced crash → friendly fallback) and the M9 TalkBack
-  end-to-end pass were never run on a physical device.
+- **Deferred on-device passes:** the M8 error-handling runtime check (airplane mode, full-slot
+  accept, denied permission, forced crash → friendly fallback) and the M9 TalkBack end-to-end pass
+  were never run on a physical device. After M12, also re-verify the full trip flow on-device
+  (create → accept → auto-start → end → pay → rate; reschedule; cancel from both sides).
 - **Functions runtime:** Node 20 is deprecated (decommission 2026-10-30) — bump `engines.node` to 22
   and redeploy when convenient.
-- **Next planned step** (per the user): a **user + Cloud Functions testing pass**, then an
-  **improvement cycle** (treat as a new milestone) — *before* executing M11.
+- **Next planned step:** continue user + functions testing of the M12 flow, then iterate; M11
+  store-release remains paused.
 
 ---
 

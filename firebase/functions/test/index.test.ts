@@ -16,12 +16,15 @@ import * as fns from "../src/index";
 const db = getFirestore();
 
 const acceptRequest = fft.wrap(fns.acceptRequest);
-const startTrip = fft.wrap(fns.startTrip);
 const completeTrip = fft.wrap(fns.completeTrip);
+const rescheduleTrip = fft.wrap(fns.rescheduleTrip);
+const cancelTrip = fft.wrap(fns.cancelTrip);
 const markPaid = fft.wrap(fns.markPaid);
 const markReceived = fft.wrap(fns.markReceived);
 const submitRating = fft.wrap(fns.submitRating);
 const setVerification = fft.wrap(fns.setVerification);
+
+const HOUR = 60 * 60000;
 
 // Build a CallableRequest-shaped payload for the wrapped v2 function.
 function call(data: any, uid?: string, token: Record<string, any> = {}): any {
@@ -57,7 +60,10 @@ async function broadcastRequest(id: string, extra: any = {}): Promise<void> {
     acceptedCount: 0,
     numTravAcsers: 1,
     numTravellers: 1,
+    genderPreference: "prefer_same_gender",
     expectedDurationMinutes: 120,
+    startTime: "10:00",
+    scheduledStartAt: Timestamp.fromMillis(Date.now() + 24 * HOUR),
     ...extra,
   });
 }
@@ -66,7 +72,7 @@ after(() => fft.cleanup());
 beforeEach(clearDb);
 
 describe("acceptRequest (slot-filling FCFS)", () => {
-  it("fills the only slot, creates an assignment + private OTP", async () => {
+  it("fills the only slot and denormalizes the trip onto the assignment", async () => {
     await approvedVolunteer("vol");
     await broadcastRequest("r1");
 
@@ -81,9 +87,11 @@ describe("acceptRequest (slot-filling FCFS)", () => {
     const a = (await db.doc("requests/r1/assignments/vol").get()).data()!;
     assert.equal(a.tripStatus, "assigned");
     assert.equal(a.amountInrEstimate, 270); // 2h * 135
+    assert.equal(a.genderPreference, "prefer_same_gender");
+    assert.ok(a.scheduledStartAt, "scheduledStartAt denormalized");
 
-    const secret = (await db.doc("requests/r1/secrets/vol").get()).data()!;
-    assert.match(secret.otp, /^\d{6}$/);
+    // No OTP secret is created any more (auto-start, M12).
+    assert.ok(!(await db.doc("requests/r1/secrets/vol").get()).exists);
   });
 
   it("rejects a second TravAcser once the request is full", async () => {
@@ -111,49 +119,12 @@ describe("acceptRequest (slot-filling FCFS)", () => {
   });
 });
 
-describe("startTrip (OTP + rate limit)", () => {
-  async function seedAssigned(otp = "246810"): Promise<void> {
-    await db.doc("requests/r1").set({requesterId: "alice"});
+describe("completeTrip (ends an auto-started trip + bills)", () => {
+  it("bills from scheduledStartAt and completes the request", async () => {
+    await db.doc("requests/r1").set({requesterId: "alice", status: "assigned"});
     await db.doc("requests/r1/assignments/vol").set({
       volunteerId: "vol", requesterId: "alice", tripStatus: "assigned",
-    });
-    await db.doc("requests/r1/secrets/vol").set({otp});
-  }
-
-  it("starts with the correct OTP and consumes the secret", async () => {
-    await seedAssigned();
-    const res: any = await startTrip(call({requestId: "r1", otp: "246810"}, "vol"));
-    assert.equal(res.code, "STARTED");
-
-    const a = (await db.doc("requests/r1/assignments/vol").get()).data()!;
-    assert.equal(a.tripStatus, "started");
-    assert.ok(!(await db.doc("requests/r1/secrets/vol").get()).exists);
-  });
-
-  it("counts wrong attempts and rate-limits after five", async () => {
-    await seedAssigned();
-    for (let i = 0; i < 5; i++) {
-      await assert.rejects(
-        () => startTrip(call({requestId: "r1", otp: "000000"}, "vol")),
-        /incorrect/i
-      );
-    }
-    // Sixth attempt is blocked even though the OTP is correct.
-    await assert.rejects(
-      () => startTrip(call({requestId: "r1", otp: "246810"}, "vol")),
-      /too many/i
-    );
-    const a = (await db.doc("requests/r1/assignments/vol").get()).data()!;
-    assert.equal(a.otpAttempts, 5);
-  });
-});
-
-describe("completeTrip (billing)", () => {
-  it("bills from elapsed time and completes the request when all done", async () => {
-    await db.doc("requests/r1").set({requesterId: "alice", status: "started"});
-    await db.doc("requests/r1/assignments/vol").set({
-      volunteerId: "vol", requesterId: "alice", tripStatus: "started",
-      startedAt: Timestamp.fromMillis(Date.now() - 120 * 60000), // ~2h ago
+      scheduledStartAt: Timestamp.fromMillis(Date.now() - 2 * HOUR), // started 2h ago
     });
 
     const res: any = await completeTrip(call({requestId: "r1", volunteerId: "vol"}, "vol"));
@@ -166,6 +137,72 @@ describe("completeTrip (billing)", () => {
 
     const r = (await db.doc("requests/r1").get()).data()!;
     assert.equal(r.status, "completed");
+  });
+
+  it("cannot end a trip that has not started yet", async () => {
+    await db.doc("requests/r1").set({requesterId: "alice", status: "assigned"});
+    await db.doc("requests/r1/assignments/vol").set({
+      volunteerId: "vol", requesterId: "alice", tripStatus: "assigned",
+      scheduledStartAt: Timestamp.fromMillis(Date.now() + 2 * HOUR),
+    });
+    await assert.rejects(
+      () => completeTrip(call({requestId: "r1", volunteerId: "vol"}, "vol")),
+      /not started/i
+    );
+  });
+});
+
+describe("rescheduleTrip", () => {
+  it("the requester moves the trip time; a stranger cannot", async () => {
+    await approvedVolunteer("vol");
+    await broadcastRequest("r1"); // scheduledStartAt is in the future
+    await acceptRequest(call({requestId: "r1"}, "vol"));
+
+    const newMs = Date.now() + 48 * HOUR;
+    await assert.rejects(
+      () => rescheduleTrip(call({
+        requestId: "r1", scheduledDateMs: newMs, startTime: "14:00",
+        scheduledStartAtMs: newMs,
+      }, "mallory")),
+      /only the user/i
+    );
+
+    await rescheduleTrip(call({
+      requestId: "r1", scheduledDateMs: newMs, startTime: "14:00",
+      scheduledStartAtMs: newMs,
+    }, "alice"));
+
+    const r = (await db.doc("requests/r1").get()).data()!;
+    assert.equal(r.startTime, "14:00");
+    const a = (await db.doc("requests/r1/assignments/vol").get()).data()!;
+    assert.equal(a.startTime, "14:00"); // denormalized to the assignment
+  });
+});
+
+describe("cancelTrip", () => {
+  it("the requester cancels the whole request + its assignments", async () => {
+    await approvedVolunteer("vol");
+    await broadcastRequest("r1");
+    await acceptRequest(call({requestId: "r1"}, "vol"));
+
+    await cancelTrip(call({requestId: "r1"}, "alice"));
+    const r = (await db.doc("requests/r1").get()).data()!;
+    assert.equal(r.status, "cancelled");
+    const a = (await db.doc("requests/r1/assignments/vol").get()).data()!;
+    assert.equal(a.tripStatus, "cancelled");
+  });
+
+  it("a TravAcser releases just their slot and reopens the request", async () => {
+    await approvedVolunteer("vol");
+    await broadcastRequest("r1");
+    await acceptRequest(call({requestId: "r1"}, "vol")); // fills -> assigned
+
+    await cancelTrip(call({requestId: "r1"}, "vol"));
+    const r = (await db.doc("requests/r1").get()).data()!;
+    assert.equal(r.status, "broadcast"); // reopened for others
+    assert.equal(r.acceptedCount, 0);
+    const a = (await db.doc("requests/r1/assignments/vol").get()).data()!;
+    assert.equal(a.tripStatus, "cancelled");
   });
 });
 

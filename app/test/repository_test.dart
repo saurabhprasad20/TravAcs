@@ -131,8 +131,7 @@ void main() {
         requesterName: 'U',
         numTravellers: 2,
         numTravAcsers: 1,
-        numMaleTravellers: 1,
-        numFemaleTravellers: 1,
+        genderPreference: GenderPreference.preferSameGender,
         scheduledDate: DateTime(2026, 7, 1),
         startTime: '10:00',
         expectedDurationMinutes: 120,
@@ -150,6 +149,8 @@ void main() {
       expect(doc['volunteerId'], isNull);
       expect(doc['serviceCity'], 'delhi_ncr');
       expect(doc['estimatedAmountInr'], 270); // 2h * 135 * 1
+      expect(doc['genderPreference'], 'prefer_same_gender');
+      expect(doc['scheduledStartAt'], isNotNull); // auto-start anchor
     });
 
     test('watchMyRequests returns only the caller\'s requests', () async {

@@ -19,9 +19,13 @@ const {
 const {
   doc,
   getDoc,
+  getDocs,
   setDoc,
   updateDoc,
   deleteDoc,
+  collectionGroup,
+  query,
+  where,
   setLogLevel,
 } = require("firebase/firestore");
 
@@ -233,7 +237,6 @@ describe("assignments and secrets (function-only writes)", () => {
         requesterId: "alice",
         tripStatus: "assigned",
       });
-      await setDoc(doc(db, "requests/r1/secrets/vol"), { otp: "123456" });
     });
   });
 
@@ -256,11 +259,21 @@ describe("assignments and secrets (function-only writes)", () => {
     );
   });
 
-  it("only the requester can read the OTP secret, never the TravAcser", async () => {
-    const alice = testEnv.authenticatedContext("alice").firestore();
+  it("a TravAcser can list their OWN assignments via collectionGroup", async () => {
     const vol = testEnv.authenticatedContext("vol").firestore();
-    await assertSucceeds(getDoc(doc(alice, "requests/r1/secrets/vol")));
-    await assertFails(getDoc(doc(vol, "requests/r1/secrets/vol")));
+    await assertSucceeds(getDocs(query(
+      collectionGroup(vol, "assignments"),
+      where("volunteerId", "==", "vol"),
+    )));
+  });
+
+  it("a TravAcser cannot collectionGroup-read someone else's assignments", async () => {
+    const other = testEnv.authenticatedContext("other").firestore();
+    // Query scoped to vol's docs but the caller is 'other' → denied by rules.
+    await assertFails(getDocs(query(
+      collectionGroup(other, "assignments"),
+      where("volunteerId", "==", "vol"),
+    )));
   });
 });
 

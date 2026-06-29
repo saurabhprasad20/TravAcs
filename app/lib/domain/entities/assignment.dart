@@ -1,9 +1,10 @@
+import '../../core/util/scheduled_time.dart';
 import 'enums.dart';
 
 /// One TravAcser's acceptance of a request (`requests/{id}/assignments/{vid}`).
 /// Holds the contact pair (both parties can read their own assignment) plus a
-/// denormalized request summary for the TravAcser's "My Trips" list. The
-/// trip-start OTP is NOT here — it lives in a requester-only secret.
+/// denormalized request summary for the TravAcser's "My Trips" list. Trips
+/// auto-start at [scheduledStartAt] — there is no OTP (M12).
 class Assignment {
   const Assignment({
     required this.requestId,
@@ -19,9 +20,10 @@ class Assignment {
     required this.numTravellers,
     required this.amountInrEstimate,
     required this.tripStatus,
+    this.genderPreference = GenderPreference.anyGender,
+    this.scheduledStartAt,
     this.volunteerPhone,
     this.requesterPhone,
-    this.landmark,
     this.acceptedAt,
     this.startedAt,
     this.endedAt,
@@ -46,10 +48,13 @@ class Assignment {
 
   final DateTime scheduledDate;
   final String startTime;
+  /// Absolute instant the trip auto-starts (scheduledDate + startTime). May be
+  /// null on legacy docs; use [effectiveStartAt] which falls back.
+  final DateTime? scheduledStartAt;
   final int expectedDurationMinutes;
   final String meetingPoint;
   final String destination;
-  final String? landmark;
+  final GenderPreference genderPreference;
   final int numTravellers;
   final int amountInrEstimate;
 
@@ -73,4 +78,17 @@ class Assignment {
 
   bool get ratedByRequester => requesterRatingStars != null;
   bool get ratedByVolunteer => volunteerRatingStars != null;
+
+  /// Auto-start anchor: the stored instant, or computed from date + startTime
+  /// for legacy docs.
+  DateTime get effectiveStartAt =>
+      scheduledStartAt ?? combineDateAndTime(scheduledDate, startTime);
+
+  /// In progress once the scheduled start has passed and the trip is still
+  /// assigned (time-based auto-start; no OTP, M12).
+  bool isInProgress(DateTime now) =>
+      tripStatus == TripStatus.assigned && !now.isBefore(effectiveStartAt);
+
+  /// True while the trip still needs attention (My Trips / My Requests).
+  bool get isActive => tripStatus.isActive;
 }

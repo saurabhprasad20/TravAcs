@@ -7,11 +7,12 @@ import '../../../core/accessibility/announce.dart';
 import '../profile/profile_tab_screen.dart';
 import '../requester/my_requests_screen.dart';
 import '../requester/new_request_screen.dart';
+import '../requester/trip_history_screen.dart' as req;
 import '../volunteer/available_requests_screen.dart';
 import '../volunteer/my_trips_screen.dart';
+import '../volunteer/trip_history_screen.dart' as vol;
 import '../../providers/messaging_providers.dart';
 import '../../providers/profile_providers.dart';
-import 'placeholder_tab.dart';
 
 /// WhatsApp/Instagram-style bottom-tab shell (design §10). A persistent
 /// [NavigationBar] over an [IndexedStack] (preserves each tab's state). Tabs are
@@ -110,7 +111,7 @@ class _AppShellState extends ConsumerState<AppShell> {
       label: 'History',
       icon: Icons.history_outlined,
       selectedIcon: Icons.history,
-      screen: PlaceholderTab(title: 'Trip History', icon: Icons.history),
+      screen: req.TripHistoryScreen(),
     ),
     _TabDef(
       label: 'Profile',
@@ -135,10 +136,10 @@ class _AppShellState extends ConsumerState<AppShell> {
       screen: MyTripsScreen(),
     ),
     _TabDef(
-      label: 'Earnings',
-      icon: Icons.payments_outlined,
-      selectedIcon: Icons.payments,
-      screen: PlaceholderTab(title: 'Earnings', icon: Icons.payments_outlined),
+      label: 'History',
+      icon: Icons.history_outlined,
+      selectedIcon: Icons.history,
+      screen: vol.TripHistoryScreen(),
     ),
     _TabDef(
       label: 'Profile',

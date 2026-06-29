@@ -45,14 +45,11 @@ class RequestCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   _line(context, Icons.my_location, r.meetingPoint),
-                  _line(
-                      context,
-                      Icons.place_outlined,
-                      r.landmark == null
-                          ? r.destination
-                          : '${r.destination} (${r.landmark})'),
+                  _line(context, Icons.place_outlined, r.destination),
                   const SizedBox(height: 6),
                   Text(group, style: Theme.of(context).textTheme.bodyMedium),
+                  Text('TravAcser preference: ${r.genderPreference.label}',
+                      style: Theme.of(context).textTheme.bodySmall),
                   if (r.purpose != null && r.purpose!.isNotEmpty)
                     Text('Purpose: ${r.purpose}',
                         style: Theme.of(context).textTheme.bodyMedium),

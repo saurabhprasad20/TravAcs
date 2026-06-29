@@ -7,6 +7,7 @@ import '../../core/error/failure.dart';
 import '../../core/error/firebase_error_mapper.dart';
 import '../../core/error/result.dart';
 import '../../core/error/stream_error.dart';
+import '../../core/util/scheduled_time.dart';
 import '../../domain/entities/assignment.dart';
 import '../../domain/entities/city.dart';
 import '../../domain/entities/enums.dart';
@@ -33,14 +34,12 @@ class FirestoreRequestRepository implements RequestRepository {
     required String requesterName,
     required int numTravellers,
     required int numTravAcsers,
-    required int numMaleTravellers,
-    required int numFemaleTravellers,
+    required GenderPreference genderPreference,
     required DateTime scheduledDate,
     required String startTime,
     required int expectedDurationMinutes,
     required String meetingPoint,
     required String destination,
-    String? landmark,
     String? purpose,
     String? specialNote,
   }) async {
@@ -57,14 +56,14 @@ class FirestoreRequestRepository implements RequestRepository {
         'acceptedCount': 0,
         'numTravellers': numTravellers,
         'numTravAcsers': numTravAcsers,
-        'numMaleTravellers': numMaleTravellers,
-        'numFemaleTravellers': numFemaleTravellers,
+        'genderPreference': genderPreference.wireValue,
         'scheduledDate': Timestamp.fromDate(scheduledDate),
         'startTime': startTime,
+        'scheduledStartAt':
+            Timestamp.fromDate(combineDateAndTime(scheduledDate, startTime)),
         'expectedDurationMinutes': expectedDurationMinutes,
         'meetingPoint': meetingPoint,
         'destination': destination,
-        'landmark': landmark,
         'purpose': purpose,
         'specialNote': specialNote,
         'estimatedAmountInr':
@@ -127,16 +126,24 @@ class FirestoreRequestRepository implements RequestRepository {
   }
 
   @override
-  FutureResult<Unit> startTrip(String requestId, String otp) async {
-    try {
-      await _functions
-          .httpsCallable('startTrip')
-          .call<dynamic>({'requestId': requestId, 'otp': otp});
-      return success(unit);
-    } catch (e) {
-      return failure(mapFirebaseError(e));
-    }
-  }
+  FutureResult<Unit> rescheduleTrip(
+    String requestId,
+    DateTime scheduledDate,
+    String startTime,
+  ) =>
+      // Send absolute epoch millis (computed client-side) so the server avoids
+      // any date-string/timezone parsing.
+      _call('rescheduleTrip', {
+        'requestId': requestId,
+        'scheduledDateMs': scheduledDate.millisecondsSinceEpoch,
+        'startTime': startTime,
+        'scheduledStartAtMs':
+            combineDateAndTime(scheduledDate, startTime).millisecondsSinceEpoch,
+      });
+
+  @override
+  FutureResult<Unit> cancelTrip(String requestId) =>
+      _call('cancelTrip', {'requestId': requestId});
 
   @override
   FutureResult<Unit> completeTrip(String requestId, String volunteerId) async {
@@ -205,17 +212,6 @@ class FirestoreRequestRepository implements RequestRepository {
         .mapErrorToFailure();
   }
 
-  @override
-  Stream<String?> watchShareOtp(String requestId, String volunteerId) {
-    return _requests
-        .doc(requestId)
-        .collection('secrets')
-        .doc(volunteerId)
-        .snapshots()
-        .map((doc) => doc.data()?['otp'] as String?)
-        .mapErrorToFailure();
-  }
-
   // --- mapping ---------------------------------------------------------------
 
   Assignment? _toAssignment(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
@@ -237,7 +233,9 @@ class FirestoreRequestRepository implements RequestRepository {
       expectedDurationMinutes: (d['expectedDurationMinutes'] as num?)?.toInt() ?? 60,
       meetingPoint: (d['meetingPoint'] as String?) ?? '',
       destination: (d['destination'] as String?) ?? '',
-      landmark: d['landmark'] as String?,
+      genderPreference:
+          GenderPreference.fromWire(d['genderPreference'] as String?),
+      scheduledStartAt: (d['scheduledStartAt'] as Timestamp?)?.toDate(),
       numTravellers: (d['numTravellers'] as num?)?.toInt() ?? 1,
       amountInrEstimate: (d['amountInrEstimate'] as num?)?.toInt() ?? 0,
       tripStatus: TripStatus.fromWire(d['tripStatus'] as String?),
@@ -275,15 +273,16 @@ class FirestoreRequestRepository implements RequestRepository {
       numTravellers: (d['numTravellers'] as num?)?.toInt() ?? 1,
       numTravAcsers: (d['numTravAcsers'] as num?)?.toInt() ?? 1,
       acceptedCount: (d['acceptedCount'] as num?)?.toInt() ?? 0,
-      numMaleTravellers: (d['numMaleTravellers'] as num?)?.toInt() ?? 0,
-      numFemaleTravellers: (d['numFemaleTravellers'] as num?)?.toInt() ?? 0,
+      genderPreference:
+          GenderPreference.fromWire(d['genderPreference'] as String?),
       scheduledDate: scheduled,
       startTime: (d['startTime'] as String?) ?? '',
+      scheduledStartAt: (d['scheduledStartAt'] as Timestamp?)?.toDate() ??
+          combineDateAndTime(scheduled, (d['startTime'] as String?) ?? '00:00'),
       expectedDurationMinutes:
           (d['expectedDurationMinutes'] as num?)?.toInt() ?? 60,
       meetingPoint: (d['meetingPoint'] as String?) ?? '',
       destination: (d['destination'] as String?) ?? '',
-      landmark: d['landmark'] as String?,
       purpose: d['purpose'] as String?,
       specialNote: d['specialNote'] as String?,
       estimatedAmountInr: (d['estimatedAmountInr'] as num?)?.toInt() ?? 0,

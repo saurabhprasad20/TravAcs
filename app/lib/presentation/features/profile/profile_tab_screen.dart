@@ -104,11 +104,11 @@ class _RegionTile extends ConsumerWidget {
     final busy = ref.watch(profileControllerProvider).isLoading;
     return Semantics(
       button: true,
-      label: 'Service area: $value. Double tap to change.',
+      label: 'Your city / location: $value. Double tap to change.',
       child: ListTile(
         contentPadding: EdgeInsets.zero,
-        title:
-            Text('Service area', style: Theme.of(context).textTheme.labelMedium),
+        title: Text('Your city / location',
+            style: Theme.of(context).textTheme.labelMedium),
         subtitle: Text(value, style: Theme.of(context).textTheme.bodyLarge),
         trailing: const Icon(Icons.edit_outlined),
         enabled: !busy,
@@ -129,7 +129,7 @@ class _RegionTile extends ConsumerWidget {
         .read(profileControllerProvider.notifier)
         .setServiceArea(result.$1, result.$2);
     if (ok && context.mounted) {
-      A11y.announce(context, 'Service area set to ${result.$2.label}.');
+      A11y.announce(context, 'Location set to ${result.$2.label}.');
     }
   }
 }
@@ -171,7 +171,7 @@ class _RegionPickerSheetState extends State<_RegionPickerSheet> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 8),
-              Text('Select your service area',
+              Text('Select your city / location',
                   style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 16),
               DropdownButtonFormField<Region>(

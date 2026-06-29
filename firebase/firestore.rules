@@ -89,7 +89,9 @@ service cloud.firestore {
       allow delete: if false;
 
       // Per-TravAcser acceptance records — written only by Cloud Functions;
-      // readable by that TravAcser and the request's requester.
+      // readable by that TravAcser and the request's requester (per-request,
+      // direct-path reads). Collection-group reads are covered by the
+      // top-level rule below.
       match /assignments/{vid} {
         allow read: if isSignedIn() && (
           vid == request.auth.uid
@@ -98,12 +100,17 @@ service cloud.firestore {
         );
         allow write: if false;
       }
-      // Per-TravAcser trip-start OTP — readable ONLY by the requester.
-      match /secrets/{vid} {
-        allow read: if isSignedIn()
-          && requestData(requestId).requesterId == request.auth.uid;
-        allow write: if false;
-      }
+    }
+
+    // Collection-group rule so a TravAcser can list THEIR OWN assignments via
+    // `collectionGroup('assignments')`. It must gate on a FIELD the query filters
+    // on (`volunteerId`) — during a list the path wildcard `vid` is null, so a
+    // doc-id check would error. A nested match alone can't authorize a
+    // collection-group query.
+    match /{path=**}/assignments/{vid} {
+      allow read: if isSignedIn()
+        && resource.data.volunteerId == request.auth.uid;
+      allow write: if false;
     }
 
     // ---- trips (id == requestId) -----------------------------------------

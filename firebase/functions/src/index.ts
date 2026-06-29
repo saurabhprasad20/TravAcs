@@ -2,7 +2,7 @@ import {onDocumentCreated} from "firebase-functions/v2/firestore";
 import {onCall, HttpsError} from "firebase-functions/v2/https";
 import {logger} from "firebase-functions/v2";
 import {initializeApp} from "firebase-admin/app";
-import {getFirestore, FieldValue} from "firebase-admin/firestore";
+import {getFirestore, FieldValue, Timestamp} from "firebase-admin/firestore";
 import {getMessaging} from "firebase-admin/messaging";
 
 initializeApp();
@@ -152,8 +152,6 @@ export const acceptRequest = onCall({region: REGION}, async (req) => {
 
   const reqRef = db.collection("requests").doc(requestId);
   const assignRef = reqRef.collection("assignments").doc(uid);
-  const secretRef = reqRef.collection("secrets").doc(uid);
-  const otp = String(Math.floor(100000 + Math.random() * 900000));
 
   const out = await db.runTransaction(async (tx) => {
     // ---- all reads first ----
@@ -197,12 +195,12 @@ export const acceptRequest = onCall({region: REGION}, async (req) => {
       expectedDurationMinutes: r.expectedDurationMinutes ?? 60,
       meetingPoint: r.meetingPoint ?? "",
       destination: r.destination ?? "",
-      landmark: r.landmark ?? null,
+      genderPreference: r.genderPreference ?? "any_gender",
+      scheduledStartAt: r.scheduledStartAt ?? null,
       numTravellers: r.numTravellers ?? 1,
       amountInrEstimate: perTravAcserInr,
       tripStatus: "assigned",
     });
-    tx.set(secretRef, {otp, createdAt: FieldValue.serverTimestamp()});
     const newCount = accepted + 1;
     tx.update(reqRef, {
       acceptedCount: newCount,
@@ -226,73 +224,10 @@ export const acceptRequest = onCall({region: REGION}, async (req) => {
 });
 
 /**
- * A TravAcser starts their trip by entering the OTP the User shared. Verified
- * server-side against the requester-only secret (the TravAcser can't read it).
- */
-export const startTrip = onCall({region: REGION}, async (req) => {
-  const uid = req.auth?.uid;
-  if (!uid) throw new HttpsError("unauthenticated", "Please sign in.");
-  const requestId: string | undefined = req.data?.requestId;
-  const otp: string | undefined = req.data?.otp;
-  if (!requestId || !otp) {
-    throw new HttpsError("invalid-argument", "requestId and otp are required.");
-  }
-
-  const reqRef = db.collection("requests").doc(requestId);
-  const assignRef = reqRef.collection("assignments").doc(uid);
-  const secretRef = reqRef.collection("secrets").doc(uid);
-
-  // A wrong OTP must INCREMENT the attempt counter — so we cannot throw inside
-  // the transaction on that path (throwing rolls the increment back, which
-  // would defeat the rate limit). Instead we commit the increment and signal
-  // the caller to throw afterwards.
-  const verdict = await db.runTransaction(async (tx) => {
-    const assignDoc = await tx.get(assignRef);
-    if (!assignDoc.exists) {
-      throw new HttpsError("not-found", "You have not accepted this trip.");
-    }
-    const a = assignDoc.data() as FirebaseFirestore.DocumentData;
-    if (a.tripStatus !== "assigned") {
-      throw new HttpsError("failed-precondition", "This trip can no longer be started.", {code: "INVALID_STATE"});
-    }
-    const attempts: number = a.otpAttempts ?? 0;
-    if (attempts >= 5) {
-      throw new HttpsError("resource-exhausted", "Too many incorrect attempts. Ask the User to re-share the code later.", {code: "RATE_LIMITED"});
-    }
-    const secretDoc = await tx.get(secretRef);
-    const expected = secretDoc.exists ? (secretDoc.data() as {otp?: string}).otp : undefined;
-    if (!expected || otp !== expected) {
-      tx.update(assignRef, {otpAttempts: attempts + 1});
-      return "OTP_INVALID" as const;
-    }
-    tx.update(assignRef, {
-      tripStatus: "started",
-      startedAt: FieldValue.serverTimestamp(),
-    });
-    tx.delete(secretRef); // OTP consumed
-    return "STARTED" as const;
-  });
-
-  if (verdict === "OTP_INVALID") {
-    throw new HttpsError("permission-denied", "That code is incorrect. Please check with the User.", {code: "OTP_INVALID"});
-  }
-
-  const reqSnap = await reqRef.get();
-  const requesterId = reqSnap.data()?.requesterId;
-  if (requesterId) {
-    await pushToUser(
-      requesterId,
-      {title: "Trip started", body: "A TravAcser has started a trip."},
-      {type: "trip_started", requestId}
-    ).catch((e) => logger.warn("push failed", e));
-  }
-  return {ok: true, code: "STARTED"};
-});
-
-/**
- * Completes a TravAcser's trip (by that TravAcser or the requester). Computes
- * the actual duration and bill. When every assignment is completed, the request
- * is marked completed.
+ * Ends/completes a TravAcser's trip (by that TravAcser or the requester). Trips
+ * auto-start at their scheduled time (no OTP), so billing is anchored to
+ * `scheduledStartAt`. When no active assignment remains, the request is
+ * marked completed.
  */
 export const completeTrip = onCall({region: REGION}, async (req) => {
   const uid = req.auth?.uid;
@@ -317,15 +252,21 @@ export const completeTrip = onCall({region: REGION}, async (req) => {
     const assignDoc = await tx.get(assignRef);
     if (!assignDoc.exists) throw new HttpsError("not-found", "Assignment not found.");
     const a = assignDoc.data() as FirebaseFirestore.DocumentData;
-    if (a.tripStatus !== "started") {
-      throw new HttpsError("failed-precondition", "This trip is not in progress.", {code: "INVALID_STATE"});
+    if (a.tripStatus !== "assigned") {
+      throw new HttpsError("failed-precondition", "This trip can no longer be ended.", {code: "INVALID_STATE"});
     }
-    const startedAt: FirebaseFirestore.Timestamp | undefined = a.startedAt;
-    const startMs = startedAt ? startedAt.toMillis() : Date.now();
+    // Auto-start by time: the trip is "in progress" once scheduledStartAt has
+    // passed; billing is anchored there.
+    const startAt: FirebaseFirestore.Timestamp | undefined = a.scheduledStartAt;
+    const startMs = startAt ? startAt.toMillis() : Date.now();
+    if (Date.now() < startMs) {
+      throw new HttpsError("failed-precondition", "This trip has not started yet.", {code: "NOT_STARTED"});
+    }
     const minutes = Math.max(1, Math.round((Date.now() - startMs) / 60000));
     const amountInr = Math.round((minutes / 60) * HOURLY_RATE_INR);
     tx.update(assignRef, {
       tripStatus: "completed",
+      startedAt: startAt ?? FieldValue.serverTimestamp(),
       endedAt: FieldValue.serverTimestamp(),
       durationMinutes: minutes,
       amountInr,
@@ -334,10 +275,12 @@ export const completeTrip = onCall({region: REGION}, async (req) => {
     return {requesterId: r.requesterId, amountInr};
   });
 
-  // If all assignments are now completed, mark the request completed.
+  // Mark the request completed once no active assignment remains.
   const assignsSnap = await reqRef.collection("assignments").get();
-  const allDone = assignsSnap.docs.every((d) => d.data().tripStatus === "completed");
-  if (allDone) {
+  const statuses = assignsSnap.docs.map((d) => d.data().tripStatus);
+  const anyActive = statuses.some((s) => s === "assigned" || s === "started");
+  const anyCompleted = statuses.some((s) => s === "completed" || s === "closed");
+  if (!anyActive && anyCompleted) {
     await reqRef.update({status: "completed", updatedAt: FieldValue.serverTimestamp()});
   }
 
@@ -348,6 +291,125 @@ export const completeTrip = onCall({region: REGION}, async (req) => {
   ]);
 
   return {ok: true, code: "COMPLETED", amountInr: out.amountInr};
+});
+
+/**
+ * The User reschedules a trip (new date + time) before it starts. Updates the
+ * request and every still-assigned assignment with the new schedule.
+ */
+export const rescheduleTrip = onCall({region: REGION}, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Please sign in.");
+  const {requestId, scheduledDateMs, startTime, scheduledStartAtMs} = req.data ?? {};
+  if (
+    !requestId ||
+    typeof scheduledDateMs !== "number" ||
+    typeof scheduledStartAtMs !== "number" ||
+    !startTime
+  ) {
+    throw new HttpsError("invalid-argument", "requestId, scheduledDateMs, startTime, scheduledStartAtMs required.");
+  }
+
+  const reqRef = db.collection("requests").doc(requestId);
+  const volunteerIds: string[] = [];
+  await db.runTransaction(async (tx) => {
+    const reqDoc = await tx.get(reqRef);
+    const r = reqDoc.data();
+    if (!r) throw new HttpsError("not-found", "Request not found.");
+    if (r.requesterId !== uid) {
+      throw new HttpsError("permission-denied", "Only the User can reschedule.");
+    }
+    if (r.status !== "broadcast" && r.status !== "assigned") {
+      throw new HttpsError("failed-precondition", "This trip can no longer be rescheduled.", {code: "INVALID_STATE"});
+    }
+    const existingStart: FirebaseFirestore.Timestamp | undefined = r.scheduledStartAt;
+    if (existingStart && Date.now() >= existingStart.toMillis()) {
+      throw new HttpsError("failed-precondition", "The trip has already started.", {code: "ALREADY_STARTED"});
+    }
+    const assigns = await tx.get(reqRef.collection("assignments"));
+    const newDate = Timestamp.fromMillis(scheduledDateMs);
+    const newStartAt = Timestamp.fromMillis(scheduledStartAtMs);
+    tx.update(reqRef, {
+      scheduledDate: newDate,
+      startTime,
+      scheduledStartAt: newStartAt,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    assigns.docs.forEach((d) => {
+      if (d.data().tripStatus === "assigned") {
+        volunteerIds.push(d.id);
+        tx.update(d.ref, {scheduledDate: newDate, startTime, scheduledStartAt: newStartAt});
+      }
+    });
+  });
+
+  await Promise.all(
+    volunteerIds.map((v) =>
+      pushToUser(v, {title: "Trip rescheduled", body: "The User changed the trip time."}, {type: "trip_rescheduled", requestId}).catch(() => {})
+    )
+  );
+  return {ok: true, code: "RESCHEDULED"};
+});
+
+/**
+ * Cancel after acceptance. The caller's role is inferred: a requester cancels
+ * the whole request (and all active assignments); a TravAcser releases just
+ * their own slot (which reopens the request if it was full).
+ */
+export const cancelTrip = onCall({region: REGION}, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Please sign in.");
+  const {requestId} = req.data ?? {};
+  if (!requestId) throw new HttpsError("invalid-argument", "requestId required.");
+
+  const reqRef = db.collection("requests").doc(requestId);
+  const notify: {uid: string; title: string; body: string}[] = [];
+  await db.runTransaction(async (tx) => {
+    const reqDoc = await tx.get(reqRef);
+    const r = reqDoc.data();
+    if (!r) throw new HttpsError("not-found", "Request not found.");
+    if (r.status === "completed" || r.status === "cancelled") {
+      throw new HttpsError("failed-precondition", "This trip can no longer be cancelled.", {code: "INVALID_STATE"});
+    }
+    const assigns = await tx.get(reqRef.collection("assignments"));
+    const isRequester = r.requesterId === uid;
+    const myAssign = assigns.docs.find((d) => d.id === uid);
+    if (!isRequester && !myAssign) {
+      throw new HttpsError("permission-denied", "You are not part of this trip.");
+    }
+
+    if (isRequester) {
+      tx.update(reqRef, {status: "cancelled", updatedAt: FieldValue.serverTimestamp()});
+      assigns.docs.forEach((d) => {
+        const s = d.data().tripStatus;
+        if (s === "assigned" || s === "started") {
+          tx.update(d.ref, {tripStatus: "cancelled"});
+          notify.push({uid: d.id, title: "Trip cancelled", body: "The User cancelled the trip."});
+        }
+      });
+    } else {
+      const s = myAssign!.data().tripStatus;
+      if (s !== "assigned" && s !== "started") {
+        throw new HttpsError("failed-precondition", "This trip can no longer be cancelled.", {code: "INVALID_STATE"});
+      }
+      tx.update(myAssign!.ref, {tripStatus: "cancelled"});
+      const accepted: number = r.acceptedCount ?? 0;
+      tx.update(reqRef, {
+        acceptedCount: Math.max(0, accepted - 1),
+        // Reopen for others if it had been filled.
+        status: r.status === "assigned" ? "broadcast" : r.status,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      notify.push({uid: r.requesterId, title: "A TravAcser cancelled", body: "A TravAcser cancelled their assignment."});
+    }
+  });
+
+  await Promise.all(
+    notify.map((n) =>
+      pushToUser(n.uid, {title: n.title, body: n.body}, {type: "trip_cancelled", requestId}).catch(() => {})
+    )
+  );
+  return {ok: true, code: "CANCELLED"};
 });
 
 /** Recomputes paymentStatus from the two timestamps. */
