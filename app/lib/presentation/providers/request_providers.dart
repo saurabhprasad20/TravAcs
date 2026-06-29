@@ -58,12 +58,3 @@ final requestAssignmentsProvider =
     StreamProvider.family<List<Assignment>, String>((ref, requestId) {
   return ref.watch(requestRepositoryProvider).watchRequestAssignments(requestId);
 });
-
-/// The OTP the requester shares with a specific TravAcser.
-final shareOtpProvider =
-    StreamProvider.family<String?, ({String requestId, String volunteerId})>(
-        (ref, key) {
-  return ref
-      .watch(requestRepositoryProvider)
-      .watchShareOtp(key.requestId, key.volunteerId);
-});

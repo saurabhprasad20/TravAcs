@@ -224,6 +224,19 @@ Principles (full rules authored in M1):
 
 ## 6. Server-Side Logic (Cloud Functions for Firebase)
 
+> **M12 update (authoritative):** the trip lifecycle is now **OTP-free**. Trips **auto-start at
+> `scheduledStartAt`** (a stored Timestamp = scheduledDate + startTime; "in progress" is time-derived
+> on the client). `startTrip` and the `secrets/{vid}` OTP subcollection are **removed**. `acceptRequest`
+> no longer mints an OTP and denormalizes `genderPreference` + `scheduledStartAt` onto the assignment.
+> `completeTrip` (end) is callable by **either party** once `now >= scheduledStartAt` and bills from
+> `scheduledStartAt`. New callables: **`rescheduleTrip`** (requester-only, before start) and
+> **`cancelTrip`** (requester cancels the whole request; a TravAcser releases just their slot →
+> request reopens to `broadcast`). The request form drops `landmark` and the male/female traveller
+> split and adds a `genderPreference` enum. A **collection-group** rule
+> (`match /{path=**}/assignments/{vid}`, gated on `resource.data.volunteerId == request.auth.uid`)
+> authorizes the TravAcser's "My Trips" query. Sections 6.x below describe the original OTP design for
+> history; the bullets above supersede them.
+
 Node/TypeScript, Admin SDK (bypasses rules; re-checks auth internally). Callable or Firestore-triggered. Shared result `{ ok, code, data? }`.
 
 - **`onRequestCreated` (Firestore trigger, `requests/{id}` onCreate)** — when `status=='broadcast'`, **fan out FCM** to approved+active TravAcsers **whose `serviceCity` == the request's** (region-scoped). It does **not** mint the trip OTP — that happens at **assignment** (M4/M5), tied to the specific volunteer.

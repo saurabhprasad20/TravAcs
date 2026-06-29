@@ -16,14 +16,12 @@ abstract interface class RequestRepository {
     required String requesterName,
     required int numTravellers,
     required int numTravAcsers,
-    required int numMaleTravellers,
-    required int numFemaleTravellers,
+    required GenderPreference genderPreference,
     required DateTime scheduledDate,
     required String startTime,
     required int expectedDurationMinutes,
     required String meetingPoint,
     required String destination,
-    String? landmark,
     String? purpose,
     String? specialNote,
   });
@@ -47,14 +45,21 @@ abstract interface class RequestRepository {
   /// All TravAcsers who have accepted [requestId] (for the requester's view).
   Stream<List<Assignment>> watchRequestAssignments(String requestId);
 
-  /// The OTP the requester shares with the TravAcser [volunteerId] (requester
-  /// reads the private secret). Null until accepted / if not permitted.
-  Stream<String?> watchShareOtp(String requestId, String volunteerId);
+  /// Requester reschedules the trip (new date + time) before it starts
+  /// (`rescheduleTrip` function). Updates the request and all assignments.
+  FutureResult<Unit> rescheduleTrip(
+    String requestId,
+    DateTime scheduledDate,
+    String startTime,
+  );
 
-  /// TravAcser starts their trip by verifying the OTP (`startTrip` function).
-  FutureResult<Unit> startTrip(String requestId, String otp);
+  /// Cancel after acceptance (`cancelTrip` function). The server infers the
+  /// caller's role: a requester cancels the whole request; a TravAcser releases
+  /// just their own slot.
+  FutureResult<Unit> cancelTrip(String requestId);
 
-  /// Complete a TravAcser's trip (by that TravAcser or the requester).
+  /// End/complete a TravAcser's trip (by that TravAcser or the requester). Trips
+  /// auto-start at the scheduled time, so this is the only manual transition.
   FutureResult<Unit> completeTrip(String requestId, String volunteerId);
 
   /// The User marks a TravAcser's payment as Paid (two-sided).

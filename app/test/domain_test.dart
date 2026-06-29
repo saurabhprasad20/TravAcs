@@ -70,6 +70,23 @@ void main() {
       expect(PaymentStatus.fromWire('confirmed'), PaymentStatus.confirmed);
     });
 
+    test('GenderPreference wire round-trip + tolerant default', () {
+      for (final g in GenderPreference.values) {
+        expect(GenderPreference.fromWire(g.wireValue), g);
+        expect(g.label, isNotEmpty);
+      }
+      expect(GenderPreference.fromWire(null), GenderPreference.anyGender);
+      expect(GenderPreference.fromWire('bogus'), GenderPreference.anyGender);
+    });
+
+    test('TripStatus active vs terminal', () {
+      expect(TripStatus.assigned.isActive, isTrue);
+      expect(TripStatus.started.isActive, isTrue);
+      expect(TripStatus.completed.isTerminal, isTrue);
+      expect(TripStatus.closed.isTerminal, isTrue);
+      expect(TripStatus.cancelled.isTerminal, isTrue);
+    });
+
     test('Gender / VerificationStatus fromWire', () {
       expect(Gender.fromWire(null), isNull);
       expect(Gender.fromWire('female'), Gender.female);
@@ -177,10 +194,10 @@ Request _request({
       serviceCity: City.fromWire('delhi_ncr')!,
       numTravellers: 1,
       numTravAcsers: travAcsers,
-      numMaleTravellers: 0,
-      numFemaleTravellers: 1,
+      genderPreference: GenderPreference.anyGender,
       scheduledDate: DateTime(2026, 7, 1),
       startTime: '10:00',
+      scheduledStartAt: DateTime(2026, 7, 1, 10, 0),
       expectedDurationMinutes: durationMinutes,
       meetingPoint: 'A',
       destination: 'B',

@@ -22,14 +22,12 @@ class RequestController extends Notifier<AsyncValue<void>> {
     required String requesterName,
     required int numTravellers,
     required int numTravAcsers,
-    required int numMaleTravellers,
-    required int numFemaleTravellers,
+    required GenderPreference genderPreference,
     required DateTime scheduledDate,
     required String startTime,
     required int expectedDurationMinutes,
     required String meetingPoint,
     required String destination,
-    String? landmark,
     String? purpose,
     String? specialNote,
   }) async {
@@ -40,14 +38,12 @@ class RequestController extends Notifier<AsyncValue<void>> {
       requesterName: requesterName,
       numTravellers: numTravellers,
       numTravAcsers: numTravAcsers,
-      numMaleTravellers: numMaleTravellers,
-      numFemaleTravellers: numFemaleTravellers,
+      genderPreference: genderPreference,
       scheduledDate: scheduledDate,
       startTime: startTime,
       expectedDurationMinutes: expectedDurationMinutes,
       meetingPoint: meetingPoint,
       destination: destination,
-      landmark: landmark,
       purpose: purpose,
       specialNote: specialNote,
     );
@@ -82,11 +78,17 @@ class RequestController extends Notifier<AsyncValue<void>> {
   Future<bool> accept(String requestId) =>
       _run(() => _repo.acceptRequest(requestId));
 
-  /// TravAcser starts their trip with the OTP the User shared.
-  Future<bool> startTrip(String requestId, String otp) =>
-      _run(() => _repo.startTrip(requestId, otp));
+  /// User reschedules a trip (new date + time) before it starts.
+  Future<bool> reschedule(
+          String requestId, DateTime scheduledDate, String startTime) =>
+      _run(() => _repo.rescheduleTrip(requestId, scheduledDate, startTime));
 
-  /// Complete a TravAcser's trip.
+  /// Cancel after acceptance — the server infers the caller's role (requester
+  /// cancels the whole request; TravAcser releases their slot).
+  Future<bool> cancelTrip(String requestId) =>
+      _run(() => _repo.cancelTrip(requestId));
+
+  /// End/complete a TravAcser's trip (either party).
   Future<bool> completeTrip(String requestId, String volunteerId) =>
       _run(() => _repo.completeTrip(requestId, volunteerId));
 

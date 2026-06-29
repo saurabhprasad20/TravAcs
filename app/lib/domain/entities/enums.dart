@@ -42,6 +42,23 @@ enum Gender {
       };
 }
 
+/// The User's preference for their TravAcser's gender (request form, M12).
+/// Informational — surfaced to TravAcsers; matching itself stays city-based.
+enum GenderPreference {
+  strictSameGender('strict_same_gender', 'Strictly same gender'),
+  preferSameGender(
+      'prefer_same_gender', 'Same gender preferred — comfortable with any'),
+  anyGender('any_gender', 'Comfortable with any');
+
+  const GenderPreference(this.wireValue, this.label);
+  final String wireValue;
+  final String label;
+
+  static GenderPreference fromWire(String? value) =>
+      GenderPreference.values.firstWhere((e) => e.wireValue == value,
+          orElse: () => GenderPreference.anyGender);
+}
+
 enum VerificationStatus {
   pending('pending'),
   approved('approved'),
@@ -84,10 +101,11 @@ enum RequestStatus {
 
 /// Per-TravAcser trip lifecycle within an assignment (design §4.2, M5).
 enum TripStatus {
-  assigned('assigned', 'Assigned'),
+  assigned('assigned', 'Scheduled'),
   started('started', 'In progress'),
   completed('completed', 'Completed'),
-  closed('closed', 'Closed');
+  closed('closed', 'Closed'),
+  cancelled('cancelled', 'Cancelled');
 
   const TripStatus(this.wireValue, this.label);
   final String wireValue;
@@ -96,6 +114,13 @@ enum TripStatus {
   static TripStatus fromWire(String? value) =>
       TripStatus.values.firstWhere((e) => e.wireValue == value,
           orElse: () => TripStatus.assigned);
+
+  /// Active = needs attention in My Trips / My Requests (not terminal).
+  bool get isActive =>
+      this == TripStatus.assigned || this == TripStatus.started;
+
+  /// Terminal = belongs in Trip History.
+  bool get isTerminal => !isActive;
 }
 
 /// Two-sided external-payment state of an assignment (design §6, M6).

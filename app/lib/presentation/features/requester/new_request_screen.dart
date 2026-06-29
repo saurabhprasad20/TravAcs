@@ -5,13 +5,15 @@ import 'package:intl/intl.dart';
 import '../../../core/accessibility/announce.dart';
 import '../../../core/config/constants.dart';
 import '../../../core/error/failure.dart';
+import '../../../domain/entities/enums.dart';
 import '../../../domain/entities/profile.dart';
 import '../../../domain/entities/request.dart';
 import '../../providers/profile_providers.dart';
 import 'request_controller.dart';
 
-/// New assistance request form (fields per userRequestForm.txt). Region is taken
-/// from the requester's profile; an estimate review is shown before submit.
+/// New assistance request form. The city is taken from the requester's profile;
+/// an estimate review is shown before submit. Only the initiating User's
+/// details are kept — extra travellers are just a count (M12).
 class NewRequestScreen extends ConsumerStatefulWidget {
   const NewRequestScreen({super.key});
 
@@ -23,14 +25,12 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
   final _formKey = GlobalKey<FormState>();
   final _meetingController = TextEditingController();
   final _destinationController = TextEditingController();
-  final _landmarkController = TextEditingController();
   final _purposeController = TextEditingController();
   final _noteController = TextEditingController();
 
   int _numTravellers = 1;
   int _numTravAcsers = 1;
-  int _numMale = 0;
-  int _numFemale = 1;
+  GenderPreference _genderPreference = GenderPreference.anyGender;
   DateTime? _date;
   TimeOfDay? _time;
   int _durationMinutes = 60;
@@ -50,7 +50,6 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
   void dispose() {
     _meetingController.dispose();
     _destinationController.dispose();
-    _landmarkController.dispose();
     _purposeController.dispose();
     _noteController.dispose();
     super.dispose();
@@ -64,11 +63,6 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
       _numTravellers = v.clamp(1, 20);
       // Keep TravAcsers within [min, travellers].
       _numTravAcsers = _numTravAcsers.clamp(_minTravAcsers, _numTravellers);
-      // Reset gender split if it now exceeds travellers.
-      if (_numMale + _numFemale != _numTravellers) {
-        _numMale = 0;
-        _numFemale = _numTravellers;
-      }
     });
   }
 
@@ -90,13 +84,7 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
     if (picked != null) setState(() => _time = picked);
   }
 
-  String? _validateGroup() {
-    if (_numTravAcsers < _minTravAcsers || _numTravAcsers > _numTravellers) {
-      return 'TravAcsers must be between $_minTravAcsers and $_numTravellers.';
-    }
-    if (_numMale + _numFemale != _numTravellers) {
-      return 'Male + female travellers must equal $_numTravellers.';
-    }
+  String? _validateSchedule() {
     if (_date == null) return 'Please choose a trip date.';
     if (_time == null) return 'Please choose a start time.';
     return null;
@@ -104,9 +92,9 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
 
   Future<void> _review(MyProfile my) async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
-    final groupError = _validateGroup();
-    if (groupError != null) {
-      _announceError(groupError);
+    final scheduleError = _validateSchedule();
+    if (scheduleError != null) {
+      _announceError(scheduleError);
       return;
     }
 
@@ -120,6 +108,7 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
         durationLabel: _durationLabel(),
         numTravellers: _numTravellers,
         numTravAcsers: _numTravAcsers,
+        genderPreference: _genderPreference,
         meetingPoint: _meetingController.text.trim(),
         destination: _destinationController.text.trim(),
         estimate: _estimate,
@@ -140,14 +129,12 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
           requesterName: my.profile.fullName,
           numTravellers: _numTravellers,
           numTravAcsers: _numTravAcsers,
-          numMaleTravellers: _numMale,
-          numFemaleTravellers: _numFemale,
+          genderPreference: _genderPreference,
           scheduledDate: _date!,
           startTime: startTime,
           expectedDurationMinutes: _durationMinutes,
           meetingPoint: _meetingController.text.trim(),
           destination: _destinationController.text.trim(),
-          landmark: _emptyToNull(_landmarkController.text),
           purpose: _emptyToNull(_purposeController.text),
           specialNote: _emptyToNull(_noteController.text),
         );
@@ -169,14 +156,12 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
     _formKey.currentState?.reset();
     _meetingController.clear();
     _destinationController.clear();
-    _landmarkController.clear();
     _purposeController.clear();
     _noteController.clear();
     setState(() {
       _numTravellers = 1;
       _numTravAcsers = 1;
-      _numMale = 0;
-      _numFemale = 1;
+      _genderPreference = GenderPreference.anyGender;
       _date = null;
       _time = null;
       _durationMinutes = 60;
@@ -190,7 +175,7 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
       ..showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  String _emptyToNull(String s) => s.trim().isEmpty ? '' : s.trim();
+  String _emptyToNull(String s) => s.trim();
   String _durationLabel() => _durations.entries
       .firstWhere((e) => e.value == _durationMinutes,
           orElse: () => const MapEntry('', 60))
@@ -215,41 +200,34 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          _section('Your city: ${my.profile.serviceCity!.label}'),
+                          _section(
+                              'Your city / location: ${my.profile.serviceCity!.label}'),
                           _stepperTile(
-                            label: 'Visually impaired travellers',
+                            label: 'Total travellers (including you)',
                             value: _numTravellers,
                             onChanged: _setTravellers,
                             min: 1,
                           ),
-                          _stepperTile(
-                            label: 'TravAcsers required '
-                                '(suggested $_minTravAcsers)',
-                            value: _numTravAcsers,
-                            min: _minTravAcsers,
-                            max: _numTravellers,
-                            onChanged: (v) => setState(() => _numTravAcsers =
-                                v.clamp(_minTravAcsers, _numTravellers)),
+                          Text(
+                            'Only your contact details are shared with the '
+                            'TravAcser. You are responsible for the trip and '
+                            'payment; others are counted for planning.',
+                            style: Theme.of(context).textTheme.bodySmall,
                           ),
-                          const SizedBox(height: 8),
-                          Text('Gender of travellers '
-                              '(must total $_numTravellers)',
-                              style: Theme.of(context).textTheme.labelLarge),
-                          _stepperTile(
-                            label: 'Male travellers',
-                            value: _numMale,
-                            min: 0,
-                            max: _numTravellers,
-                            onChanged: (v) => setState(() => _numMale =
-                                v.clamp(0, _numTravellers)),
-                          ),
-                          _stepperTile(
-                            label: 'Female travellers',
-                            value: _numFemale,
-                            min: 0,
-                            max: _numTravellers,
-                            onChanged: (v) => setState(() => _numFemale =
-                                v.clamp(0, _numTravellers)),
+                          const SizedBox(height: 12),
+                          _travAcserSlider(),
+                          const SizedBox(height: 12),
+                          DropdownButtonFormField<GenderPreference>(
+                            value: _genderPreference,
+                            isExpanded: true,
+                            decoration: const InputDecoration(
+                                labelText: 'TravAcser gender preference'),
+                            items: GenderPreference.values
+                                .map((g) => DropdownMenuItem(
+                                    value: g, child: Text(g.label)))
+                                .toList(),
+                            onChanged: (g) => setState(() => _genderPreference =
+                                g ?? GenderPreference.anyGender),
                           ),
                           const Divider(height: 24),
                           _datePicker(),
@@ -283,12 +261,6 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
                           ),
                           const SizedBox(height: 12),
                           TextFormField(
-                            controller: _landmarkController,
-                            decoration: const InputDecoration(
-                                labelText: 'Landmark (optional)'),
-                          ),
-                          const SizedBox(height: 12),
-                          TextFormField(
                             controller: _purposeController,
                             decoration: const InputDecoration(
                                 labelText: 'Purpose of the trip',
@@ -298,10 +270,14 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
                           const SizedBox(height: 12),
                           TextFormField(
                             controller: _noteController,
-                            maxLines: 2,
+                            maxLines: 3,
                             decoration: const InputDecoration(
-                                labelText: 'Special note / requirement '
-                                    '(optional)'),
+                              labelText: 'Special note / requirement (optional)',
+                              helperText:
+                                  'e.g. specific gender-preference details, '
+                                  'mobility aids, timing or language notes',
+                              helperMaxLines: 2,
+                            ),
                           ),
                           const SizedBox(height: 16),
                           Card(
@@ -339,6 +315,39 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
         padding: const EdgeInsets.only(bottom: 8),
         child: Text(text, style: Theme.of(context).textTheme.titleSmall),
       );
+
+  /// TravAcser count as a slider (seek bar). Falls back to a static line when
+  /// only one is possible (a Slider needs min < max).
+  Widget _travAcserSlider() {
+    final canRange = _numTravellers > _minTravAcsers;
+    final label = 'TravAcsers required: $_numTravAcsers '
+        '(suggested $_minTravAcsers)';
+    return Semantics(
+      slider: true,
+      label: label,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: Theme.of(context).textTheme.labelLarge),
+          if (canRange)
+            Slider(
+              value: _numTravAcsers.toDouble(),
+              min: _minTravAcsers.toDouble(),
+              max: _numTravellers.toDouble(),
+              divisions: _numTravellers - _minTravAcsers,
+              label: '$_numTravAcsers',
+              onChanged: (v) => setState(() => _numTravAcsers = v.round()),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text('1 TravAcser',
+                  style: Theme.of(context).textTheme.bodyMedium),
+            ),
+        ],
+      ),
+    );
+  }
 
   Widget _stepperTile({
     required String label,
@@ -422,7 +431,7 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
       label: 'Start time, ${_time?.format(context) ?? 'not set'}',
       child: ListTile(
         contentPadding: EdgeInsets.zero,
-        title: const Text('Start time'),
+        title: const Text('Start time (the trip auto-starts at this time)'),
         subtitle: Text(_time?.format(context) ?? 'Not set'),
         trailing: const Icon(Icons.access_time),
         onTap: _pickTime,
@@ -442,8 +451,8 @@ class _NeedsServiceArea extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Text(
-          'Please set your service area (state & city) on the Profile tab '
-          'before creating a request.',
+          'Please set your city / location on the Profile tab before creating '
+          'a request.',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodyLarge,
         ),
@@ -460,6 +469,7 @@ class _ReviewSheet extends StatelessWidget {
     required this.durationLabel,
     required this.numTravellers,
     required this.numTravAcsers,
+    required this.genderPreference,
     required this.meetingPoint,
     required this.destination,
     required this.estimate,
@@ -470,6 +480,7 @@ class _ReviewSheet extends StatelessWidget {
   final String durationLabel;
   final int numTravellers;
   final int numTravAcsers;
+  final GenderPreference genderPreference;
   final String meetingPoint;
   final String destination;
   final int estimate;
@@ -493,6 +504,7 @@ class _ReviewSheet extends StatelessWidget {
             _row('Duration', durationLabel),
             _row('Travellers', '$numTravellers'),
             _row('TravAcsers', '$numTravAcsers'),
+            _row('Gender preference', genderPreference.label),
             _row('Meeting point', meetingPoint),
             _row('Destination', destination),
             const Divider(height: 24),

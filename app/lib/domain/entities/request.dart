@@ -15,16 +15,15 @@ class Request {
     required this.serviceCity,
     required this.numTravellers,
     required this.numTravAcsers,
-    required this.numMaleTravellers,
-    required this.numFemaleTravellers,
+    required this.genderPreference,
     required this.scheduledDate,
     required this.startTime,
+    required this.scheduledStartAt,
     required this.expectedDurationMinutes,
     required this.meetingPoint,
     required this.destination,
     required this.estimatedAmountInr,
     this.acceptedCount = 0,
-    this.landmark,
     this.purpose,
     this.specialNote,
     this.volunteerId,
@@ -41,21 +40,24 @@ class Request {
   final Region serviceState;
   final City serviceCity;
 
-  // Group.
+  // Group. Only the initiating User's details are kept; [numTravellers] is the
+  // total in the party (the initiator is the sole payer).
   final int numTravellers;
   final int numTravAcsers;
-  final int numMaleTravellers;
-  final int numFemaleTravellers;
+
+  /// The User's gender preference for their TravAcser (informational; matching
+  /// itself stays city-based).
+  final GenderPreference genderPreference;
 
   // When.
   final DateTime scheduledDate; // date only
   final String startTime; // HH:mm
+  final DateTime scheduledStartAt; // scheduledDate + startTime; auto-start anchor
   final int expectedDurationMinutes;
 
   // Where / what.
   final String meetingPoint;
   final String destination;
-  final String? landmark;
   final String? purpose;
   final String? specialNote;
 
