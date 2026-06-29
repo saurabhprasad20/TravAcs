@@ -368,7 +368,7 @@ Phased: **M10a** = pure-Dart suite (`flutter test`, no emulator); **M10b** = emu
 - **Cloud Functions** in `firebase/functions/` (TypeScript); deploy via `firebase deploy --only functions` (**Blaze plan required**).
 - **Emulator Suite** for local dev/test (Auth, Firestore, Functions).
 - **Android:** register **SHA-1/SHA-256** per environment (required for Phone Auth/App Check); `google-services.json`. **iOS:** `GoogleService-Info.plist` + APNs key.
-- **CI:** `flutter analyze` + `flutter test` + rules/functions emulator tests on PR.
+- **CI (M10c):** `.github/workflows/ci.yml` runs on every push + PR — a **flutter-tests** job (`flutter analyze` + `flutter test`; writes a stub `firebase_options.dart` since the real one is gitignored) and a **backend-tests** job (JDK 21 + latest `firebase-tools`, `npm ci`, then `emulators:exec` for the rules + functions suites). Locally the same backend tests run on `firebase-tools@13` + JDK 17 (see `firebase/TESTING.md`).
 - **Store privacy:** declares phone number + profile data; **no Aadhaar** in v1.
 
 ---
