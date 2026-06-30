@@ -52,7 +52,7 @@ class AppMenuDrawer extends ConsumerWidget {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close),
+                    icon: const Icon(Icons.close, semanticLabel: 'Close menu'),
                     color: scheme.onPrimaryContainer,
                     tooltip: 'Close menu',
                     onPressed: () => Navigator.of(context).pop(),
