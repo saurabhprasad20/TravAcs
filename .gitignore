@@ -24,3 +24,4 @@ app/build_apk*.log
 enable_phone.js
 approve_volunteer.js
 make_admin.js
+set_sms_region_india.js
