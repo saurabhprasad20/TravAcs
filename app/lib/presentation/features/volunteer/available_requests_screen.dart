@@ -20,7 +20,6 @@ class AvailableRequestsScreen extends ConsumerWidget {
     final hasCity = my?.profile.serviceCity != null;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Available Requests')),
       body: !approved
           ? _message(context,
               'Your account is pending verification. Once an admin approves you, '

@@ -20,7 +20,6 @@ class ProfileTabScreen extends ConsumerWidget {
     final my = ref.watch(myProfileProvider).value;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Profile')),
       body: my == null
           ? const Center(child: CircularProgressIndicator())
           : ListView(

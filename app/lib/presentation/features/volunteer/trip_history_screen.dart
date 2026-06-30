@@ -20,7 +20,6 @@ class TripHistoryScreen extends ConsumerWidget {
     final assignments = ref.watch(myAssignmentsProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Trip History')),
       body: assignments.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text(failureMessage(e))),
