@@ -5,8 +5,7 @@ import '../../../core/accessibility/announce.dart';
 import '../../../core/error/failure.dart';
 import '../../../domain/entities/pending_volunteer.dart';
 import '../../providers/admin_providers.dart';
-import '../../providers/messaging_providers.dart';
-import '../auth/auth_controller.dart';
+import '../menu/app_menu_drawer.dart';
 import 'admin_controller.dart';
 
 /// In-app admin panel — approve/reject pending TravAcsers (admin claim only).
@@ -18,19 +17,8 @@ class AdminScreen extends ConsumerWidget {
     final pending = ref.watch(pendingVolunteersProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Admin · Verifications'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'Sign out',
-            onPressed: () async {
-              await ref.read(messagingRepositoryProvider).unregisterToken();
-              await ref.read(authControllerProvider.notifier).signOut();
-            },
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Admin · Verifications')),
+      drawer: const AppMenuDrawer(),
       body: pending.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(

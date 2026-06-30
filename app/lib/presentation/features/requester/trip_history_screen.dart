@@ -21,7 +21,6 @@ class TripHistoryScreen extends ConsumerWidget {
     final requests = ref.watch(myRequestsProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Trip History')),
       body: requests.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text(failureMessage(e))),

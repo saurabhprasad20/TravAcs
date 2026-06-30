@@ -226,6 +226,7 @@ friction).
 | **M10** | **Automated tests** — M10a 53 offline tests; M10b 25 rules + 10 functions emulator tests; M10c GitHub Actions CI | `master_m10`, `master_m10a/b/c` |
 | **M11** | **Store-release prep (Android)** — **PLANNED, PAUSED.** See `docx/m11-store-release-plan.md`. | — |
 | **M12** | **Feature-completion / gap-fill** — fixed the collection-group rules bug (My Trips), built real History tabs (replacing placeholders), made the active-trip lifecycle first-class, **removed OTP** (trips auto-start at `scheduledStartAt`; either party ends), added **reschedule** (User) + **cancel** (both sides), and redesigned the request form (gender-preference dropdown, TravAcser slider, dropped landmark + male/female split). | `master_m12` |
+| **M13** | **App menu** — centralized the AppBar in the shell with a navigation **Drawer** (`presentation/features/menu/`): Contact us, About (built-in `showAboutDialog`), Rate-us (placeholder), Terms, Privacy, Sign out + a dismiss button. Placeholder info screens; client-only (no deploy). | `master_m13` |
 
 > Note: `docx/design_travacs.md` §17 uses an older roadmap numbering; the **branches above are the
 > authoritative record** of what actually shipped.

@@ -187,7 +187,6 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
     final busy = ref.watch(requestControllerProvider).isLoading;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('New Request')),
       body: my == null
           ? const Center(child: CircularProgressIndicator())
           : !my.profile.hasServiceArea

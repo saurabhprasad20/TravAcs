@@ -22,7 +22,6 @@ class MyRequestsScreen extends ConsumerWidget {
     final requests = ref.watch(myRequestsProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('My Requests')),
       body: requests.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text(failureMessage(e))),

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/accessibility/announce.dart';
+import '../menu/app_menu_drawer.dart';
 import '../profile/profile_tab_screen.dart';
 import '../requester/my_requests_screen.dart';
 import '../requester/new_request_screen.dart';
@@ -69,6 +70,8 @@ class _AppShellState extends ConsumerState<AppShell> {
     final index = _index.clamp(0, tabs.length - 1);
 
     return Scaffold(
+      appBar: AppBar(title: Text(tabs[index].title ?? tabs[index].label)),
+      drawer: const AppMenuDrawer(),
       body: IndexedStack(
         index: index,
         children: [for (final t in tabs) t.screen],
@@ -97,6 +100,7 @@ class _AppShellState extends ConsumerState<AppShell> {
   static const _requesterTabs = <_TabDef>[
     _TabDef(
       label: 'Request',
+      title: 'New Request',
       icon: Icons.add_circle_outline,
       selectedIcon: Icons.add_circle,
       screen: NewRequestScreen(),
@@ -125,6 +129,7 @@ class _AppShellState extends ConsumerState<AppShell> {
   static const _volunteerTabs = <_TabDef>[
     _TabDef(
       label: 'Available',
+      title: 'Available Requests',
       icon: Icons.explore_outlined,
       selectedIcon: Icons.explore,
       screen: AvailableRequestsScreen(),
@@ -156,10 +161,14 @@ class _TabDef {
     required this.icon,
     required this.selectedIcon,
     required this.screen,
+    this.title,
   });
 
   final String label;
   final IconData icon;
   final IconData selectedIcon;
   final Widget screen;
+
+  /// Optional AppBar title (defaults to [label]).
+  final String? title;
 }
