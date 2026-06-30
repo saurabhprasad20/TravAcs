@@ -133,6 +133,17 @@ exists in `firebase_messaging_repository.dart` registerToken.)
 
 ---
 
+## Phone Auth / SMS hardening
+- ✅ **SMS region tightened to India-only** — `smsRegionConfig.allowlistOnly = ['IN']`
+  (previously allow-all), applied via the gitignored helper `set_sms_region_india.js`. Real
+  +91 numbers still receive the OTP; other countries are blocked; the fixed test numbers are
+  unaffected (they bypass region rules). Reversible by re-running `enable_phone.js`.
+- ⬜ **App verification for a Play release:** register the **release** key's SHA-256 in Firebase
+  and enable **Play Integrity** so real-number sign-in skips the reCAPTCHA fallback (debug /
+  sideloaded builds currently fall back to a reCAPTCHA web challenge before the SMS is sent).
+- ⬜ **SMS quota/cost:** Phone Auth has a small daily free quota; beyond it SMS are billed
+  (Blaze is active). Monitor before launch.
+
 ## Deferred items to fold into the next improvement cycle
 - **On-device M8 runtime pass:** airplane-mode → friendly "No internet"; wrong trip OTP;
   accept an already-full request; non-admin hitting an admin path; forced crash → friendly
