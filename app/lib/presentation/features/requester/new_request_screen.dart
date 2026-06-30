@@ -59,11 +59,8 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
   int get _estimate => Request.computeEstimate(_durationMinutes, _numTravAcsers);
 
   void _setTravellers(int v) {
-    setState(() {
-      _numTravellers = v.clamp(1, 20);
-      // Keep TravAcsers within [min, travellers].
-      _numTravAcsers = _numTravAcsers.clamp(_minTravAcsers, _numTravellers);
-    });
+    // TravAcser count is an independent 1–10 choice (see _travAcserDropdown).
+    setState(() => _numTravellers = v.clamp(1, 20));
   }
 
   Future<void> _pickCustomDate() async {
@@ -214,7 +211,7 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                           const SizedBox(height: 12),
-                          _travAcserSlider(),
+                          _travAcserDropdown(),
                           const SizedBox(height: 12),
                           DropdownButtonFormField<GenderPreference>(
                             value: _genderPreference,
@@ -315,36 +312,23 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
         child: Text(text, style: Theme.of(context).textTheme.titleSmall),
       );
 
-  /// TravAcser count as a slider (seek bar). Falls back to a static line when
-  /// only one is possible (a Slider needs min < max).
-  Widget _travAcserSlider() {
-    final canRange = _numTravellers > _minTravAcsers;
-    final label = 'TravAcsers required: $_numTravAcsers '
-        '(suggested $_minTravAcsers)';
-    return Semantics(
-      slider: true,
-      label: label,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: Theme.of(context).textTheme.labelLarge),
-          if (canRange)
-            Slider(
-              value: _numTravAcsers.toDouble(),
-              min: _minTravAcsers.toDouble(),
-              max: _numTravellers.toDouble(),
-              divisions: _numTravellers - _minTravAcsers,
-              label: '$_numTravAcsers',
-              onChanged: (v) => setState(() => _numTravAcsers = v.round()),
-            )
-          else
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Text('1 TravAcser',
-                  style: Theme.of(context).textTheme.bodyMedium),
-            ),
-        ],
+  /// TravAcser count as an accessible 1–10 dropdown (a slider with few
+  /// divisions snapped between extremes and was hard to use with a screen
+  /// reader). The count is independent of the traveller count.
+  Widget _travAcserDropdown() {
+    return DropdownButtonFormField<int>(
+      value: _numTravAcsers,
+      decoration: InputDecoration(
+        labelText: 'TravAcsers required',
+        helperText: 'Suggested $_minTravAcsers — one TravAcser assists up to '
+            '2 travellers',
+        helperMaxLines: 2,
       ),
+      items: [
+        for (var i = 1; i <= 10; i++)
+          DropdownMenuItem(value: i, child: Text('$i')),
+      ],
+      onChanged: (v) => setState(() => _numTravAcsers = v ?? 1),
     );
   }
 
@@ -355,31 +339,33 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
     int min = 0,
     int? max,
   }) {
-    return Semantics(
-      label: '$label: $value',
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(
-          children: [
-            Expanded(child: Text(label)),
-            IconButton(
-              icon: const Icon(Icons.remove_circle_outline),
-              onPressed: value > min ? () => onChanged(value - 1) : null,
-              tooltip: 'Decrease',
-            ),
-            SizedBox(
-              width: 28,
-              child: Text('$value', textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.titleMedium),
-            ),
-            IconButton(
-              icon: const Icon(Icons.add_circle_outline),
-              onPressed:
-                  (max == null || value < max) ? () => onChanged(value + 1) : null,
-              tooltip: 'Increase',
-            ),
-          ],
-        ),
+    // No wrapping Semantics(label:) here — that merges/orphans the child button
+    // semantics. The label Text names the field; each Icon carries its own
+    // semanticLabel so screen readers announce the +/- buttons reliably.
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(child: Text(label)),
+          IconButton(
+            icon: const Icon(Icons.remove_circle_outline,
+                semanticLabel: 'Decrease'),
+            onPressed: value > min ? () => onChanged(value - 1) : null,
+            tooltip: 'Decrease',
+          ),
+          SizedBox(
+            width: 28,
+            child: Text('$value', textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleMedium),
+          ),
+          IconButton(
+            icon: const Icon(Icons.add_circle_outline,
+                semanticLabel: 'Increase'),
+            onPressed:
+                (max == null || value < max) ? () => onChanged(value + 1) : null,
+            tooltip: 'Increase',
+          ),
+        ],
       ),
     );
   }

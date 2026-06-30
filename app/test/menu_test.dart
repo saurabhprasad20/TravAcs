@@ -36,7 +36,9 @@ void main() {
     ]) {
       expect(find.text(label), findsOneWidget, reason: 'missing: $label');
     }
-    expect(find.byTooltip('Close menu'), findsOneWidget);
+    // The dismiss button must carry a real semantic LABEL (not only a tooltip),
+    // so TalkBack announces its name.
+    expect(find.bySemanticsLabel('Close menu'), findsOneWidget);
   });
 
   testWidgets('the close button dismisses the drawer', (tester) async {
