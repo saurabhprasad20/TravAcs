@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/accessibility/announce.dart';
+import '../../../core/config/constants.dart';
 import '../../../core/error/failure.dart';
 import '../../../domain/entities/request.dart';
 import '../../providers/profile_providers.dart';
@@ -22,8 +23,11 @@ class AvailableRequestsScreen extends ConsumerWidget {
     return Scaffold(
       body: !approved
           ? _message(context,
-              'Your account is pending verification. Once an admin approves you, '
-              'requests in your city will appear here.')
+              'Your account is pending verification. To request verification, '
+              'contact the TravAcs team at ${AppConstants.supportEmail} or '
+              '${AppConstants.supportPhone}. Once an admin approves you, you '
+              'will get a notification and requests in your city will appear '
+              'here.')
           : !hasCity
               ? _message(context,
                   'Set your service area (state & city) on the Profile tab to see '
@@ -67,29 +71,44 @@ class AvailableRequestsScreen extends ConsumerWidget {
       );
 }
 
-class _AcceptButton extends ConsumerWidget {
+class _AcceptButton extends ConsumerStatefulWidget {
   const _AcceptButton({required this.request});
   final Request request;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final busy = ref.watch(requestControllerProvider).isLoading;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text('${request.acceptedCount}/${request.numTravAcsers} filled'),
-        const SizedBox(width: 12),
-        FilledButton(
-          onPressed: busy ? null : () => _accept(context, ref),
-          child: const Text('Accept'),
-        ),
-      ],
+  ConsumerState<_AcceptButton> createState() => _AcceptButtonState();
+}
+
+class _AcceptButtonState extends ConsumerState<_AcceptButton> {
+  // Local (per-card) busy flag. Watching the SHARED controller's isLoading here
+  // would disable/flash every card's button when any one is tapped, making it
+  // look as if all requests were being accepted. Local state keeps the spinner
+  // scoped to the card the user actually tapped.
+  bool _busy = false;
+
+  @override
+  Widget build(BuildContext context) {
+    // The "X/Y filled" count is already shown in the card body, so this action
+    // is just the button — keeping it a single widget avoids the horizontal
+    // overflow that previously clipped it off-screen at large text scales.
+    return FilledButton(
+      onPressed: _busy ? null : () => _accept(context, ref),
+      child: _busy
+          ? const SizedBox(
+              height: 18,
+              width: 18,
+              child: CircularProgressIndicator(strokeWidth: 2))
+          : const Text('Accept'),
     );
   }
 
   Future<void> _accept(BuildContext context, WidgetRef ref) async {
-    final ok =
-        await ref.read(requestControllerProvider.notifier).accept(request.id);
+    setState(() => _busy = true);
+    final ok = await ref
+        .read(requestControllerProvider.notifier)
+        .accept(widget.request.id);
+    if (!mounted) return;
+    setState(() => _busy = false);
     if (!context.mounted) return;
     if (ok) {
       A11y.announce(context, 'Accepted. See it under My Trips.');

@@ -1,15 +1,43 @@
 import {onDocumentCreated} from "firebase-functions/v2/firestore";
 import {onCall, HttpsError} from "firebase-functions/v2/https";
+import {onSchedule} from "firebase-functions/v2/scheduler";
 import {logger} from "firebase-functions/v2";
+import {defineSecret} from "firebase-functions/params";
 import {initializeApp} from "firebase-admin/app";
 import {getFirestore, FieldValue, Timestamp} from "firebase-admin/firestore";
 import {getMessaging} from "firebase-admin/messaging";
+import * as crypto from "crypto";
 
 initializeApp();
 const db = getFirestore();
 
+// Razorpay API credentials — set via `firebase functions:secrets:set`. The
+// secret NEVER ships to the client; the client only receives the order id + key
+// id from createRazorpayOrder at runtime.
+const RAZORPAY_KEY_ID = defineSecret("RAZORPAY_KEY_ID");
+const RAZORPAY_KEY_SECRET = defineSecret("RAZORPAY_KEY_SECRET");
+
 const REGION = "asia-south2";
+// Cloud Scheduler is not offered in asia-south2 (Delhi), so the two scheduled
+// functions run in asia-south1 (Mumbai). Callables stay in asia-south2 to match
+// the client (functionsProvider).
+const SCHEDULER_REGION = "asia-south1";
 const HOURLY_RATE_INR = 135;
+/** India Standard Time offset (UTC+5:30) in milliseconds. */
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+
+/**
+ * Calendar-date key (YYYY-M-D) for a timestamp in IST, used to compare whether
+ * two trips fall on the "same day" for the caller. Returns null for a missing
+ * timestamp.
+ */
+function istDateKey(
+  ts: FirebaseFirestore.Timestamp | undefined | null
+): string | null {
+  if (!ts) return null;
+  const d = new Date(ts.toMillis() + IST_OFFSET_MS);
+  return `${d.getUTCFullYear()}-${d.getUTCMonth() + 1}-${d.getUTCDate()}`;
+}
 
 /** Sends a data+notification message to all of a user's device tokens. */
 async function pushToUser(
@@ -177,6 +205,28 @@ export const acceptRequest = onCall({region: REGION}, async (req) => {
     }
     const reqProfile = (await tx.get(db.collection("profiles").doc(r.requesterId))).data() || {};
 
+    // One accepted trip per day: reject if the caller already has an active
+    // assignment (assigned/started) on the SAME calendar date (IST) as this
+    // request. Read inside the transaction so all reads precede the writes.
+    const targetDay = istDateKey(r.scheduledStartAt);
+    if (targetDay) {
+      const mine = await tx.get(
+        db.collectionGroup("assignments").where("volunteerId", "==", uid)
+      );
+      const clash = mine.docs.some((d) => {
+        const ad = d.data();
+        const active = ad.tripStatus === "assigned" || ad.tripStatus === "started";
+        return active && istDateKey(ad.scheduledStartAt) === targetDay;
+      });
+      if (clash) {
+        throw new HttpsError(
+          "failed-precondition",
+          "You can't accept more than one trip on a day.",
+          {code: "ONE_PER_DAY"}
+        );
+      }
+    }
+
     // ---- writes ----
     const perTravAcserInr = Math.round(
       ((r.expectedDurationMinutes ?? 60) / 60) * HOURLY_RATE_INR
@@ -284,10 +334,12 @@ export const completeTrip = onCall({region: REGION}, async (req) => {
     await reqRef.update({status: "completed", updatedAt: FieldValue.serverTimestamp()});
   }
 
-  // Notify both parties.
+  // Notify both parties that the trip ended. This is NOT a payment
+  // notification — the amount is only "pending" here; the actual payment
+  // notifications are sent from markPaid / markReceived once the User pays.
   await Promise.all([
-    pushToUser(out.requesterId, {title: "Trip completed", body: `Amount: ₹${out.amountInr}.`}, {type: "trip_completed", requestId}).catch(() => {}),
-    pushToUser(volunteerId, {title: "Trip completed", body: `You earned ₹${out.amountInr}.`}, {type: "trip_completed", requestId}).catch(() => {}),
+    pushToUser(out.requesterId, {title: "Trip ended", body: `Amount due: ₹${out.amountInr} (payment pending). Mark it paid once you pay.`}, {type: "trip_completed", requestId}).catch(() => {}),
+    pushToUser(volunteerId, {title: "Trip ended", body: `Amount ₹${out.amountInr} — payment pending from the User.`}, {type: "trip_completed", requestId}).catch(() => {}),
   ]);
 
   return {ok: true, code: "COMPLETED", amountInr: out.amountInr};
@@ -323,32 +375,101 @@ export const rescheduleTrip = onCall({region: REGION}, async (req) => {
       throw new HttpsError("failed-precondition", "This trip can no longer be rescheduled.", {code: "INVALID_STATE"});
     }
     const existingStart: FirebaseFirestore.Timestamp | undefined = r.scheduledStartAt;
-    if (existingStart && Date.now() >= existingStart.toMillis()) {
+    // A trip is "started" only if it was accepted AND its time has arrived. An
+    // unaccepted (acceptedCount 0) request never starts on time alone, so it
+    // stays reschedulable even if its original time has passed.
+    const accepted: number = r.acceptedCount ?? 0;
+    if (accepted > 0 && existingStart && Date.now() >= existingStart.toMillis()) {
       throw new HttpsError("failed-precondition", "The trip has already started.", {code: "ALREADY_STARTED"});
     }
     const assigns = await tx.get(reqRef.collection("assignments"));
     const newDate = Timestamp.fromMillis(scheduledDateMs);
     const newStartAt = Timestamp.fromMillis(scheduledStartAtMs);
+    // Each still-assigned TravAcser must re-confirm the new time. They get up to
+    // 10% of the remaining time (now → new start) to respond before the slot is
+    // auto-released and the request reopens (enforced by
+    // expireRescheduleConfirmations).
+    const remainingMs = Math.max(0, scheduledStartAtMs - Date.now());
+    const rescheduleDeadlineAt = Timestamp.fromMillis(
+      Date.now() + Math.round(remainingMs * 0.1)
+    );
     tx.update(reqRef, {
       scheduledDate: newDate,
       startTime,
       scheduledStartAt: newStartAt,
+      // Let the "no TravAcser found" warning fire again for the new time.
+      noTravAcserNotifiedAt: FieldValue.delete(),
       updatedAt: FieldValue.serverTimestamp(),
     });
     assigns.docs.forEach((d) => {
       if (d.data().tripStatus === "assigned") {
         volunteerIds.push(d.id);
-        tx.update(d.ref, {scheduledDate: newDate, startTime, scheduledStartAt: newStartAt});
+        tx.update(d.ref, {
+          scheduledDate: newDate,
+          startTime,
+          scheduledStartAt: newStartAt,
+          rescheduleStatus: "pending",
+          rescheduleDeadlineAt,
+        });
       }
     });
   });
 
   await Promise.all(
     volunteerIds.map((v) =>
-      pushToUser(v, {title: "Trip rescheduled", body: "The User changed the trip time."}, {type: "trip_rescheduled", requestId}).catch(() => {})
+      pushToUser(v, {title: "Trip rescheduled", body: "The User changed the trip time. Open TravAcs to continue or cancel."}, {type: "trip_rescheduled", requestId}).catch(() => {})
     )
   );
   return {ok: true, code: "RESCHEDULED"};
+});
+
+/**
+ * A TravAcser responds to a rescheduled trip: continue (keep the slot) or
+ * cancel (release it and reopen the request to the feed).
+ */
+export const respondReschedule = onCall({region: REGION}, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Please sign in.");
+  const {requestId, accept} = req.data ?? {};
+  if (!requestId || typeof accept !== "boolean") {
+    throw new HttpsError("invalid-argument", "requestId and accept (bool) required.");
+  }
+  const reqRef = db.collection("requests").doc(requestId);
+  const assignRef = reqRef.collection("assignments").doc(uid);
+  let requesterId: string | undefined;
+  await db.runTransaction(async (tx) => {
+    const reqDoc = await tx.get(reqRef);
+    const r = reqDoc.data();
+    if (!r) throw new HttpsError("not-found", "Request not found.");
+    requesterId = r.requesterId;
+    const a = (await tx.get(assignRef)).data();
+    if (!a) throw new HttpsError("not-found", "You have no assignment here.");
+    if (a.rescheduleStatus !== "pending") {
+      throw new HttpsError("failed-precondition", "There is no reschedule to respond to.", {code: "NO_PENDING"});
+    }
+    if (accept) {
+      tx.update(assignRef, {
+        rescheduleStatus: "confirmed",
+        rescheduleDeadlineAt: FieldValue.delete(),
+      });
+    } else {
+      tx.update(assignRef, {
+        tripStatus: "cancelled",
+        rescheduleStatus: "declined",
+        rescheduleDeadlineAt: FieldValue.delete(),
+      });
+      const accepted: number = r.acceptedCount ?? 0;
+      tx.update(reqRef, {
+        acceptedCount: Math.max(0, accepted - 1),
+        status: r.status === "assigned" ? "broadcast" : r.status,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+  });
+  if (!accept && requesterId) {
+    await pushToUser(requesterId, {title: "A TravAcser declined the new time", body: "A TravAcser couldn't make the rescheduled trip, so we've reopened your request."}, {type: "trip_cancelled", requestId}).catch(() => {});
+  }
+  return {ok: true, code: accept ? "CONFIRMED" : "DECLINED"};
 });
 
 /**
@@ -475,6 +596,120 @@ export const markReceived = onCall({region: REGION}, async (req) => {
   return {ok: true, code: "RECEIVED"};
 });
 
+/**
+ * Creates a Razorpay order for a completed assignment's amount and returns the
+ * order id + key id so the client can open the Razorpay checkout. Requester
+ * only. The Key Secret stays server-side (Secret Manager).
+ */
+export const createRazorpayOrder = onCall(
+  {region: REGION, secrets: [RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET]},
+  async (req) => {
+    const uid = req.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Please sign in.");
+    const {requestId, volunteerId} = req.data ?? {};
+    if (!requestId || !volunteerId) {
+      throw new HttpsError("invalid-argument", "requestId and volunteerId required.");
+    }
+    const reqRef = db.collection("requests").doc(requestId);
+    const assignRef = reqRef.collection("assignments").doc(volunteerId);
+    const [reqSnap, aSnap] = await Promise.all([reqRef.get(), assignRef.get()]);
+    const r = reqSnap.data();
+    const a = aSnap.data();
+    if (!r || !a) throw new HttpsError("not-found", "Trip not found.");
+    if (r.requesterId !== uid) {
+      throw new HttpsError("permission-denied", "Only the User can pay.");
+    }
+    if (a.tripStatus !== "completed") {
+      throw new HttpsError("failed-precondition", "The trip is not completed yet.", {code: "INVALID_STATE"});
+    }
+    if (a.requesterPaidAt) {
+      throw new HttpsError("failed-precondition", "This trip is already paid.", {code: "ALREADY_PAID"});
+    }
+    const amountInr: number = a.amountInr ?? 0;
+    if (amountInr <= 0) {
+      throw new HttpsError("failed-precondition", "There is nothing to pay for this trip.", {code: "NO_AMOUNT"});
+    }
+    const keyId = RAZORPAY_KEY_ID.value();
+    const auth = Buffer.from(`${keyId}:${RAZORPAY_KEY_SECRET.value()}`).toString("base64");
+    const resp = await fetch("https://api.razorpay.com/v1/orders", {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "Authorization": `Basic ${auth}`},
+      body: JSON.stringify({
+        amount: amountInr * 100, // paise
+        currency: "INR",
+        receipt: `${requestId}_${volunteerId}`.slice(0, 40),
+        notes: {requestId, volunteerId},
+      }),
+    });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => "");
+      logger.error("Razorpay order creation failed", {status: resp.status, text});
+      throw new HttpsError("internal", "Could not start the payment. Please try again.");
+    }
+    const order = (await resp.json()) as {id: string};
+    await assignRef.update({razorpayOrderId: order.id});
+    return {
+      orderId: order.id,
+      keyId,
+      amountPaise: amountInr * 100,
+      amountInr,
+      currency: "INR",
+    };
+  }
+);
+
+/**
+ * Verifies a Razorpay payment signature (HMAC-SHA256 with the Key Secret) and,
+ * if valid, marks the assignment paid (same transition as markPaid). Requester
+ * only.
+ */
+export const verifyRazorpayPayment = onCall(
+  {region: REGION, secrets: [RAZORPAY_KEY_SECRET]},
+  async (req) => {
+    const uid = req.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Please sign in.");
+    const {requestId, volunteerId, razorpayOrderId, razorpayPaymentId, razorpaySignature} =
+      req.data ?? {};
+    if (!requestId || !volunteerId || !razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+      throw new HttpsError("invalid-argument", "Missing payment verification fields.");
+    }
+    const expected = crypto
+      .createHmac("sha256", RAZORPAY_KEY_SECRET.value())
+      .update(`${razorpayOrderId}|${razorpayPaymentId}`)
+      .digest("hex");
+    const sigOk =
+      expected.length === String(razorpaySignature).length &&
+      crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(String(razorpaySignature)));
+    if (!sigOk) {
+      throw new HttpsError("permission-denied", "The payment could not be verified.", {code: "BAD_SIGNATURE"});
+    }
+    const reqRef = db.collection("requests").doc(requestId);
+    const assignRef = reqRef.collection("assignments").doc(volunteerId);
+    await db.runTransaction(async (tx) => {
+      const reqDoc = await tx.get(reqRef);
+      if (reqDoc.data()?.requesterId !== uid) {
+        throw new HttpsError("permission-denied", "Only the User can pay.");
+      }
+      const a = (await tx.get(assignRef)).data();
+      if (!a) throw new HttpsError("not-found", "Assignment not found.");
+      if (a.tripStatus !== "completed") {
+        throw new HttpsError("failed-precondition", "The trip is not completed yet.", {code: "INVALID_STATE"});
+      }
+      if (a.razorpayOrderId && a.razorpayOrderId !== razorpayOrderId) {
+        throw new HttpsError("failed-precondition", "The payment order did not match this trip.", {code: "ORDER_MISMATCH"});
+      }
+      tx.update(assignRef, {
+        razorpayOrderId,
+        razorpayPaymentId,
+        requesterPaidAt: a.requesterPaidAt ?? FieldValue.serverTimestamp(),
+        paymentStatus: paymentStatusOf(true, a.travAcserReceivedAt),
+      });
+    });
+    await pushToUser(volunteerId, {title: "Payment received", body: "The User paid you via Razorpay."}, {type: "payment_marked", requestId}).catch(() => {});
+    return {ok: true, code: "PAID"};
+  }
+);
+
 /** Mutual rating (User↔TravAcser) for a completed assignment. */
 export const submitRating = onCall({region: REGION}, async (req) => {
   const uid = req.auth?.uid;
@@ -531,6 +766,31 @@ export const submitRating = onCall({region: REGION}, async (req) => {
   return {ok: true, code: "RATED"};
 });
 
+/**
+ * Admin logs a manually-booked (e.g. phone) trip into the `tripLogs` telemetry
+ * collection. Admin-claim only. Two required fields (user + TravAcser details)
+ * plus the trip date; an optional note.
+ */
+export const logManualTrip = onCall({region: REGION}, async (req) => {
+  if (req.auth?.token?.admin !== true) {
+    throw new HttpsError("permission-denied", "Admin only.");
+  }
+  const {userDetails, travAcserDetails, tripDateMs, note} = req.data ?? {};
+  if (!userDetails || !travAcserDetails || typeof tripDateMs !== "number") {
+    throw new HttpsError("invalid-argument", "userDetails, travAcserDetails and tripDate are required.");
+  }
+  const ref = await db.collection("tripLogs").add({
+    source: "manual",
+    userDetails: String(userDetails),
+    travAcserDetails: String(travAcserDetails),
+    tripDate: Timestamp.fromMillis(tripDateMs),
+    note: note ? String(note) : null,
+    createdBy: req.auth!.uid,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  return {ok: true, code: "LOGGED", id: ref.id};
+});
+
 /** Admin approves/rejects a TravAcser (admin custom claim required). */
 export const setVerification = onCall({region: REGION}, async (req) => {
   if (req.auth?.token?.admin !== true) {
@@ -563,3 +823,103 @@ export const setVerification = onCall({region: REGION}, async (req) => {
   ).catch(() => {});
   return {ok: true, code: decision.toUpperCase()};
 });
+
+/**
+ * Periodically auto-expires unaccepted requests (item 2):
+ *   • within 30 min of the scheduled start, still unaccepted → warn the User
+ *     once ("we couldn't find a TravAcser; reschedule or it will be cancelled").
+ *   • at/after the scheduled start, still unaccepted → auto-cancel + notify.
+ */
+export const expireStaleRequests = onSchedule(
+  {region: SCHEDULER_REGION, schedule: "every 5 minutes"},
+  async () => {
+    const now = Date.now();
+    const soon = Timestamp.fromMillis(now + 30 * 60000);
+    const snap = await db
+      .collection("requests")
+      .where("status", "==", "broadcast")
+      .where("scheduledStartAt", "<=", soon)
+      .get();
+    for (const doc of snap.docs) {
+      const r = doc.data();
+      if ((r.acceptedCount ?? 0) > 0) continue;
+      const startMs = (r.scheduledStartAt as Timestamp | undefined)?.toMillis();
+      if (startMs == null) continue;
+      try {
+        if (now >= startMs) {
+          await doc.ref.update({
+            status: "cancelled",
+            cancelReason: "no_travacser",
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+          await pushToUser(
+            r.requesterId,
+            {title: "Trip auto-cancelled", body: "We couldn't find a TravAcser in time, so your trip was cancelled. You can create a new request."},
+            {type: "no_travacser_cancelled", requestId: doc.id}
+          ).catch(() => {});
+        } else if (!r.noTravAcserNotifiedAt) {
+          await doc.ref.update({noTravAcserNotifiedAt: FieldValue.serverTimestamp()});
+          await pushToUser(
+            r.requesterId,
+            {title: "No TravAcser yet", body: "Sorry, we couldn't find a TravAcser. You can reschedule, or the trip will be auto-cancelled at its scheduled time."},
+            {type: "no_travacser_warning", requestId: doc.id}
+          ).catch(() => {});
+        }
+      } catch (e) {
+        logger.warn(`expireStaleRequests failed for ${doc.id}`, e);
+      }
+    }
+  }
+);
+
+/**
+ * Periodically auto-releases rescheduled assignments the TravAcser didn't
+ * confirm before the deadline (item 3): cancels the slot, decrements the count
+ * and reopens the request to the feed.
+ */
+export const expireRescheduleConfirmations = onSchedule(
+  {region: SCHEDULER_REGION, schedule: "every 2 minutes"},
+  async () => {
+    const now = Timestamp.now();
+    const snap = await db
+      .collectionGroup("assignments")
+      .where("rescheduleStatus", "==", "pending")
+      .where("rescheduleDeadlineAt", "<=", now)
+      .get();
+    for (const doc of snap.docs) {
+      const reqRef = doc.ref.parent.parent;
+      if (!reqRef) continue;
+      const volunteerId = doc.data().volunteerId as string | undefined;
+      let requesterId: string | undefined;
+      try {
+        await db.runTransaction(async (tx) => {
+          const reqDoc = await tx.get(reqRef);
+          const r = reqDoc.data();
+          if (!r) return;
+          requesterId = r.requesterId;
+          const cur = (await tx.get(doc.ref)).data();
+          if (!cur || cur.rescheduleStatus !== "pending") return; // changed meanwhile
+          tx.update(doc.ref, {
+            tripStatus: "cancelled",
+            rescheduleStatus: "expired",
+            rescheduleDeadlineAt: FieldValue.delete(),
+          });
+          const accepted: number = r.acceptedCount ?? 0;
+          tx.update(reqRef, {
+            acceptedCount: Math.max(0, accepted - 1),
+            status: r.status === "assigned" ? "broadcast" : r.status,
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+        });
+        if (volunteerId) {
+          await pushToUser(volunteerId, {title: "Reschedule expired", body: "You didn't confirm the new trip time in time, so the trip was released."}, {type: "reschedule_expired", requestId: reqRef.id}).catch(() => {});
+        }
+        if (requesterId) {
+          await pushToUser(requesterId, {title: "A TravAcser dropped off", body: "A TravAcser didn't confirm the new time, so we've reopened your request."}, {type: "reschedule_expired", requestId: reqRef.id}).catch(() => {});
+        }
+      } catch (e) {
+        logger.warn(`expireRescheduleConfirmations failed for ${doc.ref.path}`, e);
+      }
+    }
+  }
+);

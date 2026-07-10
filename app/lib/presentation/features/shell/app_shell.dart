@@ -14,6 +14,7 @@ import '../volunteer/my_trips_screen.dart';
 import '../volunteer/trip_history_screen.dart' as vol;
 import '../../providers/messaging_providers.dart';
 import '../../providers/profile_providers.dart';
+import '../../providers/shell_providers.dart';
 
 /// WhatsApp/Instagram-style bottom-tab shell (design §10). A persistent
 /// [NavigationBar] over an [IndexedStack] (preserves each tab's state). Tabs are
@@ -26,7 +27,6 @@ class AppShell extends ConsumerStatefulWidget {
 }
 
 class _AppShellState extends ConsumerState<AppShell> {
-  int _index = 0;
   final List<StreamSubscription<dynamic>> _subs = [];
 
   @override
@@ -36,8 +36,12 @@ class _AppShellState extends ConsumerState<AppShell> {
     // messages. Runs once the user is in the shell (authenticated + profiled).
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final messaging = ref.read(messagingRepositoryProvider);
-      messaging.registerToken();
-      _subs.add(messaging.onTokenRefresh.listen(messaging.onRefresh));
+      // Fire-and-forget: registerToken() is already fully guarded, but add a
+      // safety catch so an un-awaited rejection can never become an uncaught
+      // (fatal) error.
+      unawaited(messaging.registerToken().catchError((_) {}));
+      _subs.add(messaging.onTokenRefresh
+          .listen(messaging.onRefresh, onError: (_) {}));
       _subs.add(messaging.onForegroundMessage.listen((m) {
         final text = m.notification?.body ?? m.notification?.title;
         if (text != null && mounted) {
@@ -46,7 +50,7 @@ class _AppShellState extends ConsumerState<AppShell> {
             ..clearSnackBars()
             ..showSnackBar(SnackBar(content: Text(text)));
         }
-      }));
+      }, onError: (_) {}));
     });
   }
 
@@ -67,7 +71,7 @@ class _AppShellState extends ConsumerState<AppShell> {
 
     final tabs = my.profile.isVolunteer ? _volunteerTabs : _requesterTabs;
     // Guard against an out-of-range index if the role/tab set changes.
-    final index = _index.clamp(0, tabs.length - 1);
+    final index = ref.watch(shellTabIndexProvider).clamp(0, tabs.length - 1);
 
     return Scaffold(
       appBar: AppBar(title: Text(tabs[index].title ?? tabs[index].label)),
@@ -79,7 +83,10 @@ class _AppShellState extends ConsumerState<AppShell> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
         onDestinationSelected: (i) {
-          setState(() => _index = i);
+          // Dismiss the keyboard so it never lingers or auto-opens when
+          // switching tabs (e.g. back to the Request form).
+          FocusManager.instance.primaryFocus?.unfocus();
+          ref.read(shellTabIndexProvider.notifier).set(i);
           // Confirm navigation for screen-reader users (the content swaps
           // silently otherwise).
           A11y.announce(context, '${tabs[i].label} tab');

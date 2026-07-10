@@ -4,6 +4,7 @@ import 'package:fpdart/fpdart.dart';
 import '../../../core/error/result.dart';
 import '../../../domain/entities/city.dart';
 import '../../../domain/entities/enums.dart';
+import '../../../domain/entities/razorpay_order.dart';
 import '../../../domain/repositories/request_repository.dart';
 import '../../providers/request_providers.dart';
 
@@ -88,6 +89,11 @@ class RequestController extends Notifier<AsyncValue<void>> {
   Future<bool> cancelTrip(String requestId) =>
       _run(() => _repo.cancelTrip(requestId));
 
+  /// TravAcser continues (accept=true) or cancels (accept=false) a rescheduled
+  /// trip.
+  Future<bool> respondReschedule(String requestId, bool accept) =>
+      _run(() => _repo.respondReschedule(requestId, accept));
+
   /// End/complete a TravAcser's trip (either party).
   Future<bool> completeTrip(String requestId, String volunteerId) =>
       _run(() => _repo.completeTrip(requestId, volunteerId));
@@ -95,6 +101,40 @@ class RequestController extends Notifier<AsyncValue<void>> {
   /// User marks a TravAcser's payment as Paid.
   Future<bool> markPaid(String requestId, String volunteerId) =>
       _run(() => _repo.markPaid(requestId, volunteerId));
+
+  /// Creates a Razorpay order for a completed assignment. Returns the order
+  /// (with key id) on success, or null on failure (error in state).
+  Future<RazorpayOrder?> createRazorpayOrder(
+      String requestId, String volunteerId) async {
+    state = const AsyncLoading();
+    final res = await _repo.createRazorpayOrder(requestId, volunteerId);
+    return res.match(
+      (f) {
+        state = AsyncError(f, StackTrace.current);
+        return null;
+      },
+      (order) {
+        state = const AsyncData(null);
+        return order;
+      },
+    );
+  }
+
+  /// Verifies a Razorpay payment server-side and marks the trip paid.
+  Future<bool> verifyRazorpayPayment({
+    required String requestId,
+    required String volunteerId,
+    required String razorpayOrderId,
+    required String razorpayPaymentId,
+    required String razorpaySignature,
+  }) =>
+      _run(() => _repo.verifyRazorpayPayment(
+            requestId: requestId,
+            volunteerId: volunteerId,
+            razorpayOrderId: razorpayOrderId,
+            razorpayPaymentId: razorpayPaymentId,
+            razorpaySignature: razorpaySignature,
+          ));
 
   /// TravAcser marks payment Received.
   Future<bool> markReceived(String requestId) =>

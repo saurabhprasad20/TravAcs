@@ -8,15 +8,25 @@ import '../../../domain/entities/assignment.dart';
 import '../../../domain/entities/enums.dart';
 import '../../providers/request_providers.dart';
 import '../requester/request_controller.dart';
+import '../shared/history_controls.dart';
 import '../shared/rating_sheet.dart';
 
 /// The TravAcser's completed/closed/cancelled trips (Trip History tab). Shows
-/// total earnings and per-trip "Mark received" + "Rate the User" (M12).
-class TripHistoryScreen extends ConsumerWidget {
+/// total earnings and per-trip "Mark received" + "Rate the User" (M12). Ordered
+/// newest first, filterable, and capped at the most recent [kHistoryPageSize].
+class TripHistoryScreen extends ConsumerStatefulWidget {
   const TripHistoryScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<TripHistoryScreen> createState() => _TripHistoryScreenState();
+}
+
+class _TripHistoryScreenState extends ConsumerState<TripHistoryScreen> {
+  HistoryFilter _filter = HistoryFilter.all;
+  HistorySort _sort = HistorySort.newest;
+
+  @override
+  Widget build(BuildContext context) {
     final assignments = ref.watch(myAssignmentsProvider);
 
     return Scaffold(
@@ -24,38 +34,85 @@ class TripHistoryScreen extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text(failureMessage(e))),
         data: (all) {
-          final list = all.where((a) => a.tripStatus.isTerminal).toList()
-            ..sort((x, y) => y.scheduledDate.compareTo(x.scheduledDate));
-          if (list.isEmpty) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text('No trips yet.', textAlign: TextAlign.center),
-              ),
-            );
-          }
-          final totalEarned = list
+          final terminal =
+              all.where((a) => a.tripStatus.isTerminal).toList();
+          // Earnings summary is computed over ALL completed trips (independent
+          // of the current filter / 15-item view) so the total is accurate.
+          final completed = terminal
               .where((a) => a.tripStatus != TripStatus.cancelled)
+              .toList();
+          final totalBilled =
+              completed.fold<int>(0, (sum, a) => sum + (a.amountInr ?? 0));
+          final totalReceived = completed
+              .where((a) => a.paymentStatus == PaymentStatus.confirmed)
               .fold<int>(0, (sum, a) => sum + (a.amountInr ?? 0));
-          return ListView(
-            padding: const EdgeInsets.all(12),
+
+          var list =
+              terminal.where((a) => _matchesFilter(a.tripStatus)).toList();
+          DateTime key(Assignment a) => a.acceptedAt ?? a.scheduledDate;
+          list.sort((x, y) => _sort == HistorySort.newest
+              ? key(y).compareTo(key(x))
+              : key(x).compareTo(key(y)));
+          final shown = list.take(kHistoryPageSize).toList();
+
+          return Column(
             children: [
-              Card(
-                color: Theme.of(context).colorScheme.primaryContainer,
-                child: ListTile(
-                  title: const Text('Total earned'),
-                  trailing: Text('₹$totalEarned',
-                      style: Theme.of(context).textTheme.titleLarge),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                child: Column(
+                  children: [
+                    Card(
+                      color: Theme.of(context).colorScheme.primaryContainer,
+                      child: Semantics(
+                        label: 'Total billed ₹$totalBilled, of which '
+                            '₹$totalReceived confirmed received',
+                        excludeSemantics: true,
+                        child: ListTile(
+                          title: const Text('Total earned (billed)'),
+                          subtitle: Text('₹$totalReceived confirmed received'),
+                          trailing: Text('₹$totalBilled',
+                              style: Theme.of(context).textTheme.titleLarge),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    HistoryControls(
+                      filter: _filter,
+                      sort: _sort,
+                      onFilterChanged: (f) => setState(() => _filter = f),
+                      onSortChanged: (s) => setState(() => _sort = s),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 8),
-              for (final a in list) _HistoryCard(a: a),
+              Expanded(
+                child: shown.isEmpty
+                    ? const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text('No trips yet.',
+                              textAlign: TextAlign.center),
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(12),
+                        itemCount: shown.length,
+                        itemBuilder: (context, i) => _HistoryCard(a: shown[i]),
+                      ),
+              ),
             ],
           );
         },
       ),
     );
   }
+
+  bool _matchesFilter(TripStatus s) => switch (_filter) {
+        HistoryFilter.all => true,
+        HistoryFilter.completed =>
+          s == TripStatus.completed || s == TripStatus.closed,
+        HistoryFilter.cancelled => s == TripStatus.cancelled,
+      };
 }
 
 class _HistoryCard extends ConsumerWidget {
@@ -83,9 +140,14 @@ class _HistoryCard extends ConsumerWidget {
                   const SizedBox(height: 4),
                   if (cancelled)
                     const Text('Cancelled')
-                  else
+                  else ...[
                     Text('${a.durationMinutes ?? 0} min · '
-                        '₹${a.amountInr ?? 0} earned · ${a.paymentStatus.label}'),
+                        '₹${a.amountInr ?? 0} earned'),
+                    Text('Breakdown: ${a.amountBreakdown}',
+                        style: Theme.of(context).textTheme.bodySmall),
+                    Text('Payment: ${a.paymentStatus.label}',
+                        style: Theme.of(context).textTheme.bodySmall),
+                  ],
                 ],
               ),
             ),

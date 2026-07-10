@@ -11,4 +11,13 @@ abstract interface class AdminRepository {
 
   /// Approve or reject a TravAcser (calls the `setVerification` function).
   FutureResult<Unit> setVerification(String uid, bool approved, String? reason);
+
+  /// Log a manually-booked (e.g. phone) trip into the `tripLogs` telemetry
+  /// collection via the admin-only `logManualTrip` function.
+  FutureResult<Unit> logManualTrip({
+    required String userDetails,
+    required String travAcserDetails,
+    required DateTime tripDate,
+    String? note,
+  });
 }

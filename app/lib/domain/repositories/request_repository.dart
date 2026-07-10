@@ -4,6 +4,7 @@ import '../../core/error/result.dart';
 import '../entities/assignment.dart';
 import '../entities/city.dart';
 import '../entities/enums.dart';
+import '../entities/razorpay_order.dart';
 import '../entities/request.dart';
 
 /// Assistance-request data access (design §5–§6). Matching is region-scoped on
@@ -33,6 +34,11 @@ abstract interface class RequestRepository {
   /// active TravAcsers; the query + rules enforce the region scope.
   Stream<List<Request>> watchAvailableRequests(City city);
 
+  /// All active (broadcast / assigned / started) requests across the platform,
+  /// soonest first — for the admin monitoring dashboard. Rules restrict this to
+  /// admins.
+  Stream<List<Request>> watchActiveTrips();
+
   /// Requester cancels their own request before anyone has accepted.
   FutureResult<Unit> cancelRequest(String id);
 
@@ -58,12 +64,33 @@ abstract interface class RequestRepository {
   /// just their own slot.
   FutureResult<Unit> cancelTrip(String requestId);
 
+  /// The TravAcser responds to a rescheduled trip: continue (keep the slot) or
+  /// cancel (release it and reopen the request). `respondReschedule` function.
+  FutureResult<Unit> respondReschedule(String requestId, bool accept);
+
   /// End/complete a TravAcser's trip (by that TravAcser or the requester). Trips
   /// auto-start at the scheduled time, so this is the only manual transition.
   FutureResult<Unit> completeTrip(String requestId, String volunteerId);
 
   /// The User marks a TravAcser's payment as Paid (two-sided).
   FutureResult<Unit> markPaid(String requestId, String volunteerId);
+
+  /// Creates a Razorpay order for a completed assignment's amount (requester
+  /// only). The client opens the checkout with the returned order + key id.
+  FutureResult<RazorpayOrder> createRazorpayOrder(
+    String requestId,
+    String volunteerId,
+  );
+
+  /// Verifies a Razorpay payment (signature) server-side and marks the
+  /// assignment paid on success.
+  FutureResult<Unit> verifyRazorpayPayment({
+    required String requestId,
+    required String volunteerId,
+    required String razorpayOrderId,
+    required String razorpayPaymentId,
+    required String razorpaySignature,
+  });
 
   /// The TravAcser marks payment Received (two-sided).
   FutureResult<Unit> markReceived(String requestId);

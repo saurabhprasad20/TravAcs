@@ -8,16 +8,27 @@ import '../../../domain/entities/assignment.dart';
 import '../../../domain/entities/enums.dart';
 import '../../../domain/entities/request.dart';
 import '../../providers/request_providers.dart';
+import '../shared/history_controls.dart';
 import '../shared/rating_sheet.dart';
+import '../shared/trip_payment.dart';
 import 'request_controller.dart';
 
 /// The requester's completed/closed/cancelled requests (Trip History tab).
-/// Mark-as-Paid + Rate live here, per assigned TravAcser (M12).
-class TripHistoryScreen extends ConsumerWidget {
+/// Mark-as-Paid + Rate live here, per assigned TravAcser (M12). Ordered newest
+/// first, filterable, and capped at the most recent [kHistoryPageSize] trips.
+class TripHistoryScreen extends ConsumerStatefulWidget {
   const TripHistoryScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<TripHistoryScreen> createState() => _TripHistoryScreenState();
+}
+
+class _TripHistoryScreenState extends ConsumerState<TripHistoryScreen> {
+  HistoryFilter _filter = HistoryFilter.all;
+  HistorySort _sort = HistorySort.newest;
+
+  @override
+  Widget build(BuildContext context) {
     final requests = ref.watch(myRequestsProvider);
 
     return Scaffold(
@@ -25,24 +36,54 @@ class TripHistoryScreen extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text(failureMessage(e))),
         data: (all) {
-          final list = all.where((r) => _isTerminal(r.status)).toList();
-          if (list.isEmpty) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text('No trips yet.', textAlign: TextAlign.center),
+          var list = all.where((r) => _isTerminal(r.status)).toList();
+          list = list.where((r) => _matchesFilter(r.status)).toList();
+          // Sort by creation time (fall back to scheduled date for legacy docs
+          // without a createdAt).
+          DateTime key(Request r) => r.createdAt ?? r.scheduledDate;
+          list.sort((a, b) => _sort == HistorySort.newest
+              ? key(b).compareTo(key(a))
+              : key(a).compareTo(key(b)));
+          final shown = list.take(kHistoryPageSize).toList();
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                child: HistoryControls(
+                  filter: _filter,
+                  sort: _sort,
+                  onFilterChanged: (f) => setState(() => _filter = f),
+                  onSortChanged: (s) => setState(() => _sort = s),
+                ),
               ),
-            );
-          }
-          return ListView.builder(
-            padding: const EdgeInsets.all(12),
-            itemCount: list.length,
-            itemBuilder: (context, i) => _HistoryCard(r: list[i]),
+              Expanded(
+                child: shown.isEmpty
+                    ? const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text('No trips yet.',
+                              textAlign: TextAlign.center),
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(12),
+                        itemCount: shown.length,
+                        itemBuilder: (context, i) => _HistoryCard(r: shown[i]),
+                      ),
+              ),
+            ],
           );
         },
       ),
     );
   }
+
+  bool _matchesFilter(RequestStatus s) => switch (_filter) {
+        HistoryFilter.all => true,
+        HistoryFilter.completed =>
+          s == RequestStatus.completed || s == RequestStatus.closed,
+        HistoryFilter.cancelled => s == RequestStatus.cancelled,
+      };
 
   static bool _isTerminal(RequestStatus s) =>
       s == RequestStatus.completed ||
@@ -119,15 +160,18 @@ class _AssignmentRow extends ConsumerWidget {
         children: [
           Text('${a.volunteerName} · ₹${a.amountInr ?? 0} · '
               '${a.paymentStatus.label}'),
+          Text('Breakdown: ${a.amountBreakdown}',
+              style: Theme.of(context).textTheme.bodySmall),
           const SizedBox(height: 4),
           Wrap(
             spacing: 8,
             runSpacing: 4,
             children: [
               if (a.requesterPaidAt == null)
-                OutlinedButton(
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.payments_outlined),
+                  label: const Text('Make payment'),
                   onPressed: busy ? null : () => _pay(context, ref),
-                  child: const Text('Mark as Paid'),
                 ),
               if (a.ratedByRequester)
                 Text('You rated ${a.requesterRatingStars}★')
@@ -145,11 +189,13 @@ class _AssignmentRow extends ConsumerWidget {
   }
 
   Future<void> _pay(BuildContext context, WidgetRef ref) async {
-    final ok = await ref
-        .read(requestControllerProvider.notifier)
-        .markPaid(requestId, a.volunteerId);
-    if (!context.mounted) return;
-    ok ? A11y.announce(context, 'Marked as paid.') : _err(context, ref);
+    await startTripPayment(
+      context,
+      ref,
+      requestId: requestId,
+      volunteerId: a.volunteerId,
+      contact: a.requesterPhone,
+    );
   }
 
   Future<void> _rate(BuildContext context, WidgetRef ref) async {

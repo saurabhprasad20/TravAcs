@@ -139,6 +139,13 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // ---- tripLogs (admin telemetry: app + manually-booked trips) ---------
+    match /tripLogs/{id} {
+      allow read: if isAdmin();
+      // Written only by Cloud Functions (Admin SDK).
+      allow write: if false;
+    }
+
     // ---- devices (FCM tokens) --------------------------------------------
     match /devices/{uid}/tokens/{token} {
       allow read, write: if isSignedIn() && request.auth.uid == uid;

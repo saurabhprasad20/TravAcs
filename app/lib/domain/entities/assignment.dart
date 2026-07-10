@@ -1,3 +1,4 @@
+import '../../core/config/constants.dart';
 import '../../core/util/scheduled_time.dart';
 import 'enums.dart';
 
@@ -32,6 +33,7 @@ class Assignment {
     this.paymentStatus = PaymentStatus.pending,
     this.requesterPaidAt,
     this.travAcserReceivedAt,
+    this.rescheduleStatus,
     this.requesterRatingStars,
     this.requesterRatingFeedback,
     this.volunteerRatingStars,
@@ -71,6 +73,11 @@ class Assignment {
   final PaymentStatus paymentStatus;
   final DateTime? requesterPaidAt;
   final DateTime? travAcserReceivedAt;
+
+  /// Reschedule-confirmation state (item 3). `'pending'` while the User has
+  /// rescheduled and this TravAcser must confirm; `'confirmed'`/`'declined'`/
+  /// `'expired'` otherwise. Null if never rescheduled.
+  final String? rescheduleStatus;
   final int? requesterRatingStars; // User's rating of the TravAcser
   final String? requesterRatingFeedback;
   final int? volunteerRatingStars; // TravAcser's rating of the User
@@ -78,6 +85,22 @@ class Assignment {
 
   bool get ratedByRequester => requesterRatingStars != null;
   bool get ratedByVolunteer => volunteerRatingStars != null;
+
+  /// True while this TravAcser still needs to confirm/decline a rescheduled
+  /// trip (item 3).
+  bool get needsRescheduleConfirm => rescheduleStatus == 'pending';
+
+  /// Human-readable breakdown of the trip amount, e.g. `"₹135/hr × 1.5 hr"`.
+  /// Uses the billed [durationMinutes] once the trip is completed, otherwise the
+  /// estimated duration. The single-TravAcser rate applies (this is one
+  /// TravAcser's slice of the request).
+  String get amountBreakdown {
+    final mins = durationMinutes ?? expectedDurationMinutes;
+    final hrs = mins / 60.0;
+    final hrsLabel =
+        hrs == hrs.roundToDouble() ? hrs.toStringAsFixed(0) : hrs.toStringAsFixed(1);
+    return '₹${AppConstants.hourlyRateInr}/hr × $hrsLabel hr';
+  }
 
   /// Auto-start anchor: the stored instant, or computed from date + startTime
   /// for legacy docs.

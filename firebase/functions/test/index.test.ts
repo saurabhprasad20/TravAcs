@@ -6,6 +6,7 @@
 // (emulators:exec sets FIRESTORE_EMULATOR_HOST + GCLOUD_PROJECT for us.)
 
 import * as assert from "assert";
+import * as crypto from "crypto";
 import functionsTest from "firebase-functions-test";
 
 const fft = functionsTest({projectId: "demo-travacs"});
@@ -19,10 +20,13 @@ const acceptRequest = fft.wrap(fns.acceptRequest);
 const completeTrip = fft.wrap(fns.completeTrip);
 const rescheduleTrip = fft.wrap(fns.rescheduleTrip);
 const cancelTrip = fft.wrap(fns.cancelTrip);
+const respondReschedule = fft.wrap(fns.respondReschedule);
 const markPaid = fft.wrap(fns.markPaid);
 const markReceived = fft.wrap(fns.markReceived);
 const submitRating = fft.wrap(fns.submitRating);
 const setVerification = fft.wrap(fns.setVerification);
+const verifyRazorpayPayment = fft.wrap(fns.verifyRazorpayPayment);
+const logManualTrip = fft.wrap(fns.logManualTrip);
 
 const HOUR = 60 * 60000;
 
@@ -117,6 +121,24 @@ describe("acceptRequest (slot-filling FCFS)", () => {
       /approved/i
     );
   });
+
+  it("rejects a second trip on the SAME day but allows a different day", async () => {
+    await approvedVolunteer("vol");
+    const day1 = Date.now() + 24 * HOUR;
+    await broadcastRequest("r1", {scheduledStartAt: Timestamp.fromMillis(day1)});
+    await broadcastRequest("r2", {scheduledStartAt: Timestamp.fromMillis(day1 + 3 * HOUR)});
+    await broadcastRequest("r3", {scheduledStartAt: Timestamp.fromMillis(day1 + 48 * HOUR)});
+
+    await acceptRequest(call({requestId: "r1"}, "vol"));
+    // Same calendar day -> blocked.
+    await assert.rejects(
+      () => acceptRequest(call({requestId: "r2"}, "vol")),
+      /more than one trip on a day/i
+    );
+    // Two days later -> allowed.
+    const res: any = await acceptRequest(call({requestId: "r3"}, "vol"));
+    assert.equal(res.code, "ACCEPTED");
+  });
 });
 
 describe("completeTrip (ends an auto-started trip + bills)", () => {
@@ -176,6 +198,52 @@ describe("rescheduleTrip", () => {
     assert.equal(r.startTime, "14:00");
     const a = (await db.doc("requests/r1/assignments/vol").get()).data()!;
     assert.equal(a.startTime, "14:00"); // denormalized to the assignment
+    assert.equal(a.rescheduleStatus, "pending"); // TravAcser must re-confirm
+    assert.ok(a.rescheduleDeadlineAt, "a confirm deadline is set");
+  });
+});
+
+describe("respondReschedule", () => {
+  async function seedPending(): Promise<void> {
+    await db.doc("requests/r1").set({
+      requesterId: "alice", status: "assigned", acceptedCount: 1,
+    });
+    await db.doc("requests/r1/assignments/vol").set({
+      volunteerId: "vol", requesterId: "alice", tripStatus: "assigned",
+      rescheduleStatus: "pending",
+      rescheduleDeadlineAt: Timestamp.fromMillis(Date.now() + HOUR),
+    });
+  }
+
+  it("continue keeps the slot and clears the pending flag", async () => {
+    await seedPending();
+    const res: any = await respondReschedule(call({requestId: "r1", accept: true}, "vol"));
+    assert.equal(res.code, "CONFIRMED");
+    const a = (await db.doc("requests/r1/assignments/vol").get()).data()!;
+    assert.equal(a.rescheduleStatus, "confirmed");
+    assert.equal(a.tripStatus, "assigned");
+  });
+
+  it("cancel releases the slot and reopens the request", async () => {
+    await seedPending();
+    const res: any = await respondReschedule(call({requestId: "r1", accept: false}, "vol"));
+    assert.equal(res.code, "DECLINED");
+    const a = (await db.doc("requests/r1/assignments/vol").get()).data()!;
+    assert.equal(a.tripStatus, "cancelled");
+    const r = (await db.doc("requests/r1").get()).data()!;
+    assert.equal(r.status, "broadcast");
+    assert.equal(r.acceptedCount, 0);
+  });
+
+  it("rejects when there is no pending reschedule", async () => {
+    await db.doc("requests/r1").set({requesterId: "alice", status: "assigned"});
+    await db.doc("requests/r1/assignments/vol").set({
+      volunteerId: "vol", requesterId: "alice", tripStatus: "assigned",
+    });
+    await assert.rejects(
+      () => respondReschedule(call({requestId: "r1", accept: true}, "vol")),
+      /no reschedule/i
+    );
   });
 });
 
@@ -258,6 +326,41 @@ describe("submitRating", () => {
   });
 });
 
+describe("verifyRazorpayPayment", () => {
+  it("accepts a valid signature and marks paid; rejects a bad one", async () => {
+    process.env.RAZORPAY_KEY_SECRET = "test_secret";
+    await db.doc("requests/r1").set({requesterId: "alice"});
+    await db.doc("requests/r1/assignments/vol").set({
+      volunteerId: "vol", requesterId: "alice", tripStatus: "completed",
+      paymentStatus: "pending", amountInr: 270, razorpayOrderId: "order_1",
+    });
+    const sig = crypto
+      .createHmac("sha256", "test_secret")
+      .update("order_1|pay_1")
+      .digest("hex");
+
+    // Wrong signature is rejected.
+    await assert.rejects(
+      () => verifyRazorpayPayment(call({
+        requestId: "r1", volunteerId: "vol", razorpayOrderId: "order_1",
+        razorpayPaymentId: "pay_1", razorpaySignature: "deadbeef",
+      }, "alice")),
+      /verified/i
+    );
+
+    // Correct signature marks the trip paid.
+    const res: any = await verifyRazorpayPayment(call({
+      requestId: "r1", volunteerId: "vol", razorpayOrderId: "order_1",
+      razorpayPaymentId: "pay_1", razorpaySignature: sig,
+    }, "alice"));
+    assert.equal(res.code, "PAID");
+    const a = (await db.doc("requests/r1/assignments/vol").get()).data()!;
+    assert.ok(a.requesterPaidAt);
+    assert.equal(a.razorpayPaymentId, "pay_1");
+    assert.equal(a.paymentStatus, "awaiting_other");
+  });
+});
+
 describe("setVerification (admin gate)", () => {
   it("an admin approves a TravAcser; a non-admin is denied", async () => {
     await db.doc("profiles/vol").set({role: "volunteer", verificationStatus: "pending"});
@@ -270,5 +373,27 @@ describe("setVerification (admin gate)", () => {
     await setVerification(call({uid: "vol", decision: "approved"}, "root", {admin: true}));
     const p = (await db.doc("profiles/vol").get()).data()!;
     assert.equal(p.verificationStatus, "approved");
+  });
+});
+
+describe("logManualTrip (admin gate)", () => {
+  it("an admin logs a manual trip; a non-admin is denied", async () => {
+    await assert.rejects(
+      () => logManualTrip(call({
+        userDetails: "Bob 999", travAcserDetails: "Vic 888",
+        tripDateMs: Date.now(),
+      }, "mallory")),
+      /admin/i
+    );
+
+    const res: any = await logManualTrip(call({
+      userDetails: "Bob 999", travAcserDetails: "Vic 888",
+      tripDateMs: Date.now(), note: "phone booking",
+    }, "root", {admin: true}));
+    assert.equal(res.code, "LOGGED");
+    const log = (await db.doc(`tripLogs/${res.id}`).get()).data()!;
+    assert.equal(log.source, "manual");
+    assert.equal(log.userDetails, "Bob 999");
+    assert.equal(log.createdBy, "root");
   });
 });

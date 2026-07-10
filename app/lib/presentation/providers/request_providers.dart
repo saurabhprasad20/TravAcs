@@ -5,6 +5,7 @@ import '../../data/repositories/firestore_request_repository.dart';
 import '../../domain/entities/assignment.dart';
 import '../../domain/entities/request.dart';
 import '../../domain/repositories/request_repository.dart';
+import 'auth_providers.dart';
 import 'core_providers.dart';
 import 'profile_providers.dart';
 
@@ -23,11 +24,15 @@ final requestRepositoryProvider = Provider<RequestRepository>((ref) {
 
 /// Live list of the signed-in requester's own requests.
 final myRequestsProvider = StreamProvider<List<Request>>((ref) {
+  // Rebuild when auth resolves (sign-in / sign-out); otherwise a stream built
+  // before the uid is available stays permanently empty until an app restart.
+  ref.watch(authStateChangesProvider);
   return ref.watch(requestRepositoryProvider).watchMyRequests();
 });
 
 /// The signed-in TravAcser's assignments (their accepted trips), newest first.
 final myAssignmentsProvider = StreamProvider<List<Assignment>>((ref) {
+  ref.watch(authStateChangesProvider);
   return ref.watch(requestRepositoryProvider).watchMyAssignments();
 });
 
@@ -39,18 +44,30 @@ final availableRequestsProvider = StreamProvider<List<Request>>((ref) {
   final approved = my?.volunteer?.isApproved ?? false;
   if (city == null || !approved) return Stream.value(const []);
 
+  // Only ACTIVE assignments hide a request from the Available list. If the
+  // TravAcser later cancels their slot, the (now cancelled) assignment must NOT
+  // keep hiding the request — the server reopens it to broadcast, so it should
+  // reappear here for everyone, including the TravAcser who cancelled.
   final acceptedIds = ref
           .watch(myAssignmentsProvider)
           .value
-          ?.map((a) => a.requestId)
+          ?.where((a) => a.isActive)
+          .map((a) => a.requestId)
           .toSet() ??
       const <String>{};
+
+  // Hide requests that can no longer realistically be accepted: within 30 min
+  // of (or past) their scheduled start they "disappear" from the feed (item 2).
+  // The server separately warns the User and auto-cancels at the start time.
+  final cutoff = DateTime.now().add(const Duration(minutes: 30));
 
   return ref
       .watch(requestRepositoryProvider)
       .watchAvailableRequests(city)
-      .map((list) =>
-          list.where((r) => !acceptedIds.contains(r.id)).toList());
+      .map((list) => list
+          .where((r) =>
+              !acceptedIds.contains(r.id) && r.scheduledStartAt.isAfter(cutoff))
+          .toList());
 });
 
 /// TravAcsers who have accepted a given request (requester's view).

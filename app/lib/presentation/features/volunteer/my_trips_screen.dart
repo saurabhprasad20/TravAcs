@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/accessibility/announce.dart';
 import '../../../core/error/failure.dart';
+import '../../../core/util/scheduled_time.dart';
 import '../../../domain/entities/assignment.dart';
 import '../../providers/request_providers.dart';
 import '../requester/request_controller.dart';
@@ -52,7 +53,8 @@ class _TripCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final when = '${DateFormat.yMMMEd().format(a.scheduledDate)} · ${a.startTime}';
+    final date = DateFormat.yMMMEd().format(a.scheduledDate);
+    final time = formatTime12h(a.startTime);
     final busy = ref.watch(requestControllerProvider).isLoading;
     final inProgress = a.isInProgress(DateTime.now());
 
@@ -65,15 +67,24 @@ class _TripCard extends ConsumerWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text(when,
+                  child: Text('$date · $time',
                       style: Theme.of(context).textTheme.titleMedium),
                 ),
                 _StatusPill(inProgress: inProgress),
               ],
             ),
-            const SizedBox(height: 6),
-            _line(context, Icons.my_location, a.meetingPoint),
-            _line(context, Icons.place_outlined, a.destination),
+            if (a.needsRescheduleConfirm) ...[
+              const SizedBox(height: 10),
+              _rescheduleBanner(context, ref, busy),
+            ],
+            const SizedBox(height: 8),
+            _labeled(context, Icons.schedule, 'Trip time', '$date, $time'),
+            _labeled(
+                context, Icons.my_location, 'Pick-up location', a.meetingPoint),
+            _labeled(
+                context, Icons.place_outlined, 'Drop location', a.destination),
+            _labeled(context, Icons.group_outlined, 'Users travelling',
+                '${a.numTravellers}'),
             const Divider(height: 20),
             Text('User contact', style: Theme.of(context).textTheme.labelMedium),
             Semantics(
@@ -94,8 +105,8 @@ class _TripCard extends ConsumerWidget {
             Text(
               inProgress
                   ? 'In progress — end the trip when you finish.'
-                  : 'Auto-starts at ${a.startTime}. Estimated earning: '
-                      '₹${a.amountInrEstimate}.',
+                  : 'Auto-starts at $time. Estimated earning: '
+                      '₹${a.amountInrEstimate} (${a.amountBreakdown}).',
               style: Theme.of(context).textTheme.titleSmall,
             ),
             const SizedBox(height: 8),
@@ -127,6 +138,70 @@ class _TripCard extends ConsumerWidget {
         .completeTrip(a.requestId, a.volunteerId);
     if (!context.mounted) return;
     ok ? A11y.announce(context, 'Trip ended.') : _error(context, ref);
+  }
+
+  Widget _rescheduleBanner(BuildContext context, WidgetRef ref, bool busy) {
+    final scheme = Theme.of(context).colorScheme;
+    final newTime =
+        '${DateFormat.yMMMEd().format(a.scheduledDate)}, ${formatTime12h(a.startTime)}';
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: scheme.tertiaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Semantics(
+            header: true,
+            child: Text('Trip rescheduled',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(color: scheme.onTertiaryContainer)),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'The User moved this trip to $newTime. Continue with the new time, '
+            'or cancel to release your slot.',
+            style: TextStyle(color: scheme.onTertiaryContainer),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed:
+                    busy ? null : () => _respondReschedule(context, ref, false),
+                child: const Text('Cancel trip'),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(
+                onPressed:
+                    busy ? null : () => _respondReschedule(context, ref, true),
+                child: const Text('Continue'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _respondReschedule(
+      BuildContext context, WidgetRef ref, bool accept) async {
+    final ok = await ref
+        .read(requestControllerProvider.notifier)
+        .respondReschedule(a.requestId, accept);
+    if (!context.mounted) return;
+    ok
+        ? A11y.announce(
+            context,
+            accept
+                ? 'You confirmed the new trip time.'
+                : 'You released the trip.')
+        : _error(context, ref);
   }
 
   Future<void> _cancel(BuildContext context, WidgetRef ref) async {
@@ -161,14 +236,28 @@ class _TripCard extends ConsumerWidget {
       ..showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  Widget _line(BuildContext context, IconData icon, String text) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
+  Widget _labeled(
+          BuildContext context, IconData icon, String label, String value) =>
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ExcludeSemantics(child: Icon(icon, size: 18)),
             const SizedBox(width: 8),
-            Expanded(child: Text(text)),
+            Expanded(
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                        text: '$label: ',
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
+                    TextSpan(text: value),
+                  ],
+                ),
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ),
           ],
         ),
       );

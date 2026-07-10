@@ -25,7 +25,7 @@ void main() {
 
   setUpAll(() => registerFallbackValue(city));
 
-  Request req(String id) => Request(
+  Request req(String id, {DateTime? startAt}) => Request(
         id: id,
         requesterId: 'u$id',
         status: RequestStatus.broadcast,
@@ -34,9 +34,9 @@ void main() {
         numTravellers: 1,
         numTravAcsers: 1,
         genderPreference: GenderPreference.anyGender,
-        scheduledDate: DateTime(2026, 7, 1),
+        scheduledDate: startAt ?? DateTime.now().add(const Duration(days: 1)),
         startTime: '10:00',
-        scheduledStartAt: DateTime(2026, 7, 1, 10, 0),
+        scheduledStartAt: startAt ?? DateTime.now().add(const Duration(days: 1)),
         expectedDurationMinutes: 60,
         meetingPoint: 'A',
         destination: 'B',
@@ -132,6 +132,20 @@ void main() {
         myAssignments: const [],
       );
       expect(await readAvailable(c), isEmpty);
+    });
+
+    test('hides requests within 30 minutes of (or past) their start', () async {
+      final c = makeContainer(
+        myProfile: profile(approved: true, withCity: city),
+        available: [
+          req('SOON', startAt: DateTime.now().add(const Duration(minutes: 10))),
+          req('PAST', startAt: DateTime.now().subtract(const Duration(hours: 1))),
+          req('OK'), // tomorrow -> visible
+        ],
+        myAssignments: const [],
+      );
+      expect(await readAvailable(c), hasLength(1));
+      expect((await readAvailable(c)).single.id, 'OK');
     });
   });
 

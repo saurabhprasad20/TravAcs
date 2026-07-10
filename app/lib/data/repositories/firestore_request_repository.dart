@@ -11,6 +11,7 @@ import '../../core/util/scheduled_time.dart';
 import '../../domain/entities/assignment.dart';
 import '../../domain/entities/city.dart';
 import '../../domain/entities/enums.dart';
+import '../../domain/entities/razorpay_order.dart';
 import '../../domain/entities/request.dart';
 import '../../domain/repositories/request_repository.dart';
 
@@ -101,6 +102,20 @@ class FirestoreRequestRepository implements RequestRepository {
   }
 
   @override
+  Stream<List<Request>> watchActiveTrips() {
+    return _requests
+        .where('status', whereIn: [
+          RequestStatus.broadcast.wireValue,
+          RequestStatus.assigned.wireValue,
+          RequestStatus.started.wireValue,
+        ])
+        .orderBy('scheduledStartAt')
+        .snapshots()
+        .map(_mapDocs)
+        .mapErrorToFailure();
+  }
+
+  @override
   FutureResult<Unit> cancelRequest(String id) async {
     try {
       await _requests.doc(id).update({
@@ -146,6 +161,10 @@ class FirestoreRequestRepository implements RequestRepository {
       _call('cancelTrip', {'requestId': requestId});
 
   @override
+  FutureResult<Unit> respondReschedule(String requestId, bool accept) =>
+      _call('respondReschedule', {'requestId': requestId, 'accept': accept});
+
+  @override
   FutureResult<Unit> completeTrip(String requestId, String volunteerId) async {
     try {
       await _functions.httpsCallable('completeTrip').call<dynamic>(
@@ -159,6 +178,41 @@ class FirestoreRequestRepository implements RequestRepository {
   @override
   FutureResult<Unit> markPaid(String requestId, String volunteerId) =>
       _call('markPaid', {'requestId': requestId, 'volunteerId': volunteerId});
+
+  @override
+  FutureResult<RazorpayOrder> createRazorpayOrder(
+      String requestId, String volunteerId) async {
+    try {
+      final res = await _functions.httpsCallable('createRazorpayOrder').call<dynamic>(
+          {'requestId': requestId, 'volunteerId': volunteerId});
+      final d = Map<String, dynamic>.from(res.data as Map);
+      return success(RazorpayOrder(
+        orderId: d['orderId'] as String,
+        keyId: d['keyId'] as String,
+        amountPaise: (d['amountPaise'] as num).toInt(),
+        amountInr: (d['amountInr'] as num).toInt(),
+        currency: (d['currency'] as String?) ?? 'INR',
+      ));
+    } catch (e) {
+      return failure(mapFirebaseError(e));
+    }
+  }
+
+  @override
+  FutureResult<Unit> verifyRazorpayPayment({
+    required String requestId,
+    required String volunteerId,
+    required String razorpayOrderId,
+    required String razorpayPaymentId,
+    required String razorpaySignature,
+  }) =>
+      _call('verifyRazorpayPayment', {
+        'requestId': requestId,
+        'volunteerId': volunteerId,
+        'razorpayOrderId': razorpayOrderId,
+        'razorpayPaymentId': razorpayPaymentId,
+        'razorpaySignature': razorpaySignature,
+      });
 
   @override
   FutureResult<Unit> markReceived(String requestId) =>
@@ -247,6 +301,7 @@ class FirestoreRequestRepository implements RequestRepository {
       paymentStatus: PaymentStatus.fromWire(d['paymentStatus'] as String?),
       requesterPaidAt: (d['requesterPaidAt'] as Timestamp?)?.toDate(),
       travAcserReceivedAt: (d['travAcserReceivedAt'] as Timestamp?)?.toDate(),
+      rescheduleStatus: d['rescheduleStatus'] as String?,
       requesterRatingStars: (d['requesterRatingStars'] as num?)?.toInt(),
       requesterRatingFeedback: d['requesterRatingFeedback'] as String?,
       volunteerRatingStars: (d['volunteerRatingStars'] as num?)?.toInt(),

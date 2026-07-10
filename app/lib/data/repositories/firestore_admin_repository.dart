@@ -42,6 +42,26 @@ class FirestoreAdminRepository implements AdminRepository {
     }
   }
 
+  @override
+  FutureResult<Unit> logManualTrip({
+    required String userDetails,
+    required String travAcserDetails,
+    required DateTime tripDate,
+    String? note,
+  }) async {
+    try {
+      await _functions.httpsCallable('logManualTrip').call<dynamic>({
+        'userDetails': userDetails,
+        'travAcserDetails': travAcserDetails,
+        'tripDateMs': tripDate.millisecondsSinceEpoch,
+        'note': note,
+      });
+      return success(unit);
+    } catch (e) {
+      return failure(mapFirebaseError(e));
+    }
+  }
+
   PendingVolunteer _toPending(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     final d = doc.data();
     return PendingVolunteer(
