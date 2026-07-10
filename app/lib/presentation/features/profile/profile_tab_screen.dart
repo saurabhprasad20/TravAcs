@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/accessibility/announce.dart';
+import '../../../core/config/constants.dart';
 import '../../../domain/entities/city.dart';
 import '../../../domain/entities/enums.dart';
 import '../../../domain/entities/profile.dart';
@@ -78,6 +79,7 @@ class _InfoTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       label: '$label: $value',
+      excludeSemantics: true,
       child: ListTile(
         contentPadding: EdgeInsets.zero,
         title: Text(label, style: Theme.of(context).textTheme.labelMedium),
@@ -255,12 +257,18 @@ class _VerificationCard extends StatelessWidget {
             Text(
               switch (status) {
                 VerificationStatus.approved =>
-                  'You can view and accept assistance requests.',
+                  'You are verified. You can view and accept assistance '
+                      'requests.',
                 VerificationStatus.pending =>
-                  'An admin will verify your details. You can accept requests '
-                      'once approved.',
+                  'Your details are awaiting verification by the TravAcs team. '
+                      'To request verification, contact us at '
+                      '${AppConstants.supportEmail} or '
+                      '${AppConstants.supportPhone}. You will get a '
+                      'notification once you are approved.',
                 VerificationStatus.rejected => volunteer.rejectionReason == null
-                    ? 'Your verification was rejected. Please contact support.'
+                    ? 'Your verification was rejected. Please contact the '
+                        'TravAcs team at ${AppConstants.supportEmail} or '
+                        '${AppConstants.supportPhone}.'
                     : 'Rejected: ${volunteer.rejectionReason}',
               },
               style: Theme.of(context).textTheme.bodyMedium,

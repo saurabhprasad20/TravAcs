@@ -9,6 +9,7 @@ import '../../../domain/entities/enums.dart';
 import '../../../domain/entities/request.dart';
 import '../../providers/request_providers.dart';
 import '../shared/request_card.dart';
+import '../shared/trip_payment.dart';
 import 'request_controller.dart';
 
 /// The requester's ACTIVE requests (scheduled / in progress). Completed trips
@@ -41,7 +42,11 @@ class MyRequestsScreen extends ConsumerWidget {
             itemCount: list.length,
             itemBuilder: (context, i) {
               final r = list[i];
-              final notStarted = DateTime.now().isBefore(r.scheduledStartAt);
+              // A trip has only "started" once it is BOTH accepted (a TravAcser
+              // took it) AND its scheduled time has arrived. An unaccepted
+              // request never starts on time alone, so it stays reschedulable.
+              final notStarted = r.acceptedCount == 0 ||
+                  DateTime.now().isBefore(r.scheduledStartAt);
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -220,8 +225,8 @@ class _AssignmentTile extends ConsumerWidget {
               Align(
                 alignment: Alignment.centerRight,
                 child: FilledButton.icon(
-                  icon: const Icon(Icons.flag_outlined),
-                  label: const Text('End trip'),
+                  icon: const Icon(Icons.payments_outlined),
+                  label: const Text('End trip & pay'),
                   onPressed: busy ? null : () => _end(context, ref),
                 ),
               ),
@@ -239,7 +244,19 @@ class _AssignmentTile extends ConsumerWidget {
         .read(requestControllerProvider.notifier)
         .completeTrip(requestId, a.volunteerId);
     if (!context.mounted) return;
-    ok ? A11y.announce(context, 'Trip ended.') : _err(context, ref);
+    if (!ok) {
+      _err(context, ref);
+      return;
+    }
+    A11y.announce(context, 'Trip ended. Continue to payment.');
+    // Chain straight into the Razorpay payment for this trip.
+    await startTripPayment(
+      context,
+      ref,
+      requestId: requestId,
+      volunteerId: a.volunteerId,
+      contact: a.requesterPhone,
+    );
   }
 
   void _err(BuildContext context, WidgetRef ref) {

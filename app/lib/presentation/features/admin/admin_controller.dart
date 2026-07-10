@@ -18,6 +18,20 @@ class AdminController extends Notifier<AsyncValue<void>> {
   Future<bool> reject(String uid, String? reason) =>
       _run(() => _repo.setVerification(uid, false, reason));
 
+  /// Log a manually-booked (phone) trip into the telemetry collection.
+  Future<bool> logManualTrip({
+    required String userDetails,
+    required String travAcserDetails,
+    required DateTime tripDate,
+    String? note,
+  }) =>
+      _run(() => _repo.logManualTrip(
+            userDetails: userDetails,
+            travAcserDetails: travAcserDetails,
+            tripDate: tripDate,
+            note: note,
+          ));
+
   Future<bool> _run(FutureResult<Unit> Function() action) async {
     state = const AsyncLoading();
     final res = await action();

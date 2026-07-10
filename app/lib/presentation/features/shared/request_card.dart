@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/util/scheduled_time.dart';
 import '../../../domain/entities/enums.dart';
 import '../../../domain/entities/request.dart';
 
@@ -15,10 +16,8 @@ class RequestCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final r = request;
-    final when =
-        '${DateFormat.yMMMEd().format(r.scheduledDate)} · ${r.startTime}';
-    final group = '${r.numTravellers} traveller(s) · '
-        '${r.acceptedCount}/${r.numTravAcsers} TravAcser(s) filled';
+    final date = DateFormat.yMMMEd().format(r.scheduledDate);
+    final time = formatTime12h(r.startTime);
 
     return Card(
       child: Padding(
@@ -37,34 +36,51 @@ class RequestCard extends StatelessWidget {
                   Row(
                     children: [
                       Expanded(
-                        child: Text(when,
+                        child: Text('$date · $time',
                             style: Theme.of(context).textTheme.titleMedium),
                       ),
                       _StatusChip(status: r.status),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  _line(context, Icons.my_location, r.meetingPoint),
-                  _line(context, Icons.place_outlined, r.destination),
-                  const SizedBox(height: 6),
-                  Text(group, style: Theme.of(context).textTheme.bodyMedium),
-                  Text('TravAcser preference: ${r.genderPreference.label}',
-                      style: Theme.of(context).textTheme.bodySmall),
+                  const SizedBox(height: 10),
+                  _labeled(context, Icons.schedule, 'Trip time',
+                      '$date, $time'),
+                  _labeled(context, Icons.my_location, 'Pick-up location',
+                      r.meetingPoint),
+                  _labeled(context, Icons.place_outlined, 'Drop location',
+                      r.destination),
+                  _labeled(context, Icons.group_outlined, 'Users travelling',
+                      '${r.numTravellers}'),
+                  _labeled(context, Icons.volunteer_activism_outlined,
+                      'TravAcsers required',
+                      '${r.acceptedCount}/${r.numTravAcsers} filled'),
+                  _labeled(context, Icons.wc_outlined, 'TravAcser preference',
+                      r.genderPreference.label),
                   if (r.purpose != null && r.purpose!.isNotEmpty)
-                    Text('Purpose: ${r.purpose}',
-                        style: Theme.of(context).textTheme.bodyMedium),
+                    _labeled(context, Icons.info_outline, 'Purpose', r.purpose!),
                   if (r.specialNote != null && r.specialNote!.isNotEmpty)
-                    Text('Note: ${r.specialNote}',
-                        style: Theme.of(context).textTheme.bodySmall),
+                    _labeled(context, Icons.sticky_note_2_outlined, 'Note',
+                        r.specialNote!),
                   const SizedBox(height: 8),
-                  Text('Estimated ₹${r.estimatedAmountInr}',
-                      style: Theme.of(context).textTheme.titleSmall),
+                  _labeled(context, Icons.currency_rupee, 'Estimated amount',
+                      '₹${r.estimatedAmountInr}  (${r.estimateBreakdown})'),
                 ],
               ),
             ),
             if (actions != null && actions!.isNotEmpty) ...[
               const SizedBox(height: 8),
-              Row(mainAxisAlignment: MainAxisAlignment.end, children: actions!),
+              // Wrap (not Row) so action buttons flow onto the next line instead
+              // of overflowing/clipping off the right edge at large text scales.
+              SizedBox(
+                width: double.infinity,
+                child: Wrap(
+                  alignment: WrapAlignment.end,
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: actions!,
+                ),
+              ),
             ],
           ],
         ),
@@ -72,15 +88,31 @@ class RequestCard extends StatelessWidget {
     );
   }
 
-  Widget _line(BuildContext context, IconData icon, String text) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
+  /// A labelled detail line: a decorative icon plus "Label: value" text. The
+  /// explicit label keeps the dense card readable (and reads naturally on a
+  /// screen reader) instead of a cluttered pile of bare values.
+  Widget _labeled(
+          BuildContext context, IconData icon, String label, String value) =>
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Decorative — the adjacent text carries the meaning.
             ExcludeSemantics(child: Icon(icon, size: 18)),
             const SizedBox(width: 8),
-            Expanded(child: Text(text)),
+            Expanded(
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                        text: '$label: ',
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
+                    TextSpan(text: value),
+                  ],
+                ),
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ),
           ],
         ),
       );

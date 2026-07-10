@@ -86,4 +86,15 @@ class Request {
   static int computeEstimate(int durationMinutes, int numTravAcsers) =>
       (durationMinutes / 60.0 * AppConstants.hourlyRateInr * numTravAcsers)
           .round();
+
+  /// Human-readable breakdown of how [estimatedAmountInr] is computed, e.g.
+  /// `"₹135/hr × 2 hr × 1 TravAcser"`. Shown next to the amount so the User can
+  /// see exactly how the estimate is derived.
+  String get estimateBreakdown {
+    final hrs = expectedDurationMinutes / 60.0;
+    final hrsLabel =
+        hrs == hrs.roundToDouble() ? hrs.toStringAsFixed(0) : hrs.toStringAsFixed(1);
+    return '₹${AppConstants.hourlyRateInr}/hr × $hrsLabel hr × '
+        '$numTravAcsers TravAcser${numTravAcsers == 1 ? '' : 's'}';
+  }
 }

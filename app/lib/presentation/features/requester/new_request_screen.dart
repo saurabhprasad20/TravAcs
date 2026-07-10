@@ -9,6 +9,7 @@ import '../../../domain/entities/enums.dart';
 import '../../../domain/entities/profile.dart';
 import '../../../domain/entities/request.dart';
 import '../../providers/profile_providers.dart';
+import '../../providers/shell_providers.dart';
 import 'request_controller.dart';
 
 /// New assistance request form. The city is taken from the requester's profile;
@@ -58,10 +59,8 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
   int get _minTravAcsers => Request.suggestedTravAcsers(_numTravellers);
   int get _estimate => Request.computeEstimate(_durationMinutes, _numTravAcsers);
 
-  void _setTravellers(int v) {
-    // TravAcser count is an independent 1–10 choice (see _travAcserDropdown).
-    setState(() => _numTravellers = v.clamp(1, 20));
-  }
+  /// Caps for the party size (design: up to 6 travellers, up to 6 TravAcsers).
+  static const int _maxTravellers = 6;
 
   Future<void> _pickCustomDate() async {
     final now = DateTime.now();
@@ -95,6 +94,10 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
       return;
     }
 
+    // Dismiss the keyboard so the review sheet gets full height (otherwise the
+    // preview overflows behind the keyboard and only the button shows).
+    FocusScope.of(context).unfocus();
+
     final confirmed = await showModalBottomSheet<bool>(
       context: context,
       showDragHandle: true,
@@ -108,6 +111,8 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
         genderPreference: _genderPreference,
         meetingPoint: _meetingController.text.trim(),
         destination: _destinationController.text.trim(),
+        purpose: _purposeController.text.trim(),
+        specialNote: _noteController.text.trim(),
         estimate: _estimate,
       ),
     );
@@ -137,9 +142,14 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
         );
     if (!mounted) return;
     if (id != null) {
+      // Drop any lingering text-field focus so the soft keyboard closes as we
+      // move to My Requests (focus can be restored after the review sheet pops).
+      FocusManager.instance.primaryFocus?.unfocus();
       A11y.announce(context, 'Request submitted. TravAcsers in your city are '
           'being notified.');
       _resetForm();
+      // Take the user to My Requests so they see the request they just created.
+      ref.read(shellTabIndexProvider.notifier).set(requesterMyRequestsTabIndex);
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
         ..showSnackBar(const SnackBar(content: Text('Request submitted.')));
@@ -198,12 +208,7 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
                         children: [
                           _section(
                               'Your city / location: ${my.profile.serviceCity!.label}'),
-                          _stepperTile(
-                            label: 'Total travellers (including you)',
-                            value: _numTravellers,
-                            onChanged: _setTravellers,
-                            min: 1,
-                          ),
+                          _travellerDropdown(),
                           Text(
                             'Only your contact details are shared with the '
                             'TravAcser. You are responsible for the trip and '
@@ -312,61 +317,48 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
         child: Text(text, style: Theme.of(context).textTheme.titleSmall),
       );
 
-  /// TravAcser count as an accessible 1–10 dropdown (a slider with few
-  /// divisions snapped between extremes and was hard to use with a screen
-  /// reader). The count is independent of the traveller count.
+  /// Traveller count as an accessible 1–[_maxTravellers] dropdown (mirrors the
+  /// TravAcser dropdown). Replaces the old +/- stepper. Changing it auto-sets
+  /// the suggested TravAcser count (one TravAcser assists up to 2 travellers).
+  Widget _travellerDropdown() {
+    return DropdownButtonFormField<int>(
+      value: _numTravellers,
+      decoration: const InputDecoration(
+        labelText: 'Total travellers (including you)',
+      ),
+      items: [
+        for (var i = 1; i <= _maxTravellers; i++)
+          DropdownMenuItem(value: i, child: Text('$i')),
+      ],
+      onChanged: (v) => setState(() {
+        _numTravellers = v ?? 1;
+        // Auto-set to the suggested count; the user may then raise it up to the
+        // number of travellers (the TravAcser dropdown range).
+        _numTravAcsers = Request.suggestedTravAcsers(_numTravellers);
+      }),
+    );
+  }
+
+  /// TravAcser count as an accessible dropdown ranging from the suggested count
+  /// (ceil(travellers / 2)) up to the number of travellers — one TravAcser
+  /// assists up to 2 travellers. A slider was hard to use with a screen reader.
   Widget _travAcserDropdown() {
+    final min = _minTravAcsers;
+    final max = _numTravellers;
     return DropdownButtonFormField<int>(
       value: _numTravAcsers,
       decoration: InputDecoration(
         labelText: 'TravAcsers required',
-        helperText: 'Suggested $_minTravAcsers — one TravAcser assists up to '
-            '2 travellers',
+        helperText: 'Suggested $min for $_numTravellers '
+            'traveller${_numTravellers == 1 ? '' : 's'} — one TravAcser assists '
+            'up to 2 travellers (up to $max)',
         helperMaxLines: 2,
       ),
       items: [
-        for (var i = 1; i <= 10; i++)
+        for (var i = min; i <= max; i++)
           DropdownMenuItem(value: i, child: Text('$i')),
       ],
-      onChanged: (v) => setState(() => _numTravAcsers = v ?? 1),
-    );
-  }
-
-  Widget _stepperTile({
-    required String label,
-    required int value,
-    required ValueChanged<int> onChanged,
-    int min = 0,
-    int? max,
-  }) {
-    // No wrapping Semantics(label:) here — that merges/orphans the child button
-    // semantics. The label Text names the field; each Icon carries its own
-    // semanticLabel so screen readers announce the +/- buttons reliably.
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Expanded(child: Text(label)),
-          IconButton(
-            icon: const Icon(Icons.remove_circle_outline,
-                semanticLabel: 'Decrease'),
-            onPressed: value > min ? () => onChanged(value - 1) : null,
-            tooltip: 'Decrease',
-          ),
-          SizedBox(
-            width: 28,
-            child: Text('$value', textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleMedium),
-          ),
-          IconButton(
-            icon: const Icon(Icons.add_circle_outline,
-                semanticLabel: 'Increase'),
-            onPressed:
-                (max == null || value < max) ? () => onChanged(value + 1) : null,
-            tooltip: 'Increase',
-          ),
-        ],
-      ),
+      onChanged: (v) => setState(() => _numTravAcsers = v ?? min),
     );
   }
 
@@ -457,6 +449,8 @@ class _ReviewSheet extends StatelessWidget {
     required this.genderPreference,
     required this.meetingPoint,
     required this.destination,
+    required this.purpose,
+    required this.specialNote,
     required this.estimate,
   });
 
@@ -468,53 +462,63 @@ class _ReviewSheet extends StatelessWidget {
   final GenderPreference genderPreference;
   final String meetingPoint;
   final String destination;
+  final String purpose;
+  final String specialNote;
   final int estimate;
 
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Semantics(
-              header: true,
-              child: Text('Review your request',
-                  style: Theme.of(context).textTheme.titleLarge),
-            ),
-            const SizedBox(height: 12),
-            _row('When', '${DateFormat.yMMMEd().format(date)} at $time'),
-            _row('Duration', durationLabel),
-            _row('Travellers', '$numTravellers'),
-            _row('TravAcsers', '$numTravAcsers'),
-            _row('Gender preference', genderPreference.label),
-            _row('Meeting point', meetingPoint),
-            _row('Destination', destination),
-            const Divider(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Estimated bill',
-                    style: Theme.of(context).textTheme.titleMedium),
-                Text('₹$estimate',
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+        ),
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(
+              20, 0, 20, 20 + MediaQuery.viewInsetsOf(context).bottom),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Semantics(
+                header: true,
+                child: Text('Review your request',
                     style: Theme.of(context).textTheme.titleLarge),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'This is an estimate based on the expected duration '
-              '(₹${AppConstants.hourlyRateInr}/hour per TravAcser). The final '
-              'amount may vary with the actual trip duration.',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Submit request'),
-            ),
-          ],
+              ),
+              const SizedBox(height: 12),
+              _row('When', '${DateFormat.yMMMEd().format(date)} at $time'),
+              _row('Duration', durationLabel),
+              _row('Travellers', '$numTravellers'),
+              _row('TravAcsers', '$numTravAcsers'),
+              _row('Gender preference', genderPreference.label),
+              _row('Meeting point', meetingPoint),
+              _row('Destination', destination),
+              if (purpose.isNotEmpty) _row('Purpose', purpose),
+              if (specialNote.isNotEmpty) _row('Special note', specialNote),
+              const Divider(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Estimated bill',
+                      style: Theme.of(context).textTheme.titleMedium),
+                  Text('₹$estimate',
+                      style: Theme.of(context).textTheme.titleLarge),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'This is an estimate based on the expected duration '
+                '(₹${AppConstants.hourlyRateInr}/hour per TravAcser). The final '
+                'amount may vary with the actual trip duration.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Submit request'),
+              ),
+            ],
+          ),
         ),
       ),
     );
