@@ -78,7 +78,7 @@ class _ContactRow extends StatelessWidget {
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.copy_outlined),
+            icon: Icon(Icons.copy_outlined, semanticLabel: 'Copy $label'),
             tooltip: 'Copy $label',
             onPressed: () async {
               await Clipboard.setData(ClipboardData(text: value));

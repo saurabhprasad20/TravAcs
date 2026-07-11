@@ -6,6 +6,7 @@ import 'package:razorpay_flutter/razorpay_flutter.dart';
 
 import '../../../core/accessibility/announce.dart';
 import '../../../core/config/constants.dart';
+import '../../../core/error/error_reporter.dart';
 import '../../../core/error/failure.dart';
 import '../../../domain/entities/razorpay_order.dart';
 import '../requester/request_controller.dart';
@@ -58,7 +59,12 @@ Future<bool> startTripPayment(
       _announce(context, 'Payment cancelled. You can pay later from Trip History.');
       return false;
     case _RzKind.error:
-      _announce(context, result.message ?? 'Payment failed. Please try again.');
+      // Never surface the raw SDK text to the user (golden rule #1): log it as
+      // debug detail and show a curated, accessible message.
+      ErrorReporter.reportNonFatal(
+        UnexpectedFailure(debugDetail: 'Razorpay: ${result.message ?? 'unknown'}'),
+      );
+      _announce(context, 'Payment could not be completed. Please try again.');
       return false;
   }
 }

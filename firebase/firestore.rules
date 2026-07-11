@@ -76,7 +76,17 @@ service cloud.firestore {
         && request.resource.data.requesterId == request.auth.uid
         && request.resource.data.status in ['draft', 'broadcast']
         && request.resource.data.volunteerId == null
-        && request.resource.data.serviceCity is string;
+        && request.resource.data.serviceCity is string
+        // Server-managed slot counter must start empty — otherwise a crafted
+        // client could pre-set acceptedCount (even negative) and let extra
+        // TravAcsers over-subscribe the request.
+        && request.resource.data.get('acceptedCount', 0) == 0
+        && request.resource.data.numTravAcsers is int
+        && request.resource.data.numTravAcsers >= 1
+        && request.resource.data.numTravAcsers <= 10
+        && request.resource.data.numTravellers is int
+        && request.resource.data.numTravellers >= 1
+        && request.resource.data.numTravellers <= 10;
 
       // The requester may only CANCEL, and only before anyone accepts. Accept,
       // start, complete and payment transitions are done by Cloud Functions
@@ -125,18 +135,16 @@ service cloud.firestore {
     }
 
     // ---- ratings (id == {requestId}_{raterRole}) -------------------------
+    // Ratings are written server-side by `submitRating` (onto the assignment +
+    // the ratee's profile aggregate); clients never create them directly, so a
+    // spammed/forged rating can't inflate a rating average.
     match /ratings/{ratingId} {
       allow read: if isSignedIn() && (
         resource.data.raterId == request.auth.uid
         || resource.data.rateeId == request.auth.uid
         || isAdmin()
       );
-      allow create: if isSignedIn()
-        && request.resource.data.raterId == request.auth.uid
-        && request.resource.data.stars is int
-        && request.resource.data.stars >= 1
-        && request.resource.data.stars <= 5;
-      allow update, delete: if false;
+      allow write: if false;
     }
 
     // ---- tripLogs (admin telemetry: app + manually-booked trips) ---------

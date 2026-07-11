@@ -44,8 +44,10 @@
    touch targets ≥48dp; OS text scale is clamped to **[1.0, 1.8]** in `app/lib/app.dart`.
    `test/accessibility_test.dart` guards this with `meetsGuideline`.
 3. **Privileged writes are server-only.** Clients can NOT set `role`, `verificationStatus`,
-   `ratingAvg/ratingCount`, `volunteerId`, or amounts. Trips auto-start at their scheduled time
-   (no OTP, M12). All state transitions (accept → end → reschedule → cancel → pay → rate → verify) go
+   `ratingAvg/ratingCount`, `volunteerId`, or amounts. Trips start when the User confirms the
+   TravAcser's deterministic **offline start-code** (`startTrip`); billing anchors to the recorded
+   `startedAt`. All state transitions (accept → start → end → reschedule → cancel → pay → rate →
+   verify) go
    through **Cloud Functions** (Admin SDK) and
    are enforced by **Firestore Security Rules** (`firebase/firestore.rules`).
 4. **Work milestone-by-milestone; checkpoint each.** Create a branch `master_m<n>` per milestone and
@@ -178,12 +180,14 @@ cancelTrip/completeTrip/markPaid/markReceived/submitRating) · `adminControllerP
 | Path | Written by | Key fields |
 |---|---|---|
 | `profiles/{uid}` | client (editable) + functions (protected) | role, fullName, gender?, dateOfBirth?, phone?, isActive, serviceArea, serviceCity, ratingAvg, ratingCount; **volunteer:** address?, verificationStatus, verifiedBy?, rejectionReason?; **requester:** homeLocationText? |
-| `requests/{id}` | client create; functions transition | requesterId, status, serviceArea, serviceCity, numTravellers, numTravAcsers, acceptedCount, genderPreference, scheduledDate, startTime, **scheduledStartAt** (auto-start anchor), expectedDurationMinutes, meetingPoint, destination, estimatedAmountInr, … |
+| `requests/{id}` | client create; functions transition | requesterId, status, serviceArea, serviceCity, numTravellers, numTravAcsers, acceptedCount, genderPreference, scheduledDate, startTime, **scheduledStartAt** (schedule/billing anchor), expectedDurationMinutes, meetingPoint, destination, estimatedAmountInr, … |
 | `requests/{id}/assignments/{volunteerId}` | **functions only** | contact pair, denormalized summary (incl. genderPreference, scheduledStartAt), tripStatus (assigned/started/completed/closed/cancelled), startedAt/endedAt, durationMinutes, amountInr, paymentStatus, requesterPaidAt/travAcserReceivedAt, ratings |
 | `devices/{uid}/tokens/{token}` | client (self) | FCM tokens |
 | `ratings/{id}`, `trips/{id}` | (rules present; ratings are primarily stored on the assignment) | audit/future use |
 
-> **No OTP / `secrets` subcollection** since M12 — trips auto-start at `scheduledStartAt`.
+> **No SMS OTP / `secrets` subcollection** — trip start uses a deterministic **offline** start-code
+> both apps compute from the shared assignment (`app/lib/core/util/trip_otp.dart`); the User confirms
+> it and `startTrip` records the flip.
 
 **Rules helpers** (`firebase/firestore.rules`): `isSignedIn()`, `isAdmin()` (`token.admin==true`),
 `isApprovedVolunteer()` (role volunteer + approved + active), `myCity()`. Requests are **region-scoped**
@@ -193,14 +197,17 @@ A **collection-group** rule (`match /{path=**}/assignments/{vid}`) lets a TravAc
 assignments — it gates on `resource.data.volunteerId == request.auth.uid` (a doc-id check errors during
 a list, since the path wildcard is null then).
 
-### Cloud Functions — `firebase/functions/src/index.ts` (region `asia-south2`)
-Trips **auto-start at `scheduledStartAt`** (time-derived; no OTP, no scheduled function).
+### Cloud Functions — `firebase/functions/src/index.ts` (callables region `asia-south2`)
+Trips **start when the User confirms the TravAcser's deterministic offline start-code** (computed on
+both clients from the shared assignment — `app/lib/core/util/trip_otp.dart`; `startTrip` records the
+flip). Scheduled functions run in `asia-south1` (Cloud Scheduler isn't offered in `asia-south2`).
 | Function | Type | What it does / key guards |
 |---|---|---|
-| `onRequestCreated` | Firestore onCreate `requests/{id}` | Fan-out FCM to approved+active TravAcsers in the same city; prunes dead tokens. |
-| `acceptRequest` | onCall | FCFS slot fill in a transaction: must be approved+active TravAcser, request `broadcast` + same city + not full + not already accepted; creates the assignment (denormalizing genderPreference + scheduledStartAt); auto-transitions request to `assigned` when full. **No OTP.** |
-| `completeTrip` | onCall | End a trip — caller = TravAcser **or** requester; only valid once `now >= scheduledStartAt`; bills from `scheduledStartAt`; marks `completed`; marks the request completed when no active assignment remains. |
-| `rescheduleTrip` | onCall | **Requester-only**, before start; updates the request + all assignments' schedule (date/startTime/scheduledStartAt). |
+| `onRequestCreated` | Firestore onCreate `requests/{id}` | Fan-out FCM (chunked to 500/token) to approved+active TravAcsers in the same city; prunes dead tokens. |
+| `acceptRequest` | onCall | FCFS slot fill in a transaction: must be approved+active TravAcser, request `broadcast` + same city + not full + not already accepted; creates the assignment (denormalizing genderPreference + scheduledStartAt); auto-transitions request to `assigned` when full. Rejects a second accepted trip on the same IST day. |
+| `startTrip` | onCall | **Requester-only**; after the User confirms the offline start-code, flips `assigned`→`started` (guarded to on/after the scheduled time) and records `startedAt`. |
+| `completeTrip` | onCall | End a **started** trip — caller = TravAcser **or** requester; bills from the recorded `startedAt`; marks `completed`; marks the request completed when no active assignment remains. |
+| `rescheduleTrip` | onCall | **Requester-only**, before start; validates a bounded future time; updates the request + all assignments' schedule and requires each TravAcser to re-confirm. |
 | `cancelTrip` | onCall | Either party. Requester → cancels the whole request + assignments. TravAcser → cancels their assignment, decrements `acceptedCount`, reopens the request to `broadcast`. |
 | `markPaid` / `markReceived` | onCall | Two-sided payment state machine (`pending`→`awaiting_other`→`confirmed`). `markPaid` is requester-only. |
 | `submitRating` | onCall | Mutual 1–5 rating after `completed`; updates the ratee's rolling `ratingAvg`/`ratingCount`; blocks duplicates. |
@@ -232,8 +239,11 @@ friction).
 > Note: `docx/design_travacs.md` §17 uses an older roadmap numbering; the **branches above are the
 > authoritative record** of what actually shipped.
 >
-> M12 removed `startTrip`/OTP entirely (trips auto-start by time). The M12 rules + functions are
-> deployed to `travacs-dev` (`asia-south2`).
+> M12 removed the SMS OTP (trips then auto-started by time). A later enhancement batch reintroduced
+> trip start as a **deterministic offline start-code** (`startTrip` + `app/lib/core/util/trip_otp.dart`):
+> the User confirms the TravAcser's code and billing anchors to the confirmed `startedAt`. The same
+> batch added Razorpay payment, one-trip-per-day, request auto-expiry, reschedule confirm/cancel, and
+> admin dashboards. Scheduled functions run in `asia-south1`; callables in `asia-south2`.
 
 ---
 
@@ -396,8 +406,8 @@ the public Actions API.
   Also: default launcher icon, no R8/minify, Crashlytics Gradle plugin not applied.
 - **Deferred on-device passes:** the M8 error-handling runtime check (airplane mode, full-slot
   accept, denied permission, forced crash → friendly fallback) and the M9 TalkBack end-to-end pass
-  were never run on a physical device. After M12, also re-verify the full trip flow on-device
-  (create → accept → auto-start → end → pay → rate; reschedule; cancel from both sides).
+  were never run on a physical device. Also re-verify the full trip flow on-device
+  (create → accept → start via offline code → end → pay → rate; reschedule; cancel from both sides).
 - **Functions runtime:** Node 20 is deprecated (decommission 2026-10-30) — bump `engines.node` to 22
   and redeploy when convenient.
 - **Next planned step:** continue user + functions testing of the M12 flow, then iterate; M11

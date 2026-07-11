@@ -6,6 +6,7 @@ import '../../../core/accessibility/announce.dart';
 import '../../../core/error/failure.dart';
 import '../../../core/util/scheduled_time.dart';
 import '../../../domain/entities/assignment.dart';
+import '../../providers/core_providers.dart';
 import '../../providers/request_providers.dart';
 import '../requester/request_controller.dart';
 
@@ -56,6 +57,8 @@ class _TripCard extends ConsumerWidget {
     final date = DateFormat.yMMMEd().format(a.scheduledDate);
     final time = formatTime12h(a.startTime);
     final busy = ref.watch(requestControllerProvider).isLoading;
+    // Refresh on the clock so time-derived status advances without an event.
+    ref.watch(clockProvider);
     final now = DateTime.now();
     final inProgress = a.isInProgress(now);
     final awaitingStart = a.awaitingStart(now);
