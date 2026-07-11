@@ -59,6 +59,8 @@ final availableRequestsProvider = StreamProvider<List<Request>>((ref) {
   // Hide requests that can no longer realistically be accepted: within 30 min
   // of (or past) their scheduled start they "disappear" from the feed (item 2).
   // The server separately warns the User and auto-cancels at the start time.
+  // Watch the clock so the cutoff advances even without a new Firestore event.
+  ref.watch(clockProvider);
   final cutoff = DateTime.now().add(const Duration(minutes: 30));
 
   return ref

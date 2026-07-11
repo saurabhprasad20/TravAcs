@@ -209,6 +209,26 @@ describe("requests", () => {
     );
   });
 
+  it("cannot create a request with a forged (non-zero) acceptedCount", async () => {
+    const carol = testEnv.authenticatedContext("carol").firestore();
+    await assertFails(
+      setDoc(doc(carol, "requests/r5"), request("carol", { acceptedCount: 5 }))
+    );
+    await assertFails(
+      setDoc(doc(carol, "requests/r6"), request("carol", { acceptedCount: -100 }))
+    );
+  });
+
+  it("cannot create a request with an out-of-range TravAcser count", async () => {
+    const carol = testEnv.authenticatedContext("carol").firestore();
+    await assertFails(
+      setDoc(doc(carol, "requests/r7"), request("carol", { numTravAcsers: 50 }))
+    );
+    await assertFails(
+      setDoc(doc(carol, "requests/r8"), request("carol", { numTravAcsers: 0 }))
+    );
+  });
+
   it("the requester may cancel before anyone accepts", async () => {
     const alice = testEnv.authenticatedContext("alice").firestore();
     await assertSucceeds(updateDoc(doc(alice, "requests/r1"), { status: "cancelled" }));
@@ -278,15 +298,12 @@ describe("assignments and secrets (function-only writes)", () => {
 });
 
 describe("ratings and devices", () => {
-  it("a rater can create a 1-5 star rating but not out of range", async () => {
+  it("clients cannot create ratings directly (server-only via submitRating)", async () => {
     const alice = testEnv.authenticatedContext("alice").firestore();
-    await assertSucceeds(
+    await assertFails(
       setDoc(doc(alice, "ratings/r1_requester"), {
         raterId: "alice", rateeId: "vol", stars: 4,
       })
-    );
-    await assertFails(
-      setDoc(doc(alice, "ratings/bad"), { raterId: "alice", rateeId: "vol", stars: 6 })
     );
   });
 

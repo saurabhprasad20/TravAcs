@@ -39,6 +39,48 @@ function istDateKey(
   return `${d.getUTCFullYear()}-${d.getUTCMonth() + 1}-${d.getUTCDate()}`;
 }
 
+/** Max tokens per sendEachForMulticast call (Admin SDK hard limit). */
+const FCM_BATCH = 500;
+
+/**
+ * Sends a multicast message to many tokens, chunked to the Admin SDK's 500-token
+ * limit (a single call rejects beyond that), and prunes tokens the FCM backend
+ * reports as permanently invalid. `refByToken` maps each token to its Firestore
+ * doc ref so dead tokens can be deleted.
+ */
+async function sendMulticastChunked(
+  tokens: string[],
+  refByToken: Record<string, FirebaseFirestore.DocumentReference>,
+  notification: {title: string; body: string},
+  data: Record<string, string>
+): Promise<number> {
+  const unique = Array.from(new Set(tokens));
+  let successCount = 0;
+  const deletions: Promise<unknown>[] = [];
+  for (let i = 0; i < unique.length; i += FCM_BATCH) {
+    const batch = unique.slice(i, i + FCM_BATCH);
+    const resp = await getMessaging().sendEachForMulticast({
+      tokens: batch,
+      notification,
+      data,
+      android: {priority: "high"},
+    });
+    successCount += resp.successCount;
+    resp.responses.forEach((r, j) => {
+      if (
+        !r.success &&
+        (r.error?.code === "messaging/registration-token-not-registered" ||
+          r.error?.code === "messaging/invalid-registration-token")
+      ) {
+        const ref = refByToken[batch[j]];
+        if (ref) deletions.push(ref.delete());
+      }
+    });
+  }
+  await Promise.all(deletions);
+  return successCount;
+}
+
 /** Sends a data+notification message to all of a user's device tokens. */
 async function pushToUser(
   uid: string,
@@ -47,24 +89,13 @@ async function pushToUser(
 ): Promise<void> {
   const toks = await db.collection("devices").doc(uid).collection("tokens").get();
   if (toks.empty) return;
-  const tokens = toks.docs.map((t) => t.id);
-  const resp = await getMessaging().sendEachForMulticast({
-    tokens,
-    notification,
-    data,
-    android: {priority: "high"},
+  const tokens: string[] = [];
+  const refByToken: Record<string, FirebaseFirestore.DocumentReference> = {};
+  toks.docs.forEach((t) => {
+    tokens.push(t.id);
+    refByToken[t.id] = t.ref;
   });
-  const deletions: Promise<unknown>[] = [];
-  resp.responses.forEach((r, i) => {
-    if (
-      !r.success &&
-      (r.error?.code === "messaging/registration-token-not-registered" ||
-        r.error?.code === "messaging/invalid-registration-token")
-    ) {
-      deletions.push(toks.docs[i].ref.delete());
-    }
-  });
-  await Promise.all(deletions);
+  await sendMulticastChunked(tokens, refByToken, notification, data);
 }
 
 /**
@@ -117,36 +148,21 @@ export const onRequestCreated = onDocumentCreated(
     }
 
     const travellers = req.numTravellers ?? 1;
-    const resp = await getMessaging().sendEachForMulticast({
+    const successCount = await sendMulticastChunked(
       tokens,
-      notification: {
+      refByToken,
+      {
         title: "New assistance request",
         body: `A new request in your city · ${travellers} traveller(s)`,
       },
-      data: {
+      {
         type: "new_request",
         requestId: event.params.id,
-      },
-      android: {priority: "high"},
-    });
-
-    // Prune tokens that are no longer valid.
-    const deletions: Promise<unknown>[] = [];
-    resp.responses.forEach((r, i) => {
-      if (!r.success) {
-        const code = r.error?.code;
-        if (
-          code === "messaging/registration-token-not-registered" ||
-          code === "messaging/invalid-registration-token"
-        ) {
-          deletions.push(refByToken[tokens[i]].delete());
-        }
       }
-    });
-    await Promise.all(deletions);
+    );
 
     logger.info(
-      `Notified ${resp.successCount}/${tokens.length} devices in ${city} ` +
+      `Notified ${successCount}/${tokens.length} devices in ${city} ` +
         `for request ${event.params.id}`
     );
   }
@@ -321,10 +337,10 @@ export const startTrip = onCall({region: REGION}, async (req) => {
 });
 
 /**
- * Ends/completes a TravAcser's trip (by that TravAcser or the requester). Trips
- * auto-start at their scheduled time (no OTP), so billing is anchored to
- * `scheduledStartAt`. When no active assignment remains, the request is
- * marked completed.
+ * Ends/completes a TravAcser's trip (by that TravAcser or the requester). The
+ * trip must have been started (the User confirmed the TravAcser's start code),
+ * so billing is anchored to the recorded `startedAt`. When no active assignment
+ * remains, the request is marked completed.
  */
 export const completeTrip = onCall({region: REGION}, async (req) => {
   const uid = req.auth?.uid;
@@ -349,21 +365,20 @@ export const completeTrip = onCall({region: REGION}, async (req) => {
     const assignDoc = await tx.get(assignRef);
     if (!assignDoc.exists) throw new HttpsError("not-found", "Assignment not found.");
     const a = assignDoc.data() as FirebaseFirestore.DocumentData;
-    if (a.tripStatus !== "assigned" && a.tripStatus !== "started") {
-      throw new HttpsError("failed-precondition", "This trip can no longer be ended.", {code: "INVALID_STATE"});
+    if (a.tripStatus !== "started") {
+      throw new HttpsError("failed-precondition", "This trip must be started before it can be ended.", {code: "NOT_STARTED"});
     }
-    // Auto-start by time: the trip is "in progress" once scheduledStartAt has
-    // passed; billing is anchored there.
-    const startAt: FirebaseFirestore.Timestamp | undefined = a.scheduledStartAt;
-    const startMs = startAt ? startAt.toMillis() : Date.now();
-    if (Date.now() < startMs) {
-      throw new HttpsError("failed-precondition", "This trip has not started yet.", {code: "NOT_STARTED"});
-    }
+    // Bill from the actual start the User confirmed (recorded by startTrip),
+    // falling back to the scheduled start only if startedAt is somehow missing.
+    const startedAt: FirebaseFirestore.Timestamp | undefined = a.startedAt;
+    const scheduledStart: FirebaseFirestore.Timestamp | undefined = a.scheduledStartAt;
+    const startMs =
+      startedAt?.toMillis() ?? scheduledStart?.toMillis() ?? Date.now();
     const minutes = Math.max(1, Math.round((Date.now() - startMs) / 60000));
     const amountInr = Math.round((minutes / 60) * HOURLY_RATE_INR);
     tx.update(assignRef, {
       tripStatus: "completed",
-      startedAt: startAt ?? FieldValue.serverTimestamp(),
+      startedAt: startedAt ?? FieldValue.serverTimestamp(),
       endedAt: FieldValue.serverTimestamp(),
       durationMinutes: minutes,
       amountInr,
@@ -407,6 +422,15 @@ export const rescheduleTrip = onCall({region: REGION}, async (req) => {
     !startTime
   ) {
     throw new HttpsError("invalid-argument", "requestId, scheduledDateMs, startTime, scheduledStartAtMs required.");
+  }
+  // The new start must be a bounded future time — reject past or absurd values a
+  // tampered client could send.
+  const nowMs = Date.now();
+  if (
+    scheduledStartAtMs < nowMs + 60000 ||
+    scheduledStartAtMs > nowMs + 90 * 24 * 60 * 60000
+  ) {
+    throw new HttpsError("invalid-argument", "The new trip time must be in the future (within 90 days).", {code: "BAD_SCHEDULE"});
   }
 
   const reqRef = db.collection("requests").doc(requestId);
@@ -677,6 +701,18 @@ export const createRazorpayOrder = onCall(
       throw new HttpsError("failed-precondition", "There is nothing to pay for this trip.", {code: "NO_AMOUNT"});
     }
     const keyId = RAZORPAY_KEY_ID.value();
+    // Idempotent: if an order was already created for this still-unpaid trip,
+    // return it rather than creating (and overwriting the stored id with) a new
+    // one — otherwise a retry could orphan an order the User already paid.
+    if (a.razorpayOrderId) {
+      return {
+        orderId: a.razorpayOrderId,
+        keyId,
+        amountPaise: amountInr * 100,
+        amountInr,
+        currency: "INR",
+      };
+    }
     const auth = Buffer.from(`${keyId}:${RAZORPAY_KEY_SECRET.value()}`).toString("base64");
     const resp = await fetch("https://api.razorpay.com/v1/orders", {
       method: "POST",
@@ -742,7 +778,7 @@ export const verifyRazorpayPayment = onCall(
       if (a.tripStatus !== "completed") {
         throw new HttpsError("failed-precondition", "The trip is not completed yet.", {code: "INVALID_STATE"});
       }
-      if (a.razorpayOrderId && a.razorpayOrderId !== razorpayOrderId) {
+      if (a.razorpayOrderId !== razorpayOrderId) {
         throw new HttpsError("failed-precondition", "The payment order did not match this trip.", {code: "ORDER_MISMATCH"});
       }
       tx.update(assignRef, {
@@ -765,8 +801,11 @@ export const submitRating = onCall({region: REGION}, async (req) => {
   if (!requestId || !volunteerId || typeof stars !== "number") {
     throw new HttpsError("invalid-argument", "requestId, volunteerId, stars required.");
   }
-  if (stars < 1 || stars > 5) {
-    throw new HttpsError("invalid-argument", "Stars must be 1–5.");
+  if (!Number.isInteger(stars) || stars < 1 || stars > 5) {
+    throw new HttpsError("invalid-argument", "Stars must be a whole number 1–5.");
+  }
+  if (feedback != null && (typeof feedback !== "string" || feedback.length > 1000)) {
+    throw new HttpsError("invalid-argument", "Feedback must be text up to 1000 characters.");
   }
   const reqRef = db.collection("requests").doc(requestId);
   const assignRef = reqRef.collection("assignments").doc(volunteerId);
@@ -888,29 +927,45 @@ export const expireStaleRequests = onSchedule(
       .where("scheduledStartAt", "<=", soon)
       .get();
     for (const doc of snap.docs) {
-      const r = doc.data();
-      if ((r.acceptedCount ?? 0) > 0) continue;
-      const startMs = (r.scheduledStartAt as Timestamp | undefined)?.toMillis();
-      if (startMs == null) continue;
+      let action: "cancelled" | "warned" | null = null;
+      let requesterId: string | undefined;
       try {
-        if (now >= startMs) {
-          await doc.ref.update({
-            status: "cancelled",
-            cancelReason: "no_travacser",
-            updatedAt: FieldValue.serverTimestamp(),
-          });
-          await pushToUser(
-            r.requesterId,
-            {title: "Trip auto-cancelled", body: "We couldn't find a TravAcser in time, so your trip was cancelled. You can create a new request."},
-            {type: "no_travacser_cancelled", requestId: doc.id}
-          ).catch(() => {});
-        } else if (!r.noTravAcserNotifiedAt) {
-          await doc.ref.update({noTravAcserNotifiedAt: FieldValue.serverTimestamp()});
-          await pushToUser(
-            r.requesterId,
-            {title: "No TravAcser yet", body: "Sorry, we couldn't find a TravAcser. You can reschedule, or the trip will be auto-cancelled at its scheduled time."},
-            {type: "no_travacser_warning", requestId: doc.id}
-          ).catch(() => {});
+        await db.runTransaction(async (tx) => {
+          const cur = await tx.get(doc.ref);
+          const r = cur.data();
+          if (!r) return;
+          requesterId = r.requesterId;
+          // Re-check under the transaction: an accept may have landed between the
+          // query above and now, which must NOT be overwritten with "cancelled".
+          if (r.status !== "broadcast" || (r.acceptedCount ?? 0) > 0) return;
+          const startMs = (r.scheduledStartAt as Timestamp | undefined)?.toMillis();
+          if (startMs == null) return;
+          if (now >= startMs) {
+            tx.update(doc.ref, {
+              status: "cancelled",
+              cancelReason: "no_travacser",
+              updatedAt: FieldValue.serverTimestamp(),
+            });
+            action = "cancelled";
+          } else if (!r.noTravAcserNotifiedAt) {
+            tx.update(doc.ref, {noTravAcserNotifiedAt: FieldValue.serverTimestamp()});
+            action = "warned";
+          }
+        });
+        if (action && requesterId) {
+          if (action === "cancelled") {
+            await pushToUser(
+              requesterId,
+              {title: "Trip auto-cancelled", body: "We couldn't find a TravAcser in time, so your trip was cancelled. You can create a new request."},
+              {type: "no_travacser_cancelled", requestId: doc.id}
+            ).catch(() => {});
+          } else {
+            await pushToUser(
+              requesterId,
+              {title: "No TravAcser yet", body: "Sorry, we couldn't find a TravAcser. You can reschedule, or the trip will be auto-cancelled at its scheduled time."},
+              {type: "no_travacser_warning", requestId: doc.id}
+            ).catch(() => {});
+          }
         }
       } catch (e) {
         logger.warn(`expireStaleRequests failed for ${doc.id}`, e);
@@ -939,13 +994,13 @@ export const expireRescheduleConfirmations = onSchedule(
       const volunteerId = doc.data().volunteerId as string | undefined;
       let requesterId: string | undefined;
       try {
-        await db.runTransaction(async (tx) => {
+        const didExpire = await db.runTransaction(async (tx) => {
           const reqDoc = await tx.get(reqRef);
           const r = reqDoc.data();
-          if (!r) return;
+          if (!r) return false;
           requesterId = r.requesterId;
           const cur = (await tx.get(doc.ref)).data();
-          if (!cur || cur.rescheduleStatus !== "pending") return; // changed meanwhile
+          if (!cur || cur.rescheduleStatus !== "pending") return false; // changed meanwhile
           tx.update(doc.ref, {
             tripStatus: "cancelled",
             rescheduleStatus: "expired",
@@ -957,7 +1012,11 @@ export const expireRescheduleConfirmations = onSchedule(
             status: r.status === "assigned" ? "broadcast" : r.status,
             updatedAt: FieldValue.serverTimestamp(),
           });
+          return true;
         });
+        // Only notify when the slot was actually released — if the TravAcser
+        // confirmed just before the deadline, no expiry happened.
+        if (!didExpire) continue;
         if (volunteerId) {
           await pushToUser(volunteerId, {title: "Reschedule expired", body: "You didn't confirm the new trip time in time, so the trip was released."}, {type: "reschedule_expired", requestId: reqRef.id}).catch(() => {});
         }

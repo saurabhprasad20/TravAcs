@@ -181,17 +181,19 @@ describe("startTrip (OTP-gated status flip)", () => {
   });
 });
 
-describe("completeTrip (ends an auto-started trip + bills)", () => {
-  it("bills from scheduledStartAt and completes the request", async () => {
+describe("completeTrip (ends a started trip + bills from startedAt)", () => {
+  it("bills from the confirmed startedAt (not scheduledStartAt) and completes the request", async () => {
     await db.doc("requests/r1").set({requesterId: "alice", status: "assigned"});
     await db.doc("requests/r1/assignments/vol").set({
-      volunteerId: "vol", requesterId: "alice", tripStatus: "assigned",
-      scheduledStartAt: Timestamp.fromMillis(Date.now() - 2 * HOUR), // started 2h ago
+      volunteerId: "vol", requesterId: "alice", tripStatus: "started",
+      startedAt: Timestamp.fromMillis(Date.now() - 2 * HOUR), // confirmed start 2h ago
+      // scheduledStartAt is deliberately earlier — billing must ignore it.
+      scheduledStartAt: Timestamp.fromMillis(Date.now() - 3 * HOUR),
     });
 
     const res: any = await completeTrip(call({requestId: "r1", volunteerId: "vol"}, "vol"));
     assert.equal(res.code, "COMPLETED");
-    assert.ok(Math.abs(res.amountInr - 270) <= 3, `~270 expected, got ${res.amountInr}`);
+    assert.ok(Math.abs(res.amountInr - 270) <= 3, `~270 expected (2h from startedAt), got ${res.amountInr}`);
 
     const a = (await db.doc("requests/r1/assignments/vol").get()).data()!;
     assert.equal(a.tripStatus, "completed");
@@ -201,15 +203,15 @@ describe("completeTrip (ends an auto-started trip + bills)", () => {
     assert.equal(r.status, "completed");
   });
 
-  it("cannot end a trip that has not started yet", async () => {
+  it("cannot end a trip that has not been started", async () => {
     await db.doc("requests/r1").set({requesterId: "alice", status: "assigned"});
     await db.doc("requests/r1/assignments/vol").set({
       volunteerId: "vol", requesterId: "alice", tripStatus: "assigned",
-      scheduledStartAt: Timestamp.fromMillis(Date.now() + 2 * HOUR),
+      scheduledStartAt: Timestamp.fromMillis(Date.now() - 2 * HOUR),
     });
     await assert.rejects(
       () => completeTrip(call({requestId: "r1", volunteerId: "vol"}, "vol")),
-      /not started/i
+      /must be started/i
     );
   });
 });

@@ -8,6 +8,7 @@ import '../../../core/error/failure.dart';
 import '../../../domain/entities/assignment.dart';
 import '../../../domain/entities/enums.dart';
 import '../../../domain/entities/request.dart';
+import '../../providers/core_providers.dart';
 import '../../providers/request_providers.dart';
 import '../shared/request_card.dart';
 import '../shared/trip_payment.dart';
@@ -205,9 +206,16 @@ class _AssignmentTileState extends ConsumerState<_AssignmentTile> {
   @override
   Widget build(BuildContext context) {
     final busy = ref.watch(requestControllerProvider).isLoading;
+    // Refresh on the clock so "Ready to start"/"In progress" advance with time.
+    ref.watch(clockProvider);
     final now = DateTime.now();
     final inProgress = a.isInProgress(now);
     final awaitingStart = a.awaitingStart(now);
+    final statusText = inProgress
+        ? 'In progress'
+        : awaitingStart
+            ? 'Ready to start'
+            : 'Scheduled';
     return Card(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       child: Padding(
@@ -217,7 +225,7 @@ class _AssignmentTileState extends ConsumerState<_AssignmentTile> {
           children: [
             Semantics(
               label: 'TravAcser ${a.volunteerName}, phone '
-                  '${a.volunteerPhone ?? 'not available'}',
+                  '${a.volunteerPhone ?? 'not available'}, status $statusText',
               excludeSemantics: true,
               child: Row(
                 children: [
@@ -234,12 +242,7 @@ class _AssignmentTileState extends ConsumerState<_AssignmentTile> {
                       ],
                     ),
                   ),
-                  Text(
-                      inProgress
-                          ? 'In progress'
-                          : awaitingStart
-                              ? 'Ready to start'
-                              : 'Scheduled',
+                  Text(statusText,
                       style: const TextStyle(fontWeight: FontWeight.w600)),
                 ],
               ),
