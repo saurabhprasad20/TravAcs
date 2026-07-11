@@ -72,6 +72,11 @@ abstract interface class RequestRepository {
   /// auto-start at the scheduled time, so this is the only manual transition.
   FutureResult<Unit> completeTrip(String requestId, String volunteerId);
 
+  /// Start a trip after the User validates the TravAcser's OTP (point 11). Flips
+  /// the assignment to `started` ("In progress"). Requester-only, and only once
+  /// the scheduled time has arrived.
+  FutureResult<Unit> startTrip(String requestId, String volunteerId);
+
   /// The User marks a TravAcser's payment as Paid (two-sided).
   FutureResult<Unit> markPaid(String requestId, String volunteerId);
 

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/accessibility/announce.dart';
+import '../../../core/config/constants.dart';
 import '../../../core/error/failure.dart';
 import '../../../domain/entities/assignment.dart';
 import '../../../domain/entities/enums.dart';
@@ -180,15 +181,33 @@ class _RequestAssignments extends ConsumerWidget {
   }
 }
 
-class _AssignmentTile extends ConsumerWidget {
+class _AssignmentTile extends ConsumerStatefulWidget {
   const _AssignmentTile({required this.requestId, required this.a});
   final String requestId;
   final Assignment a;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_AssignmentTile> createState() => _AssignmentTileState();
+}
+
+class _AssignmentTileState extends ConsumerState<_AssignmentTile> {
+  final _otpController = TextEditingController();
+
+  String get requestId => widget.requestId;
+  Assignment get a => widget.a;
+
+  @override
+  void dispose() {
+    _otpController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final busy = ref.watch(requestControllerProvider).isLoading;
-    final inProgress = a.isInProgress(DateTime.now());
+    final now = DateTime.now();
+    final inProgress = a.isInProgress(now);
+    final awaitingStart = a.awaitingStart(now);
     return Card(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       child: Padding(
@@ -215,7 +234,12 @@ class _AssignmentTile extends ConsumerWidget {
                       ],
                     ),
                   ),
-                  Text(inProgress ? 'In progress' : 'Scheduled',
+                  Text(
+                      inProgress
+                          ? 'In progress'
+                          : awaitingStart
+                              ? 'Ready to start'
+                              : 'Scheduled',
                       style: const TextStyle(fontWeight: FontWeight.w600)),
                 ],
               ),
@@ -230,13 +254,79 @@ class _AssignmentTile extends ConsumerWidget {
                   onPressed: busy ? null : () => _end(context, ref),
                 ),
               ),
-            ] else
-              Text('Auto-starts ${DateFormat.jm().format(a.effectiveStartAt)}',
+            ] else if (awaitingStart)
+              _otpEntry(context, busy)
+            else
+              Text('Starts at ${DateFormat.jm().format(a.effectiveStartAt)} — '
+                  'ask your TravAcser for the start code when you meet.',
                   style: Theme.of(context).textTheme.bodySmall),
           ],
         ),
       ),
     );
+  }
+
+  /// User-side OTP entry: the User types the 4-digit code the TravAcser shows.
+  /// Validation is fully offline (compared against [Assignment.startOtp]); only
+  /// on a match do we call the server to record the "In progress" flip.
+  Widget _otpEntry(BuildContext context, bool busy) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 8),
+        Text(
+          'When you meet your TravAcser, ask for their start code and enter it '
+          'here to begin the trip.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            SizedBox(
+              width: 120,
+              child: TextField(
+                controller: _otpController,
+                keyboardType: TextInputType.number,
+                maxLength: AppConstants.tripOtpLength,
+                decoration: const InputDecoration(
+                  labelText: 'Start code',
+                  counterText: '',
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            FilledButton.icon(
+              icon: const Icon(Icons.play_arrow),
+              label: const Text('Start trip'),
+              onPressed: busy ? null : () => _start(context, ref),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Future<void> _start(BuildContext context, WidgetRef ref) async {
+    final entered = _otpController.text.trim();
+    if (entered != a.startOtp) {
+      A11y.announce(context,
+          "That code doesn't match. Please check with your TravAcser and try again.");
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(const SnackBar(
+            content: Text("That code doesn't match. Please try again.")));
+      return;
+    }
+    final ok = await ref
+        .read(requestControllerProvider.notifier)
+        .startTrip(requestId, a.volunteerId);
+    if (!context.mounted) return;
+    if (ok) {
+      _otpController.clear();
+      A11y.announce(context, 'Code confirmed. The trip is now in progress.');
+    } else {
+      _err(context, ref);
+    }
   }
 
   Future<void> _end(BuildContext context, WidgetRef ref) async {

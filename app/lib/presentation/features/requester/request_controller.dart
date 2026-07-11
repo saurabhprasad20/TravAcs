@@ -98,6 +98,10 @@ class RequestController extends Notifier<AsyncValue<void>> {
   Future<bool> completeTrip(String requestId, String volunteerId) =>
       _run(() => _repo.completeTrip(requestId, volunteerId));
 
+  /// Start a trip once the User has validated the TravAcser's OTP (point 11).
+  Future<bool> startTrip(String requestId, String volunteerId) =>
+      _run(() => _repo.startTrip(requestId, volunteerId));
+
   /// User marks a TravAcser's payment as Paid.
   Future<bool> markPaid(String requestId, String volunteerId) =>
       _run(() => _repo.markPaid(requestId, volunteerId));

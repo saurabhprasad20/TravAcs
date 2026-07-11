@@ -56,7 +56,9 @@ class _TripCard extends ConsumerWidget {
     final date = DateFormat.yMMMEd().format(a.scheduledDate);
     final time = formatTime12h(a.startTime);
     final busy = ref.watch(requestControllerProvider).isLoading;
-    final inProgress = a.isInProgress(DateTime.now());
+    final now = DateTime.now();
+    final inProgress = a.isInProgress(now);
+    final awaitingStart = a.awaitingStart(now);
 
     return Card(
       child: Padding(
@@ -70,7 +72,7 @@ class _TripCard extends ConsumerWidget {
                   child: Text('$date · $time',
                       style: Theme.of(context).textTheme.titleMedium),
                 ),
-                _StatusPill(inProgress: inProgress),
+                _StatusPill(inProgress: inProgress, awaitingStart: awaitingStart),
               ],
             ),
             if (a.needsRescheduleConfirm) ...[
@@ -105,10 +107,16 @@ class _TripCard extends ConsumerWidget {
             Text(
               inProgress
                   ? 'In progress — end the trip when you finish.'
-                  : 'Auto-starts at $time. Estimated earning: '
-                      '₹${a.amountInrEstimate} (${a.amountBreakdown}).',
+                  : awaitingStart
+                      ? 'Share this start code with the User to begin the trip.'
+                      : 'Starts at $time. Estimated earning: '
+                          '₹${a.amountInrEstimate} (${a.amountBreakdown}).',
               style: Theme.of(context).textTheme.titleSmall,
             ),
+            if (awaitingStart) ...[
+              const SizedBox(height: 8),
+              _StartCode(otp: a.startOtp),
+            ],
             const SizedBox(height: 8),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
@@ -264,8 +272,9 @@ class _TripCard extends ConsumerWidget {
 }
 
 class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.inProgress});
+  const _StatusPill({required this.inProgress, this.awaitingStart = false});
   final bool inProgress;
+  final bool awaitingStart;
 
   @override
   Widget build(BuildContext context) {
@@ -273,8 +282,11 @@ class _StatusPill extends StatelessWidget {
     final (bg, fg, icon, label) = inProgress
         ? (scheme.tertiaryContainer, scheme.onTertiaryContainer,
             Icons.directions_walk, 'In progress')
-        : (scheme.secondaryContainer, scheme.onSecondaryContainer,
-            Icons.schedule, 'Scheduled');
+        : awaitingStart
+            ? (scheme.tertiaryContainer, scheme.onTertiaryContainer,
+                Icons.pin, 'Ready to start')
+            : (scheme.secondaryContainer, scheme.onSecondaryContainer,
+                Icons.schedule, 'Scheduled');
     return Semantics(
       label: 'Status: $label',
       excludeSemantics: true,
@@ -288,6 +300,48 @@ class _StatusPill extends StatelessWidget {
             Icon(icon, size: 16, color: fg),
             const SizedBox(width: 4),
             Text(label, style: TextStyle(color: fg, fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The TravAcser's 4-digit start code, shown large. Read digit-by-digit for
+/// screen-reader users (golden rule) so it can be spoken to the User.
+class _StartCode extends StatelessWidget {
+  const _StartCode({required this.otp});
+  final String otp;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final spaced = otp.split('').join(' '); // "1 2 3 4" reads digit-by-digit
+    return Semantics(
+      label: 'Start code: $spaced',
+      excludeSemantics: true,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: scheme.primaryContainer,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Start code',
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: scheme.onPrimaryContainer)),
+            const SizedBox(height: 2),
+            Text(
+              spaced,
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    color: scheme.onPrimaryContainer,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 4,
+                  ),
+            ),
           ],
         ),
       ),

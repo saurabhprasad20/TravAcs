@@ -274,6 +274,53 @@ export const acceptRequest = onCall({region: REGION}, async (req) => {
 });
 
 /**
+ * Starts a trip after the User validates the TravAcser's OTP (point 11). The
+ * OTP itself is generated + validated entirely on the clients (deterministic,
+ * offline); this callable ONLY records the status flip. Requester-only (the
+ * User is the one who validates), and only once the scheduled time has arrived.
+ */
+export const startTrip = onCall({region: REGION}, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Please sign in.");
+  const {requestId, volunteerId} = req.data ?? {};
+  if (!requestId || !volunteerId) {
+    throw new HttpsError("invalid-argument", "requestId and volunteerId are required.");
+  }
+  const reqRef = db.collection("requests").doc(requestId);
+  const assignRef = reqRef.collection("assignments").doc(volunteerId);
+  let requesterId: string | undefined;
+  await db.runTransaction(async (tx) => {
+    const reqDoc = await tx.get(reqRef);
+    const r = reqDoc.data();
+    if (!r) throw new HttpsError("not-found", "Request not found.");
+    if (r.requesterId !== uid) {
+      throw new HttpsError("permission-denied", "Only the User can start the trip.");
+    }
+    requesterId = r.requesterId;
+    const a = (await tx.get(assignRef)).data();
+    if (!a) throw new HttpsError("not-found", "Assignment not found.");
+    if (a.tripStatus !== "assigned") {
+      throw new HttpsError("failed-precondition", "This trip can no longer be started.", {code: "INVALID_STATE"});
+    }
+    const startAt: FirebaseFirestore.Timestamp | undefined = a.scheduledStartAt;
+    if (startAt && Date.now() < startAt.toMillis()) {
+      throw new HttpsError("failed-precondition", "This trip cannot start before its scheduled time.", {code: "NOT_STARTED"});
+    }
+    tx.update(assignRef, {
+      tripStatus: "started",
+      startedAt: FieldValue.serverTimestamp(),
+      otpStartedAt: FieldValue.serverTimestamp(),
+    });
+  });
+  await pushToUser(
+    volunteerId,
+    {title: "Trip started", body: "The User confirmed your code — the trip is now in progress."},
+    {type: "trip_started", requestId}
+  ).catch(() => {});
+  return {ok: true, code: "STARTED"};
+});
+
+/**
  * Ends/completes a TravAcser's trip (by that TravAcser or the requester). Trips
  * auto-start at their scheduled time (no OTP), so billing is anchored to
  * `scheduledStartAt`. When no active assignment remains, the request is
@@ -302,7 +349,7 @@ export const completeTrip = onCall({region: REGION}, async (req) => {
     const assignDoc = await tx.get(assignRef);
     if (!assignDoc.exists) throw new HttpsError("not-found", "Assignment not found.");
     const a = assignDoc.data() as FirebaseFirestore.DocumentData;
-    if (a.tripStatus !== "assigned") {
+    if (a.tripStatus !== "assigned" && a.tripStatus !== "started") {
       throw new HttpsError("failed-precondition", "This trip can no longer be ended.", {code: "INVALID_STATE"});
     }
     // Auto-start by time: the trip is "in progress" once scheduledStartAt has
