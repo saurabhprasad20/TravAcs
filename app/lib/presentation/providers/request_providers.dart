@@ -56,19 +56,19 @@ final availableRequestsProvider = StreamProvider<List<Request>>((ref) {
           .toSet() ??
       const <String>{};
 
-  // Hide requests that can no longer realistically be accepted: within 30 min
-  // of (or past) their scheduled start they "disappear" from the feed (item 2).
-  // The server separately warns the User and auto-cancels at the start time.
-  // Watch the clock so the cutoff advances even without a new Firestore event.
+  // Hide only requests that can no longer be accepted — i.e. past their
+  // scheduled start (the server auto-cancels those). Short-notice trips stay on
+  // the feed right up to their start time. Watch the clock so this advances even
+  // without a new Firestore event.
   ref.watch(clockProvider);
-  final cutoff = DateTime.now().add(const Duration(minutes: 30));
+  final now = DateTime.now();
 
   return ref
       .watch(requestRepositoryProvider)
       .watchAvailableRequests(city)
       .map((list) => list
           .where((r) =>
-              !acceptedIds.contains(r.id) && r.scheduledStartAt.isAfter(cutoff))
+              !acceptedIds.contains(r.id) && r.scheduledStartAt.isAfter(now))
           .toList());
 });
 
