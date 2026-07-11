@@ -98,7 +98,8 @@ class RequestController extends Notifier<AsyncValue<void>> {
   Future<bool> completeTrip(String requestId, String volunteerId) =>
       _run(() => _repo.completeTrip(requestId, volunteerId));
 
-  /// Start a trip once the User has validated the TravAcser's OTP (point 11).
+  /// Start a trip once the TravAcser has validated the User's start code
+  /// (offline, deterministic). Called by the TravAcser.
   Future<bool> startTrip(String requestId, String volunteerId) =>
       _run(() => _repo.startTrip(requestId, volunteerId));
 

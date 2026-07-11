@@ -52,7 +52,7 @@ class Request {
   // When.
   final DateTime scheduledDate; // date only
   final String startTime; // HH:mm
-  final DateTime scheduledStartAt; // scheduledDate + startTime; auto-start anchor
+  final DateTime scheduledStartAt; // scheduledDate + startTime; schedule anchor
   final int expectedDurationMinutes;
 
   // Where / what.

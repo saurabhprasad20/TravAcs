@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/accessibility/announce.dart';
-import '../../../core/config/constants.dart';
 import '../../../core/error/failure.dart';
 import '../../../domain/entities/assignment.dart';
 import '../../../domain/entities/enums.dart';
@@ -15,8 +14,9 @@ import '../shared/trip_payment.dart';
 import 'request_controller.dart';
 
 /// The requester's ACTIVE requests (scheduled / in progress). Completed trips
-/// move to Trip History. Trips auto-start at their time; the User can reschedule
-/// (before start) or cancel, and either party can end a started trip (M12).
+/// move to Trip History. A trip starts when the TravAcser validates the User's
+/// start code; the User can reschedule (before start) or cancel, and either
+/// party can end a started trip.
 class MyRequestsScreen extends ConsumerWidget {
   const MyRequestsScreen({super.key});
 
@@ -149,8 +149,8 @@ class MyRequestsScreen extends ConsumerWidget {
   }
 }
 
-/// Inline list of the TravAcsers assigned to a request (no OTP — trips
-/// auto-start at their time).
+/// Inline list of the TravAcsers assigned to a request. During the start
+/// window the User's start code is shown here to read to their TravAcser.
 class _RequestAssignments extends ConsumerWidget {
   const _RequestAssignments({required this.requestId});
   final String requestId;
@@ -182,29 +182,13 @@ class _RequestAssignments extends ConsumerWidget {
   }
 }
 
-class _AssignmentTile extends ConsumerStatefulWidget {
+class _AssignmentTile extends ConsumerWidget {
   const _AssignmentTile({required this.requestId, required this.a});
   final String requestId;
   final Assignment a;
 
   @override
-  ConsumerState<_AssignmentTile> createState() => _AssignmentTileState();
-}
-
-class _AssignmentTileState extends ConsumerState<_AssignmentTile> {
-  final _otpController = TextEditingController();
-
-  String get requestId => widget.requestId;
-  Assignment get a => widget.a;
-
-  @override
-  void dispose() {
-    _otpController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final busy = ref.watch(requestControllerProvider).isLoading;
     // Refresh on the clock so "Ready to start"/"In progress" advance with time.
     ref.watch(clockProvider);
@@ -258,10 +242,10 @@ class _AssignmentTileState extends ConsumerState<_AssignmentTile> {
                 ),
               ),
             ] else if (awaitingStart)
-              _otpEntry(context, busy)
+              _StartCodeDisplay(otp: a.startOtp)
             else
               Text('Starts at ${DateFormat.jm().format(a.effectiveStartAt)} — '
-                  'ask your TravAcser for the start code when you meet.',
+                  'share your start code with your TravAcser when you meet.',
                   style: Theme.of(context).textTheme.bodySmall),
           ],
         ),
@@ -269,68 +253,8 @@ class _AssignmentTileState extends ConsumerState<_AssignmentTile> {
     );
   }
 
-  /// User-side OTP entry: the User types the 4-digit code the TravAcser shows.
-  /// Validation is fully offline (compared against [Assignment.startOtp]); only
-  /// on a match do we call the server to record the "In progress" flip.
-  Widget _otpEntry(BuildContext context, bool busy) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 8),
-        Text(
-          'When you meet your TravAcser, ask for their start code and enter it '
-          'here to begin the trip.',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            SizedBox(
-              width: 120,
-              child: TextField(
-                controller: _otpController,
-                keyboardType: TextInputType.number,
-                maxLength: AppConstants.tripOtpLength,
-                decoration: const InputDecoration(
-                  labelText: 'Start code',
-                  counterText: '',
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            FilledButton.icon(
-              icon: const Icon(Icons.play_arrow),
-              label: const Text('Start trip'),
-              onPressed: busy ? null : () => _start(context, ref),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Future<void> _start(BuildContext context, WidgetRef ref) async {
-    final entered = _otpController.text.trim();
-    if (entered != a.startOtp) {
-      A11y.announce(context,
-          "That code doesn't match. Please check with your TravAcser and try again.");
-      ScaffoldMessenger.of(context)
-        ..clearSnackBars()
-        ..showSnackBar(const SnackBar(
-            content: Text("That code doesn't match. Please try again.")));
-      return;
-    }
-    final ok = await ref
-        .read(requestControllerProvider.notifier)
-        .startTrip(requestId, a.volunteerId);
-    if (!context.mounted) return;
-    if (ok) {
-      _otpController.clear();
-      A11y.announce(context, 'Code confirmed. The trip is now in progress.');
-    } else {
-      _err(context, ref);
-    }
-  }
+  /// User-side start code: shown large and read digit-by-digit so the User can
+  /// tell it to their TravAcser, who enters it to begin the trip.
 
   Future<void> _end(BuildContext context, WidgetRef ref) async {
     final ok = await ref
@@ -358,5 +282,58 @@ class _AssignmentTileState extends ConsumerState<_AssignmentTile> {
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
       ..showSnackBar(SnackBar(content: Text(msg)));
+  }
+}
+
+/// The User's start code, shown large. Read digit-by-digit for screen-reader
+/// users (golden rule) so the User can tell it to their TravAcser, who enters
+/// it on their device to begin the trip.
+class _StartCodeDisplay extends StatelessWidget {
+  const _StartCodeDisplay({required this.otp});
+  final String otp;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final spaced = otp.split('').join(' '); // "1 2 3 4" reads digit-by-digit
+    return Semantics(
+      label: 'Your start code: $spaced. '
+          'Read it to your TravAcser to begin the trip.',
+      excludeSemantics: true,
+      child: Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(top: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: scheme.primaryContainer,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Your start code',
+                style: Theme.of(context)
+                    .textTheme
+                    .labelMedium
+                    ?.copyWith(color: scheme.onPrimaryContainer)),
+            const SizedBox(height: 2),
+            Text(
+              spaced,
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    color: scheme.onPrimaryContainer,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 4,
+                  ),
+            ),
+            const SizedBox(height: 4),
+            Text('Read this code to your TravAcser to begin the trip.',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: scheme.onPrimaryContainer)),
+          ],
+        ),
+      ),
+    );
   }
 }

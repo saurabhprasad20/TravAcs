@@ -1,5 +1,5 @@
 /// Combines a date-only [date] with an `"HH:mm"` [time] string into an absolute
-/// local DateTime (the auto-start anchor for a trip, M12). Tolerant of malformed
+/// local DateTime (the scheduled-start anchor for a trip). Tolerant of malformed
 /// input — falls back to midnight on [date].
 DateTime combineDateAndTime(DateTime date, String time) {
   final parts = time.split(':');

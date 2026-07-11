@@ -38,10 +38,11 @@ npx -y firebase-tools@13 emulators:exec --only firestore --project demo-travacs 
 - **`rules-tests/test/firestore.test.js`** — the access matrix from
   `firestore.rules`: self-scoped profile reads, region-scoped request reads,
   protected-field rejection (role / verification / ratings), function-only
-  `assignments`/`secrets` writes, OTP-secret requester-only privacy, rating
-  bounds, device-token privacy.
+  `assignments` writes, request-create constraints (forged `acceptedCount`,
+  out-of-range counts), ratings server-only, device-token privacy.
 - **`functions/test/index.test.ts`** — `acceptRequest` (FCFS slot fill +
-  over-subscription + not-approved), `startTrip` (OTP success, wrong-OTP
-  attempt counting, 5-attempt rate limit), `completeTrip` (billing from
-  elapsed time), two-sided payment state machine, `submitRating` (rolling
-  average + duplicate block), `setVerification` (admin gate).
+  over-subscription + not-approved), `startTrip` (TravAcser-only start-code
+  flip, time guard, User rejected), `completeTrip` (billing from the recorded
+  `startedAt`, must be started), two-sided payment state machine,
+  `verifyRazorpayPayment`, `submitRating` (rolling average + duplicate block),
+  `setVerification` / `logManualTrip` (admin gate).

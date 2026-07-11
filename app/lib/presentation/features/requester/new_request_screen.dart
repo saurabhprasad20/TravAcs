@@ -408,7 +408,7 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
       label: 'Start time, ${_time?.format(context) ?? 'not set'}',
       child: ListTile(
         contentPadding: EdgeInsets.zero,
-        title: const Text('Start time (the trip auto-starts at this time)'),
+        title: const Text('Start time (when your trip is scheduled to begin)'),
         subtitle: Text(_time?.format(context) ?? 'Not set'),
         trailing: const Icon(Icons.access_time),
         onTap: _pickTime,

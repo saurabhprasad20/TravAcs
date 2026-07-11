@@ -4,18 +4,19 @@ import 'package:crypto/crypto.dart';
 
 import '../config/constants.dart';
 
-/// Deterministic, offline trip-start OTP (point 11).
+/// Deterministic, offline trip-start code (point 11).
 ///
-/// The TravAcser's app shows this code; the User enters it when they meet, on
-/// or after the scheduled time. Both apps read the same assignment document, so
-/// they compute the **same** code from the shared fields — no SMS/OTP provider
-/// and no server round-trip are needed. Because [scheduledStartAt] is part of
-/// the input, a rescheduled trip automatically gets a new code.
+/// The User's app shows this code; the User reads it to the TravAcser, who
+/// enters it on their device when they meet, on or after the scheduled time.
+/// Both apps read the same assignment document, so they compute the **same**
+/// code from the shared fields — no SMS/OTP provider and no server round-trip
+/// are needed. Because [scheduledStartAt] is part of the input, a rescheduled
+/// trip automatically gets a new code.
 ///
 /// The algorithm is an RFC-4226-style HMAC-SHA256 truncation, reduced to
 /// [AppConstants.tripOtpLength] digits. The salt is a fixed app constant (not a
-/// secret — see [AppConstants.tripOtpSalt]); the OTP only confirms the two
-/// parties are together, it is not a security token.
+/// secret — see [AppConstants.tripOtpSalt]); the code confirms the two parties
+/// are together, it is not a security token.
 String tripStartOtp({
   required String? userPhone,
   required String? travAcserPhone,

@@ -142,14 +142,14 @@ describe("acceptRequest (slot-filling FCFS)", () => {
   });
 });
 
-describe("startTrip (OTP-gated status flip)", () => {
-  it("the requester starts an assigned trip after its scheduled time", async () => {
+describe("startTrip (code-gated status flip, TravAcser-driven)", () => {
+  it("the TravAcser starts an assigned trip after its scheduled time", async () => {
     await db.doc("requests/r1").set({requesterId: "alice", status: "assigned"});
     await db.doc("requests/r1/assignments/vol").set({
       volunteerId: "vol", requesterId: "alice", tripStatus: "assigned",
       scheduledStartAt: Timestamp.fromMillis(Date.now() - HOUR),
     });
-    const res: any = await startTrip(call({requestId: "r1", volunteerId: "vol"}, "alice"));
+    const res: any = await startTrip(call({requestId: "r1", volunteerId: "vol"}, "vol"));
     assert.equal(res.code, "STARTED");
     const a = (await db.doc("requests/r1/assignments/vol").get()).data()!;
     assert.equal(a.tripStatus, "started");
@@ -163,20 +163,20 @@ describe("startTrip (OTP-gated status flip)", () => {
       scheduledStartAt: Timestamp.fromMillis(Date.now() + HOUR),
     });
     await assert.rejects(
-      () => startTrip(call({requestId: "r1", volunteerId: "vol"}, "alice")),
+      () => startTrip(call({requestId: "r1", volunteerId: "vol"}, "vol")),
       /before its scheduled time/i
     );
   });
 
-  it("only the requester (User) can start the trip", async () => {
+  it("only the TravAcser can start the trip (the User cannot)", async () => {
     await db.doc("requests/r1").set({requesterId: "alice", status: "assigned"});
     await db.doc("requests/r1/assignments/vol").set({
       volunteerId: "vol", requesterId: "alice", tripStatus: "assigned",
       scheduledStartAt: Timestamp.fromMillis(Date.now() - HOUR),
     });
     await assert.rejects(
-      () => startTrip(call({requestId: "r1", volunteerId: "vol"}, "vol")),
-      /only the user/i
+      () => startTrip(call({requestId: "r1", volunteerId: "vol"}, "alice")),
+      /only the travacser/i
     );
   });
 });
