@@ -156,16 +156,17 @@ describe("startTrip (code-gated status flip, TravAcser-driven)", () => {
     assert.ok(a.startedAt);
   });
 
-  it("cannot start before the scheduled time", async () => {
+  it("can start early — before the scheduled time (parties met sooner)", async () => {
     await db.doc("requests/r1").set({requesterId: "alice", status: "assigned"});
     await db.doc("requests/r1/assignments/vol").set({
       volunteerId: "vol", requesterId: "alice", tripStatus: "assigned",
-      scheduledStartAt: Timestamp.fromMillis(Date.now() + HOUR),
+      scheduledStartAt: Timestamp.fromMillis(Date.now() + HOUR), // still in the future
     });
-    await assert.rejects(
-      () => startTrip(call({requestId: "r1", volunteerId: "vol"}, "vol")),
-      /before its scheduled time/i
-    );
+    const res: any = await startTrip(call({requestId: "r1", volunteerId: "vol"}, "vol"));
+    assert.equal(res.code, "STARTED");
+    const a = (await db.doc("requests/r1/assignments/vol").get()).data()!;
+    assert.equal(a.tripStatus, "started");
+    assert.ok(a.startedAt);
   });
 
   it("only the TravAcser can start the trip (the User cannot)", async () => {

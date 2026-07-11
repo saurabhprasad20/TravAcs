@@ -293,7 +293,8 @@ export const acceptRequest = onCall({region: REGION}, async (req) => {
  * Starts a trip after the TravAcser validates the User's start code. The code is
  * deterministic + validated entirely on the clients (offline); this callable
  * ONLY records the status flip. TravAcser-only (they are the one who enters and
- * validates the User's code), and only once the scheduled time has arrived. The
+ * validates the User's code). The trip may start early (the parties often meet
+ * before the scheduled time) — billing runs from the recorded `startedAt`. The
  * User is notified so both sides see "trip started".
  */
 export const startTrip = onCall({region: REGION}, async (req) => {
@@ -321,10 +322,6 @@ export const startTrip = onCall({region: REGION}, async (req) => {
     }
     if (a.tripStatus !== "assigned") {
       throw new HttpsError("failed-precondition", "This trip can no longer be started.", {code: "INVALID_STATE"});
-    }
-    const startAt: FirebaseFirestore.Timestamp | undefined = a.scheduledStartAt;
-    if (startAt && Date.now() < startAt.toMillis()) {
-      throw new HttpsError("failed-precondition", "This trip cannot start before its scheduled time.", {code: "NOT_STARTED"});
     }
     tx.update(assignRef, {
       tripStatus: "started",
