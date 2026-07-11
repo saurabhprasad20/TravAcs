@@ -28,6 +28,7 @@ const submitRating = fft.wrap(fns.submitRating);
 const setVerification = fft.wrap(fns.setVerification);
 const verifyRazorpayPayment = fft.wrap(fns.verifyRazorpayPayment);
 const logManualTrip = fft.wrap(fns.logManualTrip);
+const widenGenderRequests = fft.wrap(fns.widenGenderRequests);
 
 const HOUR = 60 * 60000;
 
@@ -44,7 +45,7 @@ async function clearDb(): Promise<void> {
   );
 }
 
-async function approvedVolunteer(id: string, city = "delhi_ncr"): Promise<void> {
+async function approvedVolunteer(id: string, city = "delhi_ncr", gender?: string): Promise<void> {
   await db.doc(`profiles/${id}`).set({
     role: "volunteer",
     verificationStatus: "approved",
@@ -52,6 +53,7 @@ async function approvedVolunteer(id: string, city = "delhi_ncr"): Promise<void> 
     fullName: id,
     phone: "+910000000000",
     serviceCity: city,
+    ...(gender ? {gender} : {}),
   });
 }
 
@@ -158,6 +160,65 @@ describe("acceptRequest (slot-filling FCFS)", () => {
     assert.equal(res.code, "ACCEPTED");
     const a = (await db.doc("requests/r1/assignments/vol").get()).data()!;
     assert.equal(a.tripStatus, "assigned"); // overwritten cleanly
+  });
+});
+
+describe("gender matching (acceptRequest + widenGenderRequests)", () => {
+  // A strict same-gender request from a female requester.
+  async function strictFemaleRequest(id: string, extra: any = {}): Promise<void> {
+    await broadcastRequest(id, {
+      genderPreference: "strict_same_gender",
+      requesterGender: "female",
+      genderRestricted: true,
+      genderWidened: false,
+      ...extra,
+    });
+  }
+
+  it("rejects an opposite-gender TravAcser on a strict request", async () => {
+    await approvedVolunteer("vol", "delhi_ncr", "male");
+    await strictFemaleRequest("r1");
+    await assert.rejects(
+      () => acceptRequest(call({requestId: "r1"}, "vol")),
+      /limited to a specific gender/i
+    );
+  });
+
+  it("allows a same-gender TravAcser on a strict request", async () => {
+    await approvedVolunteer("vol", "delhi_ncr", "female");
+    await strictFemaleRequest("r1");
+    const res: any = await acceptRequest(call({requestId: "r1"}, "vol"));
+    assert.equal(res.code, "ACCEPTED");
+  });
+
+  it("allows any gender once the request has widened", async () => {
+    await approvedVolunteer("vol", "delhi_ncr", "male");
+    await strictFemaleRequest("r1", {genderWidened: true});
+    const res: any = await acceptRequest(call({requestId: "r1"}, "vol"));
+    assert.equal(res.code, "ACCEPTED");
+  });
+
+  it("does not restrict a preferred/any request", async () => {
+    await approvedVolunteer("vol", "delhi_ncr", "male");
+    await broadcastRequest("r1", {
+      genderPreference: "prefer_same_gender",
+      requesterGender: "female",
+      genderRestricted: false,
+    });
+    const res: any = await acceptRequest(call({requestId: "r1"}, "vol"));
+    assert.equal(res.code, "ACCEPTED");
+  });
+
+  it("widenGenderRequests flips genderWidened once past genderWidenAt", async () => {
+    await strictFemaleRequest("due", {
+      genderWidenAt: Timestamp.fromMillis(Date.now() - 60000), // due
+    });
+    await strictFemaleRequest("notdue", {
+      genderWidenAt: Timestamp.fromMillis(Date.now() + HOUR), // not yet
+    });
+    await widenGenderRequests({} as any);
+    assert.equal((await db.doc("requests/due").get()).data()!.genderWidened, true);
+    assert.equal((await db.doc("requests/notdue").get()).data()!.genderWidened, false);
   });
 });
 

@@ -23,6 +23,7 @@ abstract interface class RequestRepository {
     required int expectedDurationMinutes,
     required String meetingPoint,
     required String destination,
+    Gender? requesterGender,
     String? purpose,
     String? specialNote,
   });

@@ -68,7 +68,13 @@ service cloud.firestore {
         // own city.
         || (resource.data.status == 'broadcast'
             && isApprovedVolunteer()
-            && resource.data.serviceCity == myCity())
+            && resource.data.serviceCity == myCity()
+            // A strict same-gender request is only readable by matching-gender
+            // TravAcsers until it widens to all genders.
+            && (resource.data.get('genderRestricted', false) == false
+                || resource.data.get('genderWidened', false) == true
+                || resource.data.get('requesterGender', '')
+                     == profileData(request.auth.uid).get('gender', '')))
         || isAdmin()
       );
 
@@ -86,7 +92,9 @@ service cloud.firestore {
         && request.resource.data.numTravAcsers <= 10
         && request.resource.data.numTravellers is int
         && request.resource.data.numTravellers >= 1
-        && request.resource.data.numTravellers <= 10;
+        && request.resource.data.numTravellers <= 10
+        // A client cannot pre-widen a gender-restricted request.
+        && request.resource.data.get('genderWidened', false) == false;
 
       // The requester may only CANCEL, and only before anyone accepts. Accept,
       // start, complete and payment transitions are done by Cloud Functions

@@ -29,6 +29,7 @@ class RequestController extends Notifier<AsyncValue<void>> {
     required int expectedDurationMinutes,
     required String meetingPoint,
     required String destination,
+    Gender? requesterGender,
     String? purpose,
     String? specialNote,
   }) async {
@@ -45,6 +46,7 @@ class RequestController extends Notifier<AsyncValue<void>> {
       expectedDurationMinutes: expectedDurationMinutes,
       meetingPoint: meetingPoint,
       destination: destination,
+      requesterGender: requesterGender,
       purpose: purpose,
       specialNote: specialNote,
     );

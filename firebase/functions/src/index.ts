@@ -114,14 +114,31 @@ export const onRequestCreated = onDocumentCreated(
     const city: string | undefined = req.serviceCity;
     if (!city) return;
 
+    // Gender restriction (only for a strict same-gender request with a known
+    // requester gender): fan out to same-gender TravAcsers first, and stamp when
+    // the request should auto-widen to all genders (last 10% of the lead time).
+    const genderRestricted = req.genderRestricted === true && !!req.requesterGender;
+    const scheduledStart: FirebaseFirestore.Timestamp | undefined = req.scheduledStartAt;
+    if (genderRestricted && scheduledStart) {
+      const createdMs = snap.createTime?.toMillis() ?? Date.now();
+      const startMs = scheduledStart.toMillis();
+      const widenAtMs = createdMs + Math.round(0.9 * (startMs - createdMs));
+      await snap.ref
+        .update({genderWidenAt: Timestamp.fromMillis(widenAtMs)})
+        .catch(() => {});
+    }
+
     // Approved, active TravAcsers in the same city.
-    const vols = await db
+    let volsQuery = db
       .collection("profiles")
       .where("role", "==", "volunteer")
       .where("verificationStatus", "==", "approved")
       .where("isActive", "==", true)
-      .where("serviceCity", "==", city)
-      .get();
+      .where("serviceCity", "==", city);
+    if (genderRestricted) {
+      volsQuery = volsQuery.where("gender", "==", req.requesterGender);
+    }
+    const vols = await volsQuery.get();
 
     if (vols.empty) {
       logger.info(`No TravAcsers in city=${city} for request ${event.params.id}`);
@@ -209,6 +226,14 @@ export const acceptRequest = onCall({region: REGION}, async (req) => {
     }
     if (r.serviceCity !== vol.serviceCity) {
       throw new HttpsError("failed-precondition", "This request is in another city.", {code: "WRONG_CITY"});
+    }
+    // Gender gate: a strict same-gender request (with a known requester gender)
+    // is limited to same-gender TravAcsers until it auto-widens to all genders.
+    const genderRestricted =
+      r.genderPreference === "strict_same_gender" &&
+      (r.requesterGender === "male" || r.requesterGender === "female" || r.requesterGender === "other");
+    if (genderRestricted && r.genderWidened !== true && vol.gender !== r.requesterGender) {
+      throw new HttpsError("failed-precondition", "This request is currently limited to a specific gender.", {code: "GENDER_MISMATCH"});
     }
     const existing = await tx.get(assignRef);
     if (existing.exists) {
@@ -497,6 +522,16 @@ export const rescheduleTrip = onCall({region: REGION}, async (req) => {
       scheduledStartAt: newStartAt,
       // Let the "no TravAcser found" warning fire again for the new time.
       noTravAcserNotifiedAt: FieldValue.delete(),
+      // A gender-restricted request that moves out re-restricts to same-gender
+      // TravAcsers and recomputes its widen point for the new lead time.
+      ...(r.genderRestricted === true && !!r.requesterGender
+        ? {
+          genderWidened: false,
+          genderWidenAt: Timestamp.fromMillis(
+            Date.now() + Math.round(0.9 * (scheduledStartAtMs - Date.now()))
+          ),
+        }
+        : {}),
       updatedAt: FieldValue.serverTimestamp(),
     });
     assigns.docs.forEach((d) => {
@@ -1067,6 +1102,90 @@ export const expireRescheduleConfirmations = onSchedule(
         }
       } catch (e) {
         logger.warn(`expireRescheduleConfirmations failed for ${doc.ref.path}`, e);
+      }
+    }
+  }
+);
+
+/**
+ * Auto-widens a strict same-gender request to ALL genders once only the last
+ * 10% of its lead time remains (item: gender matching). It flips `genderWidened`,
+ * fans out to the now-eligible (different-gender) TravAcsers in the city, and
+ * notifies the requester. Requests that fill or cancel first are skipped.
+ */
+export const widenGenderRequests = onSchedule(
+  {region: SCHEDULER_REGION, schedule: "every 2 minutes"},
+  async () => {
+    const now = Date.now();
+    const snap = await db
+      .collection("requests")
+      .where("genderRestricted", "==", true)
+      .where("genderWidened", "==", false)
+      .get();
+    for (const doc of snap.docs) {
+      const r0 = doc.data();
+      const widenAtMs = (r0.genderWidenAt as Timestamp | undefined)?.toMillis();
+      // Not yet due, or the widen anchor hasn't been stamped yet.
+      if (widenAtMs == null || now < widenAtMs) continue;
+
+      let requesterId: string | undefined;
+      let city: string | undefined;
+      let requesterGender: string | undefined;
+      try {
+        const didWiden = await db.runTransaction(async (tx) => {
+          const cur = await tx.get(doc.ref);
+          const r = cur.data();
+          if (!r) return false;
+          // Only widen a still-open, still-restricted, not-yet-widened request.
+          if (r.status !== "broadcast" || r.genderRestricted !== true || r.genderWidened === true) {
+            return false;
+          }
+          requesterId = r.requesterId;
+          city = r.serviceCity;
+          requesterGender = r.requesterGender;
+          tx.update(doc.ref, {genderWidened: true, updatedAt: FieldValue.serverTimestamp()});
+          return true;
+        });
+        if (!didWiden) continue;
+
+        // Fan out to the newly-eligible TravAcsers (different gender than the
+        // requester) in the city — same-gender ones were already notified.
+        if (city) {
+          const vols = await db
+            .collection("profiles")
+            .where("role", "==", "volunteer")
+            .where("verificationStatus", "==", "approved")
+            .where("isActive", "==", true)
+            .where("serviceCity", "==", city)
+            .get();
+          const tokens: string[] = [];
+          const refByToken: Record<string, FirebaseFirestore.DocumentReference> = {};
+          for (const v of vols.docs) {
+            if (v.data().gender === requesterGender) continue; // already reached
+            const toks = await db.collection("devices").doc(v.id).collection("tokens").get();
+            toks.forEach((t) => {
+              tokens.push(t.id);
+              refByToken[t.id] = t.ref;
+            });
+          }
+          if (tokens.length > 0) {
+            await sendMulticastChunked(
+              tokens,
+              refByToken,
+              {title: "New assistance request", body: "A request in your city is now open to all TravAcsers."},
+              {type: "new_request", requestId: doc.id}
+            ).catch(() => {});
+          }
+        }
+        if (requesterId) {
+          await pushToUser(
+            requesterId,
+            {title: "Opened to all TravAcsers", body: "We couldn't find a same-gender TravAcser in time, so your request is now open to all genders."},
+            {type: "gender_widened", requestId: doc.id}
+          ).catch(() => {});
+        }
+      } catch (e) {
+        logger.warn(`widenGenderRequests failed for ${doc.id}`, e);
       }
     }
   }

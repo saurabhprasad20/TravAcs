@@ -24,6 +24,9 @@ class Request {
     required this.destination,
     required this.estimatedAmountInr,
     this.acceptedCount = 0,
+    this.requesterGender,
+    this.genderRestricted = false,
+    this.genderWidened = false,
     this.purpose,
     this.specialNote,
     this.volunteerId,
@@ -48,6 +51,19 @@ class Request {
   /// The User's gender preference for their TravAcser (informational; matching
   /// itself stays city-based).
   final GenderPreference genderPreference;
+
+  /// The requester's own gender, denormalized for gender matching. Null/undisclosed
+  /// means no gender restriction can be applied.
+  final Gender? requesterGender;
+
+  /// True when this request is limited to same-gender TravAcsers (only for a
+  /// `strict_same_gender` preference with a known requester gender) — until it
+  /// widens ([genderWidened]).
+  final bool genderRestricted;
+
+  /// True once a gender-restricted request has been auto-widened to all genders
+  /// (near the scheduled time). Set by the `widenGenderRequests` function.
+  final bool genderWidened;
 
   // When.
   final DateTime scheduledDate; // date only

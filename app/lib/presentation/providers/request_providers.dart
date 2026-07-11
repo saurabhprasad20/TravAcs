@@ -43,6 +43,9 @@ final availableRequestsProvider = StreamProvider<List<Request>>((ref) {
   final city = my?.profile.serviceCity;
   final approved = my?.volunteer?.isApproved ?? false;
   if (city == null || !approved) return Stream.value(const []);
+  // The TravAcser's own gender, used to hide same-gender-restricted requests
+  // that aren't theirs (until such a request widens to all genders).
+  final myGender = my?.profile.gender;
 
   // Only ACTIVE assignments hide a request from the Available list. If the
   // TravAcser later cancels their slot, the (now cancelled) assignment must NOT
@@ -68,7 +71,13 @@ final availableRequestsProvider = StreamProvider<List<Request>>((ref) {
       .watchAvailableRequests(city)
       .map((list) => list
           .where((r) =>
-              !acceptedIds.contains(r.id) && r.scheduledStartAt.isAfter(now))
+              !acceptedIds.contains(r.id) &&
+              r.scheduledStartAt.isAfter(now) &&
+              // Same-gender-restricted requests are hidden from other-gender
+              // TravAcsers until they widen to all genders.
+              (!r.genderRestricted ||
+                  r.genderWidened ||
+                  r.requesterGender == myGender))
           .toList());
 });
 

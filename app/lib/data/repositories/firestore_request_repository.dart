@@ -41,12 +41,20 @@ class FirestoreRequestRepository implements RequestRepository {
     required int expectedDurationMinutes,
     required String meetingPoint,
     required String destination,
+    Gender? requesterGender,
     String? purpose,
     String? specialNote,
   }) async {
     final uid = _uid;
     if (uid == null) return failure(const AuthFailure('You are not signed in.'));
     try {
+      // A strict same-gender request can only be gender-matched when the
+      // requester's own gender is a concrete value (not undisclosed).
+      final restrictable = requesterGender == Gender.male ||
+          requesterGender == Gender.female ||
+          requesterGender == Gender.other;
+      final genderRestricted =
+          genderPreference == GenderPreference.strictSameGender && restrictable;
       final doc = await _requests.add({
         'requesterId': uid,
         'requesterName': requesterName,
@@ -58,6 +66,9 @@ class FirestoreRequestRepository implements RequestRepository {
         'numTravellers': numTravellers,
         'numTravAcsers': numTravAcsers,
         'genderPreference': genderPreference.wireValue,
+        'requesterGender': requesterGender?.wireValue,
+        'genderRestricted': genderRestricted,
+        'genderWidened': false,
         'scheduledDate': Timestamp.fromDate(scheduledDate),
         'startTime': startTime,
         'scheduledStartAt':
@@ -316,6 +327,15 @@ class FirestoreRequestRepository implements RequestRepository {
   List<Request> _mapDocs(QuerySnapshot<Map<String, dynamic>> snap) =>
       snap.docs.map(_toRequest).whereType<Request>().toList(growable: false);
 
+  /// Null-safe wire → [Gender] lookup (unknown/absent stays null).
+  static Gender? _genderFromWire(String? wire) {
+    if (wire == null) return null;
+    for (final g in Gender.values) {
+      if (g.wireValue == wire) return g;
+    }
+    return null;
+  }
+
   Request? _toRequest(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     final d = doc.data();
     final city = City.fromWire(d['serviceCity'] as String?);
@@ -334,6 +354,9 @@ class FirestoreRequestRepository implements RequestRepository {
       acceptedCount: (d['acceptedCount'] as num?)?.toInt() ?? 0,
       genderPreference:
           GenderPreference.fromWire(d['genderPreference'] as String?),
+      requesterGender: _genderFromWire(d['requesterGender'] as String?),
+      genderRestricted: (d['genderRestricted'] as bool?) ?? false,
+      genderWidened: (d['genderWidened'] as bool?) ?? false,
       scheduledDate: scheduled,
       startTime: (d['startTime'] as String?) ?? '',
       scheduledStartAt: (d['scheduledStartAt'] as Timestamp?)?.toDate() ??
