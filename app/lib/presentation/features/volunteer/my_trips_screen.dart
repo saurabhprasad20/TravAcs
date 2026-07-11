@@ -63,7 +63,6 @@ class _TripCard extends ConsumerWidget {
     ref.watch(clockProvider);
     final now = DateTime.now();
     final inProgress = a.isInProgress(now);
-    final awaitingStart = a.awaitingStart(now);
     // The trip can be started any time after acceptance (parties often meet
     // early) — as long as it isn't already in progress and there's no pending
     // reschedule to confirm first. Billing runs from the actual start.
@@ -81,7 +80,7 @@ class _TripCard extends ConsumerWidget {
                   child: Text('$date · $time',
                       style: Theme.of(context).textTheme.titleMedium),
                 ),
-                _StatusPill(inProgress: inProgress, awaitingStart: awaitingStart),
+                _StatusPill(inProgress: inProgress, readyToStart: canStart),
               ],
             ),
             if (a.needsRescheduleConfirm) ...[
@@ -288,9 +287,9 @@ class _TripCard extends ConsumerWidget {
 }
 
 class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.inProgress, this.awaitingStart = false});
+  const _StatusPill({required this.inProgress, this.readyToStart = false});
   final bool inProgress;
-  final bool awaitingStart;
+  final bool readyToStart;
 
   @override
   Widget build(BuildContext context) {
@@ -298,7 +297,7 @@ class _StatusPill extends StatelessWidget {
     final (bg, fg, icon, label) = inProgress
         ? (scheme.tertiaryContainer, scheme.onTertiaryContainer,
             Icons.directions_walk, 'In progress')
-        : awaitingStart
+        : readyToStart
             ? (scheme.tertiaryContainer, scheme.onTertiaryContainer,
                 Icons.pin, 'Ready to start')
             : (scheme.secondaryContainer, scheme.onSecondaryContainer,
