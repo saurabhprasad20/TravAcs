@@ -410,6 +410,17 @@ the public Actions API.
   (create → accept → start via offline code → end → pay → rate; reschedule; cancel from both sides).
 - **Functions runtime:** Node 20 is deprecated (decommission 2026-10-30) — bump `engines.node` to 22
   and redeploy when convenient.
+- **Deferred review findings (documented known gaps):**
+  - *Offline start-code has no true physical-presence guarantee* — both parties can compute the
+    deterministic code without meeting. Kept intentionally (offline, no SMS). Harden later with a
+    server-issued one-time code if presence assurance becomes a requirement.
+  - *One-trip-per-day has a theoretical race* — two same-user accepts within milliseconds could both
+    pass the collection-group check (practically impossible via the single-tap UI). A robust fix is a
+    deterministic guard doc (`volunteerDailySlots/{uid_ISTdate}`) claimed/released on
+    accept/cancel/reschedule.
+  - *Partial multi-TravAcser lifecycle* — a partially-filled request stays `broadcast`; starting one
+    assignment doesn't freeze the remaining slots, and some complete+cancel combinations don't cleanly
+    reconcile the parent status. Needs a focused lifecycle rework.
 - **Next planned step:** continue user + functions testing of the M12 flow, then iterate; M11
   store-release remains paused.
 
