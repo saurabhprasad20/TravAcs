@@ -955,8 +955,16 @@ export const expireStaleRequests = onSchedule(
             });
             action = "cancelled";
           } else if (!r.noTravAcserNotifiedAt) {
-            tx.update(doc.ref, {noTravAcserNotifiedAt: FieldValue.serverTimestamp()});
-            action = "warned";
+            // Don't nag immediately after a short-notice trip is created (its
+            // T-30 point may already be in the past): only warn once the request
+            // has been live for a little while. Falls back to warning when
+            // createdAt is missing.
+            const createdMs = (r.createdAt as Timestamp | undefined)?.toMillis();
+            const settled = createdMs == null || now >= createdMs + 10 * 60000;
+            if (settled) {
+              tx.update(doc.ref, {noTravAcserNotifiedAt: FieldValue.serverTimestamp()});
+              action = "warned";
+            }
           }
         });
         if (action && requesterId) {

@@ -241,12 +241,19 @@ class _AssignmentTile extends ConsumerWidget {
                   onPressed: busy ? null : () => _end(context, ref),
                 ),
               ),
-            ] else if (awaitingStart)
-              _StartCodeDisplay(otp: a.startOtp)
-            else
-              Text('Starts at ${DateFormat.jm().format(a.effectiveStartAt)} — '
-                  'share your start code with your TravAcser when you meet.',
-                  style: Theme.of(context).textTheme.bodySmall),
+            ] else ...[
+              // Accepted but not yet started: show the start code straight away
+              // so the User has it ready to read to their TravAcser. (Before any
+              // TravAcser accepts there is no assignment/tile, hence no code.)
+              if (!awaitingStart)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                      'Starts at ${DateFormat.jm().format(a.effectiveStartAt)}.',
+                      style: Theme.of(context).textTheme.bodySmall),
+                ),
+              _StartCodeDisplay(otp: a.startOtp),
+            ],
           ],
         ),
       ),

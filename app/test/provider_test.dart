@@ -134,7 +134,7 @@ void main() {
       expect(await readAvailable(c), isEmpty);
     });
 
-    test('hides requests within 30 minutes of (or past) their start', () async {
+    test('shows short-notice requests, hides only past-start ones', () async {
       final c = makeContainer(
         myProfile: profile(approved: true, withCity: city),
         available: [
@@ -144,8 +144,8 @@ void main() {
         ],
         myAssignments: const [],
       );
-      expect(await readAvailable(c), hasLength(1));
-      expect((await readAvailable(c)).single.id, 'OK');
+      // SOON (10 min out) is now visible; only PAST (past start) is hidden.
+      expect((await readAvailable(c)).map((r) => r.id).toSet(), {'SOON', 'OK'});
     });
   });
 
