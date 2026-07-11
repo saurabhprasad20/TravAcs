@@ -47,7 +47,7 @@ class RequestCard extends StatelessWidget {
                       '$date, $time'),
                   _labeled(context, Icons.my_location, 'Pick-up location',
                       r.meetingPoint),
-                  _labeled(context, Icons.place_outlined, 'Drop location',
+                  _labeled(context, Icons.place_outlined, 'Destination',
                       r.destination),
                   _labeled(context, Icons.group_outlined, 'Users travelling',
                       '${r.numTravellers}'),

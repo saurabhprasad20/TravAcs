@@ -64,6 +64,10 @@ class _TripCard extends ConsumerWidget {
     final now = DateTime.now();
     final inProgress = a.isInProgress(now);
     final awaitingStart = a.awaitingStart(now);
+    // The trip can be started any time after acceptance (parties often meet
+    // early) — as long as it isn't already in progress and there's no pending
+    // reschedule to confirm first. Billing runs from the actual start.
+    final canStart = !inProgress && !a.needsRescheduleConfirm;
 
     return Card(
       child: Padding(
@@ -89,7 +93,7 @@ class _TripCard extends ConsumerWidget {
             _labeled(
                 context, Icons.my_location, 'Pick-up location', a.meetingPoint),
             _labeled(
-                context, Icons.place_outlined, 'Drop location', a.destination),
+                context, Icons.place_outlined, 'Destination', a.destination),
             _labeled(context, Icons.group_outlined, 'Users travelling',
                 '${a.numTravellers}'),
             const Divider(height: 20),
@@ -112,13 +116,16 @@ class _TripCard extends ConsumerWidget {
             Text(
               inProgress
                   ? 'In progress — end the trip when you finish.'
-                  : awaitingStart
-                      ? 'Ask the User for their start code and enter it to begin the trip.'
+                  : canStart
+                      ? 'Ask the User for their start code and enter it to begin '
+                          'the trip. Scheduled for $time — you can start early if '
+                          'you meet sooner. Estimated earning: '
+                          '₹${a.amountInrEstimate} (${a.amountBreakdown}).'
                       : 'Starts at $time. Estimated earning: '
                           '₹${a.amountInrEstimate} (${a.amountBreakdown}).',
               style: Theme.of(context).textTheme.titleSmall,
             ),
-            if (awaitingStart) ...[
+            if (canStart) ...[
               const SizedBox(height: 8),
               _StartCodeEntry(
                 requestId: a.requestId,
