@@ -39,7 +39,7 @@ class RequestCard extends StatelessWidget {
                         child: Text('$date · $time',
                             style: Theme.of(context).textTheme.titleMedium),
                       ),
-                      _StatusChip(status: r.status),
+                      RequestStatusChip(status: r.status),
                     ],
                   ),
                   const SizedBox(height: 10),
@@ -118,8 +118,10 @@ class RequestCard extends StatelessWidget {
       );
 }
 
-class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.status});
+/// Status pill for a request — colour AND icon AND text (never colour alone).
+/// Exposed for reuse by the My Requests summary tile + detail page.
+class RequestStatusChip extends StatelessWidget {
+  const RequestStatusChip({super.key, required this.status});
   final RequestStatus status;
 
   @override
