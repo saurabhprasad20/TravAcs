@@ -196,6 +196,36 @@ describe("requests", () => {
     await assertFails(getDoc(doc(pending, "requests/r1")));
   });
 
+  it("an opposite-gender TravAcser cannot read a strict same-gender request; same gender can", async () => {
+    await seed(async (db) => {
+      await setDoc(doc(db, "requests/rg"), request("alice", {
+        genderPreference: "strict_same_gender", requesterGender: "female",
+        genderRestricted: true, genderWidened: false,
+      }));
+      await setDoc(doc(db, "profiles/male1"),
+        profile("volunteer", { verificationStatus: "approved", gender: "male" }));
+      await setDoc(doc(db, "profiles/female1"),
+        profile("volunteer", { verificationStatus: "approved", gender: "female" }));
+    });
+    const male = testEnv.authenticatedContext("male1").firestore();
+    const female = testEnv.authenticatedContext("female1").firestore();
+    await assertFails(getDoc(doc(male, "requests/rg")));
+    await assertSucceeds(getDoc(doc(female, "requests/rg")));
+  });
+
+  it("an opposite-gender TravAcser can read a widened strict request", async () => {
+    await seed(async (db) => {
+      await setDoc(doc(db, "requests/rg2"), request("alice", {
+        genderPreference: "strict_same_gender", requesterGender: "female",
+        genderRestricted: true, genderWidened: true,
+      }));
+      await setDoc(doc(db, "profiles/male2"),
+        profile("volunteer", { verificationStatus: "approved", gender: "male" }));
+    });
+    const male = testEnv.authenticatedContext("male2").firestore();
+    await assertSucceeds(getDoc(doc(male, "requests/rg2")));
+  });
+
   it("can create your own request, not one attributed to someone else", async () => {
     const carol = testEnv.authenticatedContext("carol").firestore();
     await assertSucceeds(setDoc(doc(carol, "requests/r2"), request("carol")));

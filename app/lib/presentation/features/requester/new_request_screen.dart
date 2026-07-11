@@ -137,6 +137,7 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
           expectedDurationMinutes: _durationMinutes,
           meetingPoint: _meetingController.text.trim(),
           destination: _destinationController.text.trim(),
+          requesterGender: my.profile.gender,
           purpose: _emptyToNull(_purposeController.text),
           specialNote: _emptyToNull(_noteController.text),
         );
@@ -230,6 +231,16 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
                             onChanged: (g) => setState(() => _genderPreference =
                                 g ?? GenderPreference.anyGender),
                           ),
+                          if (_genderPreference ==
+                              GenderPreference.strictSameGender) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              'Shown to same-gender TravAcsers first. If it stays '
+                              'unfilled, it opens to all genders as the trip time '
+                              'nears (we\'ll let you know).',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
                           const Divider(height: 24),
                           _datePicker(),
                           const SizedBox(height: 12),

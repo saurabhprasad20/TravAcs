@@ -43,6 +43,29 @@ void main() {
         estimatedAmountInr: 135,
       );
 
+  Request strictReq(String id,
+          {required Gender requesterGender, bool widened = false}) =>
+      Request(
+        id: id,
+        requesterId: 'u$id',
+        status: RequestStatus.broadcast,
+        serviceState: Region.delhiNcr,
+        serviceCity: city,
+        numTravellers: 1,
+        numTravAcsers: 1,
+        genderPreference: GenderPreference.strictSameGender,
+        requesterGender: requesterGender,
+        genderRestricted: true,
+        genderWidened: widened,
+        scheduledDate: DateTime.now().add(const Duration(days: 1)),
+        startTime: '10:00',
+        scheduledStartAt: DateTime.now().add(const Duration(days: 1)),
+        expectedDurationMinutes: 60,
+        meetingPoint: 'A',
+        destination: 'B',
+        estimatedAmountInr: 135,
+      );
+
   Assignment assignmentFor(String requestId) => Assignment(
         requestId: requestId,
         volunteerId: 'v1',
@@ -59,11 +82,13 @@ void main() {
         tripStatus: TripStatus.assigned,
       );
 
-  MyProfile profile({required bool approved, City? withCity}) => MyProfile(
+  MyProfile profile({required bool approved, City? withCity, Gender? gender}) =>
+      MyProfile(
         profile: Profile(
           id: 'v1',
           role: UserRole.volunteer,
           fullName: 'V',
+          gender: gender,
           serviceArea: withCity == null ? null : Region.delhiNcr,
           serviceCity: withCity,
         ),
@@ -146,6 +171,42 @@ void main() {
       );
       // SOON (10 min out) is now visible; only PAST (past start) is hidden.
       expect((await readAvailable(c)).map((r) => r.id).toSet(), {'SOON', 'OK'});
+    });
+
+    test('hides a strict same-gender request from an opposite-gender volunteer',
+        () async {
+      final c = makeContainer(
+        myProfile: profile(approved: true, withCity: city, gender: Gender.male),
+        available: [
+          req('ANY'),
+          strictReq('FEM', requesterGender: Gender.female),
+        ],
+        myAssignments: const [],
+      );
+      // The male volunteer sees the any-gender request but not the female-only one.
+      expect((await readAvailable(c)).map((r) => r.id).toSet(), {'ANY'});
+    });
+
+    test('shows a strict same-gender request to a matching-gender volunteer',
+        () async {
+      final c = makeContainer(
+        myProfile:
+            profile(approved: true, withCity: city, gender: Gender.female),
+        available: [strictReq('FEM', requesterGender: Gender.female)],
+        myAssignments: const [],
+      );
+      expect((await readAvailable(c)).map((r) => r.id).toSet(), {'FEM'});
+    });
+
+    test('shows a widened strict request to any gender', () async {
+      final c = makeContainer(
+        myProfile: profile(approved: true, withCity: city, gender: Gender.male),
+        available: [
+          strictReq('FEM', requesterGender: Gender.female, widened: true),
+        ],
+        myAssignments: const [],
+      );
+      expect((await readAvailable(c)).map((r) => r.id).toSet(), {'FEM'});
     });
   });
 
