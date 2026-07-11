@@ -212,7 +212,19 @@ export const acceptRequest = onCall({region: REGION}, async (req) => {
     }
     const existing = await tx.get(assignRef);
     if (existing.exists) {
-      throw new HttpsError("already-exists", "You have already accepted this request.", {code: "ALREADY_ACCEPTED"});
+      // A previously cancelled/declined/expired assignment leaves a doc behind;
+      // that must NOT block re-accepting a request that reopened to the feed.
+      // Only a still-live assignment (assigned/started/completed) counts as
+      // "already accepted".
+      const prevStatus = existing.data()?.tripStatus;
+      const stillLive =
+        prevStatus === "assigned" ||
+        prevStatus === "started" ||
+        prevStatus === "completed" ||
+        prevStatus === "closed";
+      if (stillLive) {
+        throw new HttpsError("already-exists", "You have already accepted this request.", {code: "ALREADY_ACCEPTED"});
+      }
     }
     const need: number = r.numTravAcsers ?? 1;
     const accepted: number = r.acceptedCount ?? 0;
