@@ -176,6 +176,10 @@ class FirestoreRequestRepository implements RequestRepository {
   }
 
   @override
+  FutureResult<Unit> startTrip(String requestId, String volunteerId) =>
+      _call('startTrip', {'requestId': requestId, 'volunteerId': volunteerId});
+
+  @override
   FutureResult<Unit> markPaid(String requestId, String volunteerId) =>
       _call('markPaid', {'requestId': requestId, 'volunteerId': volunteerId});
 

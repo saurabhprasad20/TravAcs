@@ -1,5 +1,6 @@
 import '../../core/config/constants.dart';
 import '../../core/util/scheduled_time.dart';
+import '../../core/util/trip_otp.dart';
 import 'enums.dart';
 
 /// One TravAcser's acceptance of a request (`requests/{id}/assignments/{vid}`).
@@ -107,9 +108,23 @@ class Assignment {
   DateTime get effectiveStartAt =>
       scheduledStartAt ?? combineDateAndTime(scheduledDate, startTime);
 
-  /// In progress once the scheduled start has passed and the trip is still
-  /// assigned (time-based auto-start; no OTP, M12).
-  bool isInProgress(DateTime now) =>
+  /// The deterministic 4-digit start OTP (point 11). The TravAcser reads this to
+  /// the User, who enters it to start the trip. Computed identically on both
+  /// sides from the shared assignment fields, so no provider is involved.
+  String get startOtp => tripStartOtp(
+        userPhone: requesterPhone,
+        travAcserPhone: volunteerPhone,
+        scheduledStartAt: effectiveStartAt,
+      );
+
+  /// The trip is "in progress" once it has actually been started via the OTP
+  /// handshake (point 11). Time alone no longer starts a trip.
+  bool isInProgress(DateTime now) => tripStatus == TripStatus.started;
+
+  /// The window where the OTP is shown (TravAcser) / entered (User): the trip is
+  /// still `assigned` and the scheduled time has arrived, but it hasn't been
+  /// started yet.
+  bool awaitingStart(DateTime now) =>
       tripStatus == TripStatus.assigned && !now.isBefore(effectiveStartAt);
 
   /// True while the trip still needs attention (My Trips / My Requests).

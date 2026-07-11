@@ -18,6 +18,7 @@ const db = getFirestore();
 
 const acceptRequest = fft.wrap(fns.acceptRequest);
 const completeTrip = fft.wrap(fns.completeTrip);
+const startTrip = fft.wrap(fns.startTrip);
 const rescheduleTrip = fft.wrap(fns.rescheduleTrip);
 const cancelTrip = fft.wrap(fns.cancelTrip);
 const respondReschedule = fft.wrap(fns.respondReschedule);
@@ -138,6 +139,45 @@ describe("acceptRequest (slot-filling FCFS)", () => {
     // Two days later -> allowed.
     const res: any = await acceptRequest(call({requestId: "r3"}, "vol"));
     assert.equal(res.code, "ACCEPTED");
+  });
+});
+
+describe("startTrip (OTP-gated status flip)", () => {
+  it("the requester starts an assigned trip after its scheduled time", async () => {
+    await db.doc("requests/r1").set({requesterId: "alice", status: "assigned"});
+    await db.doc("requests/r1/assignments/vol").set({
+      volunteerId: "vol", requesterId: "alice", tripStatus: "assigned",
+      scheduledStartAt: Timestamp.fromMillis(Date.now() - HOUR),
+    });
+    const res: any = await startTrip(call({requestId: "r1", volunteerId: "vol"}, "alice"));
+    assert.equal(res.code, "STARTED");
+    const a = (await db.doc("requests/r1/assignments/vol").get()).data()!;
+    assert.equal(a.tripStatus, "started");
+    assert.ok(a.startedAt);
+  });
+
+  it("cannot start before the scheduled time", async () => {
+    await db.doc("requests/r1").set({requesterId: "alice", status: "assigned"});
+    await db.doc("requests/r1/assignments/vol").set({
+      volunteerId: "vol", requesterId: "alice", tripStatus: "assigned",
+      scheduledStartAt: Timestamp.fromMillis(Date.now() + HOUR),
+    });
+    await assert.rejects(
+      () => startTrip(call({requestId: "r1", volunteerId: "vol"}, "alice")),
+      /before its scheduled time/i
+    );
+  });
+
+  it("only the requester (User) can start the trip", async () => {
+    await db.doc("requests/r1").set({requesterId: "alice", status: "assigned"});
+    await db.doc("requests/r1/assignments/vol").set({
+      volunteerId: "vol", requesterId: "alice", tripStatus: "assigned",
+      scheduledStartAt: Timestamp.fromMillis(Date.now() - HOUR),
+    });
+    await assert.rejects(
+      () => startTrip(call({requestId: "r1", volunteerId: "vol"}, "vol")),
+      /only the user/i
+    );
   });
 });
 

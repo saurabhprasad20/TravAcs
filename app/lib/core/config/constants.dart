@@ -20,7 +20,15 @@ class AppConstants {
   static const int hourlyRateInr = 135;
 
   /// Length of the trip-start OTP shared by the requester with the volunteer.
-  static const int tripOtpLength = 6;
+  static const int tripOtpLength = 4;
+
+  /// Fixed salt for the deterministic trip-start OTP (point 11). This is NOT a
+  /// secret — it ships in the app and only makes the code deterministic on both
+  /// sides. The OTP merely confirms the two parties are physically together; it
+  /// is generated on the TravAcser's device and validated on the User's, both
+  /// computing it from the same assignment fields (phones + scheduled time), so
+  /// no SMS/OTP provider or server round-trip is involved.
+  static const String tripOtpSalt = 'travacs-trip-otp-v1';
 
   /// Length of the SMS login OTP (provider dependent; used for input sizing).
   static const int loginOtpLength = 6;

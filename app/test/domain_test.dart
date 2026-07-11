@@ -177,7 +177,7 @@ void main() {
 
   test('AppConstants sanity', () {
     expect(AppConstants.hourlyRateInr, 135);
-    expect(AppConstants.tripOtpLength, 6);
+    expect(AppConstants.tripOtpLength, 4);
   });
 }
 
