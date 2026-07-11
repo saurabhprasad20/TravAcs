@@ -217,7 +217,15 @@ class _DetailBody extends ConsumerWidget {
     final r = request;
     final date = DateFormat.yMMMEd().format(r.scheduledDate);
     final time = formatTime12h(r.startTime);
-    final canReschedule = _rescheduleAllowed(r);
+    // A trip that has started (a TravAcser validated the start code) can only be
+    // ended — never cancelled or rescheduled. The request doc's own status does
+    // not change on start, so we key off the assignments.
+    final anyStarted = ref
+            .watch(requestAssignmentsProvider(r.id))
+            .value
+            ?.any((a) => a.isActive && a.tripStatus == TripStatus.started) ??
+        false;
+    final canReschedule = !anyStarted && _rescheduleAllowed(r);
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -251,6 +259,15 @@ class _DetailBody extends ConsumerWidget {
           _RequestAssignments(requestId: r.id),
         ],
         const SizedBox(height: 20),
+        if (anyStarted)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              'This trip has started — it can no longer be cancelled or '
+              'rescheduled. End it from your TravAcser above when you finish.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
         Wrap(
           alignment: WrapAlignment.end,
           spacing: 8,
@@ -262,11 +279,12 @@ class _DetailBody extends ConsumerWidget {
                 label: const Text('Reschedule'),
                 onPressed: () => _reschedule(context, ref, r),
               ),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.cancel_outlined),
-              label: const Text('Cancel trip'),
-              onPressed: () => _cancel(context, ref, r),
-            ),
+            if (!anyStarted)
+              OutlinedButton.icon(
+                icon: const Icon(Icons.cancel_outlined),
+                label: const Text('Cancel trip'),
+                onPressed: () => _cancel(context, ref, r),
+              ),
           ],
         ),
       ],
@@ -419,6 +437,8 @@ class _AssignmentTile extends ConsumerWidget {
     final now = DateTime.now();
     final inProgress = a.isInProgress(now);
     final awaitingStart = a.awaitingStart(now);
+    // A started trip can only be ended at/after its scheduled start time.
+    final canEnd = inProgress && !now.isBefore(a.effectiveStartAt);
     final statusText = inProgress
         ? 'In progress'
         : awaitingStart
@@ -457,12 +477,22 @@ class _AssignmentTile extends ConsumerWidget {
             ),
             if (inProgress) ...[
               const SizedBox(height: 8),
+              if (!canEnd)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    'The trip has started. You can end it once its scheduled '
+                    'start time (${DateFormat.jm().format(a.effectiveStartAt)}) '
+                    'arrives.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
               Align(
                 alignment: Alignment.centerRight,
                 child: FilledButton.icon(
                   icon: const Icon(Icons.payments_outlined),
                   label: const Text('End trip & pay'),
-                  onPressed: busy ? null : () => _end(context, ref),
+                  onPressed: (busy || !canEnd) ? null : () => _end(context, ref),
                 ),
               ),
             ] else ...[

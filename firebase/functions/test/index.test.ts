@@ -234,6 +234,19 @@ describe("completeTrip (ends a started trip + bills from startedAt)", () => {
       /must be started/i
     );
   });
+
+  it("cannot end a started trip before its scheduled start time", async () => {
+    await db.doc("requests/r1").set({requesterId: "alice", status: "assigned"});
+    await db.doc("requests/r1/assignments/vol").set({
+      volunteerId: "vol", requesterId: "alice", tripStatus: "started",
+      startedAt: Timestamp.fromMillis(Date.now() - 5 * 60000), // started early
+      scheduledStartAt: Timestamp.fromMillis(Date.now() + HOUR), // not yet due
+    });
+    await assert.rejects(
+      () => completeTrip(call({requestId: "r1", volunteerId: "vol"}, "vol")),
+      /before its scheduled start time/i
+    );
+  });
 });
 
 describe("rescheduleTrip", () => {
@@ -262,6 +275,25 @@ describe("rescheduleTrip", () => {
     assert.equal(a.startTime, "14:00"); // denormalized to the assignment
     assert.equal(a.rescheduleStatus, "pending"); // TravAcser must re-confirm
     assert.ok(a.rescheduleDeadlineAt, "a confirm deadline is set");
+  });
+
+  it("cannot reschedule once a trip has started (even early)", async () => {
+    await db.doc("requests/r1").set({
+      requesterId: "alice", status: "assigned", acceptedCount: 1,
+      scheduledStartAt: Timestamp.fromMillis(Date.now() + 24 * HOUR),
+    });
+    await db.doc("requests/r1/assignments/vol").set({
+      volunteerId: "vol", requesterId: "alice", tripStatus: "started",
+      scheduledStartAt: Timestamp.fromMillis(Date.now() + 24 * HOUR),
+    });
+    const newMs = Date.now() + 48 * HOUR;
+    await assert.rejects(
+      () => rescheduleTrip(call({
+        requestId: "r1", scheduledDateMs: newMs, startTime: "14:00",
+        scheduledStartAtMs: newMs,
+      }, "alice")),
+      /already started/i
+    );
   });
 });
 
@@ -333,6 +365,25 @@ describe("cancelTrip", () => {
     assert.equal(r.acceptedCount, 0);
     const a = (await db.doc("requests/r1/assignments/vol").get()).data()!;
     assert.equal(a.tripStatus, "cancelled");
+  });
+
+  it("a started trip can no longer be cancelled by either party", async () => {
+    await db.doc("requests/r1").set({
+      requesterId: "alice", status: "assigned", acceptedCount: 1,
+    });
+    await db.doc("requests/r1/assignments/vol").set({
+      volunteerId: "vol", requesterId: "alice", tripStatus: "started",
+    });
+    await assert.rejects(
+      () => cancelTrip(call({requestId: "r1"}, "alice")), // requester
+      /can only be ended/i
+    );
+    await assert.rejects(
+      () => cancelTrip(call({requestId: "r1"}, "vol")), // TravAcser
+      /can only be ended/i
+    );
+    const a = (await db.doc("requests/r1/assignments/vol").get()).data()!;
+    assert.equal(a.tripStatus, "started"); // untouched
   });
 });
 
