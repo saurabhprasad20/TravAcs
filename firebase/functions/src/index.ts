@@ -22,7 +22,22 @@ const REGION = "asia-south2";
 // functions run in asia-south1 (Mumbai). Callables stay in asia-south2 to match
 // the client (functionsProvider).
 const SCHEDULER_REGION = "asia-south1";
-const HOURLY_RATE_INR = 135;
+const HOURLY_RATE_INR = 140;
+/** Billing granularity: trip time is rounded UP to the next 30-minute block. */
+const BILLING_BLOCK_MINUTES = 30;
+/** Flat travel cost (INR) added ONCE per trip (not per TravAcser). */
+const TRAVEL_COST_INR = 100;
+
+/**
+ * Service charge (one TravAcser's time) for `minutes`: billed at the hourly
+ * rate in 30-minute blocks rounded UP to the next half hour (minimum one
+ * block). e.g. 4h58m → 10 blocks → ₹700 at ₹140/hr.
+ */
+function serviceChargeInr(minutes: number): number {
+  const blocks = Math.max(1, Math.ceil(minutes / BILLING_BLOCK_MINUTES));
+  return blocks * (HOURLY_RATE_INR / 2);
+}
+
 /** India Standard Time offset (UTC+5:30) in milliseconds. */
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
@@ -281,9 +296,9 @@ export const acceptRequest = onCall({region: REGION}, async (req) => {
     }
 
     // ---- writes ----
-    const perTravAcserInr = Math.round(
-      ((r.expectedDurationMinutes ?? 60) / 60) * HOURLY_RATE_INR
-    );
+    // Per-TravAcser estimate = time-based service charge only (the flat travel
+    // cost is a trip-level line item billed once, at completion).
+    const perTravAcserInr = serviceChargeInr(r.expectedDurationMinutes ?? 60);
     tx.set(assignRef, {
       volunteerId: uid,
       volunteerName: vol.fullName ?? "",
@@ -422,15 +437,25 @@ export const completeTrip = onCall({region: REGION}, async (req) => {
     const startMs =
       startedAt?.toMillis() ?? scheduledStart?.toMillis() ?? Date.now();
     const minutes = Math.max(1, Math.round((Date.now() - startMs) / 60000));
-    const amountInr = Math.round((minutes / 60) * HOURLY_RATE_INR);
+    const serviceInr = serviceChargeInr(minutes);
+    // The flat travel cost is charged ONCE per trip — to the first assignment
+    // that completes. A request-level flag guarantees it isn't billed twice
+    // (a concurrent second completion re-reads the flag on transaction retry).
+    const travelInr = r.travelCostCharged === true ? 0 : TRAVEL_COST_INR;
+    const amountInr = serviceInr + travelInr;
     tx.update(assignRef, {
       tripStatus: "completed",
       startedAt: startedAt ?? FieldValue.serverTimestamp(),
       endedAt: FieldValue.serverTimestamp(),
       durationMinutes: minutes,
+      serviceChargeInr: serviceInr,
+      travelCostInr: travelInr,
       amountInr,
       paymentStatus: "pending",
     });
+    if (travelInr > 0) {
+      tx.update(reqRef, {travelCostCharged: true});
+    }
     return {requesterId: r.requesterId, amountInr};
   });
 

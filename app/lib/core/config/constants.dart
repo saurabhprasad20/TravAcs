@@ -14,10 +14,19 @@ class AppConstants {
   static const String supportEmail = 'support@travacs.example';
   static const String supportPhone = '+91 00000 00000';
 
-  /// Hourly assistance rate in INR. This is mirrored from the server, which is
-  /// the source of truth (snapshotted per trip in `trips.hourly_rate_inr`).
-  /// Kept here only for display/estimation in the UI.
-  static const int hourlyRateInr = 135;
+  /// Hourly assistance rate in INR (the TravAcser's time/service charge). Trip
+  /// time is billed in [billingBlockMinutes] blocks rounded UP to the next half
+  /// hour (e.g. a 4h58m trip bills as 5h). Mirrored from the server, which is
+  /// the source of truth; kept here only for display/estimation in the UI.
+  static const int hourlyRateInr = 140;
+
+  /// Billing granularity in minutes: trip time is rounded UP to the next
+  /// multiple of this before applying [hourlyRateInr].
+  static const int billingBlockMinutes = 30;
+
+  /// Flat travel cost in INR added ONCE per trip (not per TravAcser) to cover
+  /// the TravAcser reaching the meeting point.
+  static const int travelCostInr = 100;
 
   /// Length of the trip-start OTP shared by the requester with the volunteer.
   static const int tripOtpLength = 4;

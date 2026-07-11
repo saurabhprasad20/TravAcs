@@ -21,7 +21,7 @@
 | 7 | **App architecture** | **Riverpod** (DI + state) + **layered** (data / domain / presentation) + **Repository pattern**. | SOLID, testable; lets the backend swap (as this migration proved). |
 | 8 | **Matching** | **Region-scoped broadcast:** both sides pick a fixed **`serviceArea`** (Delhi NCR + states/UTs); a request is broadcast only to approved, active TravAcsers whose `serviceArea` **equals** the request's. FCFS decides. (Optional `geohash` later for finer geo-radius.) | Deterministic, no GPS; right scope for targeted FCM. |
 | 9 | **Aadhaar / Verification** | **No Aadhaar data captured or stored in v1.** Volunteers verified **manually/out-of-band** by admin (sets `verificationStatus`). | Avoid PII/compliance burden now. |
-| 10 | **Billing & Payment** | ₹135/hour, **pro-rated per minute**: `amount = round(durationMinutes / 60 * 135)`. **In-app Razorpay** checkout (`createRazorpayOrder` → checkout → `verifyRazorpayPayment`, server HMAC-verified, credentials in Secret Manager, now on **live** keys). A manual **two-sided confirmation** fallback (`markPaid`/`markReceived`) also exists. | Matches requirements; verified in-app collection with a manual fallback. |
+| 10 | **Billing & Payment** | **₹140/hour service charge**, billed in **30-minute blocks rounded UP** to the next half hour: `service = 70 × ceil(durationMinutes/30)`. Plus a **flat ₹100 travel cost, once per trip** (charged to the first assignment that completes). Trip estimate = `service × numTravAcsers + 100`. **In-app Razorpay** checkout (`createRazorpayOrder` → checkout → `verifyRazorpayPayment`, server HMAC-verified, credentials in Secret Manager, now on **live** keys). A manual **two-sided confirmation** fallback (`markPaid`/`markReceived`) also exists. | Company pricing rule; verified in-app collection with a manual fallback. |
 | 11 | **Trip start** | **6-digit OTP** generated on assignment, stored **hashed** (via a Cloud Function), shown to the requester, entered + verified by the volunteer. | Proof both parties met. |
 | 12 | **Plan/cost** | v1 **foundations (Auth + Firestore + profiles) run on the free Spark plan.** **Blaze** is needed once Cloud Functions ship (FCM fan-out, M3+). Phone Auth has a monthly free verification quota; budget a small per-SMS cost beyond it. | Keep cost minimal early. |
 
@@ -191,7 +191,7 @@ Composite indexes: `(status, createdAt)` for the volunteer "available" feed; `(r
 requestId: string
 startedAt?, endedAt?: timestamp
 durationMinutes?: int
-hourlyRateInr: int (=135 snapshot)
+hourlyRateInr: int (=140 snapshot; + ₹100 flat travel once/trip)
 amountInr?: int
 completedBy?: uid
 paymentStatus: 'pending'|'awaiting_other'|'confirmed'
@@ -242,7 +242,7 @@ Node/TypeScript, Admin SDK (bypasses rules; re-checks auth internally). Callable
 - **`onRequestCreated` (Firestore trigger, `requests/{id}` onCreate)** — when `status=='broadcast'`, **fan out FCM** to approved+active TravAcsers **whose `serviceCity` == the request's** (region-scoped). It does **not** mint the trip OTP — that happens at **assignment** (M4/M5), tied to the specific volunteer.
 - **`acceptRequest(requestId)` (callable, Admin SDK) — slot-filling** — verifies the caller is an approved+active TravAcser in the request's city, then runs a **transaction**: rejects if the request isn't `broadcast`, the caller already accepted, or all slots are full; otherwise creates `requests/{id}/assignments/{uid}` (contact pair + denormalized summary), writes the per-TravAcser OTP plaintext to `requests/{id}/secrets/{uid}` (requester-readable only), increments `acceptedCount`, and sets `status='assigned'` when `acceptedCount==numTravAcsers`. Pushes the requester. Returns `ALREADY_TAKEN`/`ALREADY_ACCEPTED`/`WRONG_CITY`/`NOT_APPROVED` on failure. The transaction's count read+write prevents over-subscription.
 - **`startTrip(requestId, otp)` (callable, per assignment)** — caller is the assignment owner. Transaction: assignment `tripStatus=='assigned'`; verify `otp` against the plaintext in `secrets/{uid}` (server reads it; the TravAcser cannot); on mismatch increment `otpAttempts` (lock at 5 → `RATE_LIMITED`); on match set `tripStatus='started'`, `startedAt`, and **delete the secret** (consumed). Push the requester.
-- **`completeTrip(requestId, volunteerId)` (callable, per assignment)** — caller is that TravAcser **or** the requester; assignment `tripStatus=='started'`. Compute `durationMinutes = max(1, round((now−startedAt)/60000))`, `amountInr = round(durationMinutes/60 × 135)`; set `tripStatus='completed'`, `endedAt`, `durationMinutes`, `amountInr`, `paymentStatus='pending'`. When **all** assignments are completed, set `request.status='completed'`. Push both.
+- **`completeTrip(requestId, volunteerId)` (callable, per assignment)** — caller is that TravAcser **or** the requester; assignment `tripStatus=='started'`; can't end before `scheduledStartAt`. Compute `durationMinutes = max(1, round((now−startedAt)/60000))`, `serviceChargeInr = 70 × ceil(durationMinutes/30)` (₹140/hr, half-hour rounded up), and a flat `travelCostInr = 100` **only if** the request hasn't been charged travel yet (`request.travelCostCharged`), else 0; `amountInr = service + travel`; set `tripStatus='completed'`, `endedAt`, `durationMinutes`, `serviceChargeInr`, `travelCostInr`, `amountInr`, `paymentStatus='pending'`, and flip `request.travelCostCharged=true` when travel was charged. When **all** assignments are completed, set `request.status='completed'`. Push both.
 - **`markPaid(requestId, volunteerId)` / `markReceived(requestId)` (callable, per assignment)** — role-locked (requester / that TravAcser), idempotent; assignment must be `completed`; set `requesterPaidAt`/`travAcserReceivedAt`; recompute `paymentStatus` (`confirmed` when both set, else `awaiting_other`); push the counterpart.
 - **`submitRating(requestId, volunteerId, stars, feedback?)` (callable, per assignment)** — caller = requester or that TravAcser → derives rater/ratee; assignment `completed`; rejects a second rating from the same side. Transaction writes the rating onto the **assignment** (`requester*`/`volunteer*RatingStars/Feedback`) and updates the ratee's **`profiles/{uid}.ratingAvg`/`ratingCount`**. No separate `ratings` collection in v1 (ratings/payment live on the assignment).
 - **`setVerification(uid, decision, reason?)` (callable, admin-only)** — set volunteer `verificationStatus`; push `verificationResult`.
@@ -289,7 +289,7 @@ lib/
 - **domain** stays framework-free (entities, repository interfaces, use cases) — unchanged by the backend swap.
 - **data** implements the interfaces against Firebase; maps Firestore docs ↔ entities; converts `FirebaseAuthException`/`FirebaseException` → `Failure`.
 - **presentation** Riverpod controllers call use cases; widgets render `AsyncValue`.
-- Config: `firebase_options.dart` per environment (dev/prod via flavors or separate apps); `hourlyRateInr=135` constant mirrors server.
+- Config: `firebase_options.dart` per environment (dev/prod via flavors or separate apps); `hourlyRateInr=140` + `travelCostInr=100` constants mirror the server.
 
 ---
 
