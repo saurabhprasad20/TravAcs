@@ -5,8 +5,9 @@ import 'enums.dart';
 
 /// One TravAcser's acceptance of a request (`requests/{id}/assignments/{vid}`).
 /// Holds the contact pair (both parties can read their own assignment) plus a
-/// denormalized request summary for the TravAcser's "My Trips" list. Trips
-/// auto-start at [scheduledStartAt] — there is no OTP (M12).
+/// denormalized request summary for the TravAcser's "My Trips" list. A trip
+/// starts when the TravAcser validates the User's offline start-code at/after
+/// [scheduledStartAt].
 class Assignment {
   const Assignment({
     required this.requestId,
@@ -51,8 +52,8 @@ class Assignment {
 
   final DateTime scheduledDate;
   final String startTime;
-  /// Absolute instant the trip auto-starts (scheduledDate + startTime). May be
-  /// null on legacy docs; use [effectiveStartAt] which falls back.
+  /// Absolute instant the trip is scheduled to begin (scheduledDate + startTime).
+  /// May be null on legacy docs; use [effectiveStartAt] which falls back.
   final DateTime? scheduledStartAt;
   final int expectedDurationMinutes;
   final String meetingPoint;
@@ -103,13 +104,13 @@ class Assignment {
     return '₹${AppConstants.hourlyRateInr}/hr × $hrsLabel hr';
   }
 
-  /// Auto-start anchor: the stored instant, or computed from date + startTime
-  /// for legacy docs.
+  /// Scheduled-start anchor: the stored instant, or computed from date +
+  /// startTime for legacy docs.
   DateTime get effectiveStartAt =>
       scheduledStartAt ?? combineDateAndTime(scheduledDate, startTime);
 
-  /// The deterministic 4-digit start OTP (point 11). The TravAcser reads this to
-  /// the User, who enters it to start the trip. Computed identically on both
+  /// The deterministic 4-digit start code (point 11). The User reads this to the
+  /// TravAcser, who enters it to start the trip. Computed identically on both
   /// sides from the shared assignment fields, so no provider is involved.
   String get startOtp => tripStartOtp(
         userPhone: requesterPhone,
@@ -117,13 +118,13 @@ class Assignment {
         scheduledStartAt: effectiveStartAt,
       );
 
-  /// The trip is "in progress" once it has actually been started via the OTP
-  /// handshake (point 11). Time alone no longer starts a trip.
+  /// The trip is "in progress" once it has actually been started via the
+  /// start-code handshake (point 11). Time alone no longer starts a trip.
   bool isInProgress(DateTime now) => tripStatus == TripStatus.started;
 
-  /// The window where the OTP is shown (TravAcser) / entered (User): the trip is
-  /// still `assigned` and the scheduled time has arrived, but it hasn't been
-  /// started yet.
+  /// The window where the start code is shown (User) / entered (TravAcser): the
+  /// trip is still `assigned` and the scheduled time has arrived, but it hasn't
+  /// been started yet.
   bool awaitingStart(DateTime now) =>
       tripStatus == TripStatus.assigned && !now.isBefore(effectiveStartAt);
 

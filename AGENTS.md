@@ -44,8 +44,8 @@
    touch targets ≥48dp; OS text scale is clamped to **[1.0, 1.8]** in `app/lib/app.dart`.
    `test/accessibility_test.dart` guards this with `meetsGuideline`.
 3. **Privileged writes are server-only.** Clients can NOT set `role`, `verificationStatus`,
-   `ratingAvg/ratingCount`, `volunteerId`, or amounts. Trips start when the User confirms the
-   TravAcser's deterministic **offline start-code** (`startTrip`); billing anchors to the recorded
+   `ratingAvg/ratingCount`, `volunteerId`, or amounts. Trips start when the TravAcser validates the
+   User's deterministic **offline start-code** (`startTrip`); billing anchors to the recorded
    `startedAt`. All state transitions (accept → start → end → reschedule → cancel → pay → rate →
    verify) go
    through **Cloud Functions** (Admin SDK) and
@@ -186,8 +186,8 @@ cancelTrip/completeTrip/markPaid/markReceived/submitRating) · `adminControllerP
 | `ratings/{id}`, `trips/{id}` | (rules present; ratings are primarily stored on the assignment) | audit/future use |
 
 > **No SMS OTP / `secrets` subcollection** — trip start uses a deterministic **offline** start-code
-> both apps compute from the shared assignment (`app/lib/core/util/trip_otp.dart`); the User confirms
-> it and `startTrip` records the flip.
+> both apps compute from the shared assignment (`app/lib/core/util/trip_otp.dart`); the User reads it
+> to the TravAcser, who enters and validates it, and `startTrip` records the flip (both are notified).
 
 **Rules helpers** (`firebase/firestore.rules`): `isSignedIn()`, `isAdmin()` (`token.admin==true`),
 `isApprovedVolunteer()` (role volunteer + approved + active), `myCity()`. Requests are **region-scoped**
@@ -198,14 +198,15 @@ assignments — it gates on `resource.data.volunteerId == request.auth.uid` (a d
 a list, since the path wildcard is null then).
 
 ### Cloud Functions — `firebase/functions/src/index.ts` (callables region `asia-south2`)
-Trips **start when the User confirms the TravAcser's deterministic offline start-code** (computed on
-both clients from the shared assignment — `app/lib/core/util/trip_otp.dart`; `startTrip` records the
-flip). Scheduled functions run in `asia-south1` (Cloud Scheduler isn't offered in `asia-south2`).
+Trips **start when the TravAcser validates the User's deterministic offline start-code** (computed on
+both clients from the shared assignment — `app/lib/core/util/trip_otp.dart`; the User reads it to the
+TravAcser, who enters it, and `startTrip` records the flip). Scheduled functions run in `asia-south1`
+(Cloud Scheduler isn't offered in `asia-south2`).
 | Function | Type | What it does / key guards |
 |---|---|---|
 | `onRequestCreated` | Firestore onCreate `requests/{id}` | Fan-out FCM (chunked to 500/token) to approved+active TravAcsers in the same city; prunes dead tokens. |
 | `acceptRequest` | onCall | FCFS slot fill in a transaction: must be approved+active TravAcser, request `broadcast` + same city + not full + not already accepted; creates the assignment (denormalizing genderPreference + scheduledStartAt); auto-transitions request to `assigned` when full. Rejects a second accepted trip on the same IST day. |
-| `startTrip` | onCall | **Requester-only**; after the User confirms the offline start-code, flips `assigned`→`started` (guarded to on/after the scheduled time) and records `startedAt`. |
+| `startTrip` | onCall | **TravAcser-only**; after the TravAcser enters and validates the User's start code, flips `assigned`→`started` (guarded to on/after the scheduled time) and records `startedAt`; notifies the User. |
 | `completeTrip` | onCall | End a **started** trip — caller = TravAcser **or** requester; bills from the recorded `startedAt`; marks `completed`; marks the request completed when no active assignment remains. |
 | `rescheduleTrip` | onCall | **Requester-only**, before start; validates a bounded future time; updates the request + all assignments' schedule and requires each TravAcser to re-confirm. |
 | `cancelTrip` | onCall | Either party. Requester → cancels the whole request + assignments. TravAcser → cancels their assignment, decrements `acceptedCount`, reopens the request to `broadcast`. |
@@ -241,7 +242,8 @@ friction).
 >
 > M12 removed the SMS OTP (trips then auto-started by time). A later enhancement batch reintroduced
 > trip start as a **deterministic offline start-code** (`startTrip` + `app/lib/core/util/trip_otp.dart`):
-> the User confirms the TravAcser's code and billing anchors to the confirmed `startedAt`. The same
+> the User reads their code to the TravAcser, who enters and validates it, and billing anchors to the
+> confirmed `startedAt`. The same
 > batch added Razorpay payment, one-trip-per-day, request auto-expiry, reschedule confirm/cancel, and
 > admin dashboards. Scheduled functions run in `asia-south1`; callables in `asia-south2`.
 

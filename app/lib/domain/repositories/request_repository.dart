@@ -68,13 +68,13 @@ abstract interface class RequestRepository {
   /// cancel (release it and reopen the request). `respondReschedule` function.
   FutureResult<Unit> respondReschedule(String requestId, bool accept);
 
-  /// End/complete a TravAcser's trip (by that TravAcser or the requester). Trips
-  /// auto-start at the scheduled time, so this is the only manual transition.
+  /// End/complete a TravAcser's trip (by that TravAcser or the requester). Only
+  /// valid once the trip has been started via the start-code handshake.
   FutureResult<Unit> completeTrip(String requestId, String volunteerId);
 
-  /// Start a trip after the User validates the TravAcser's OTP (point 11). Flips
-  /// the assignment to `started` ("In progress"). Requester-only, and only once
-  /// the scheduled time has arrived.
+  /// Start a trip after the TravAcser validates the User's start code (point 11).
+  /// Flips the assignment to `started` ("In progress"). TravAcser-only, and only
+  /// once the scheduled time has arrived.
   FutureResult<Unit> startTrip(String requestId, String volunteerId);
 
   /// The User marks a TravAcser's payment as Paid (two-sided).

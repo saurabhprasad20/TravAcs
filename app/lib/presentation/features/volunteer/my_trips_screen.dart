@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/intl.dart' hide TextDirection;
 
 import '../../../core/accessibility/announce.dart';
+import '../../../core/config/constants.dart';
 import '../../../core/error/failure.dart';
 import '../../../core/util/scheduled_time.dart';
 import '../../../domain/entities/assignment.dart';
@@ -11,8 +13,8 @@ import '../../providers/request_providers.dart';
 import '../requester/request_controller.dart';
 
 /// The TravAcser's ACTIVE trips (scheduled or in progress), live. Completed
-/// trips move to the Trip History tab. Trips auto-start at their scheduled time
-/// (no OTP); either party can end one (M12).
+/// trips move to the Trip History tab. A trip starts when the TravAcser
+/// validates the User's start code; either party can end a started trip.
 class MyTripsScreen extends ConsumerWidget {
   const MyTripsScreen({super.key});
 
@@ -111,14 +113,18 @@ class _TripCard extends ConsumerWidget {
               inProgress
                   ? 'In progress — end the trip when you finish.'
                   : awaitingStart
-                      ? 'Share this start code with the User to begin the trip.'
+                      ? 'Ask the User for their start code and enter it to begin the trip.'
                       : 'Starts at $time. Estimated earning: '
                           '₹${a.amountInrEstimate} (${a.amountBreakdown}).',
               style: Theme.of(context).textTheme.titleSmall,
             ),
             if (awaitingStart) ...[
               const SizedBox(height: 8),
-              _StartCode(otp: a.startOtp),
+              _StartCodeEntry(
+                requestId: a.requestId,
+                volunteerId: a.volunteerId,
+                expectedOtp: a.startOtp,
+              ),
             ],
             const SizedBox(height: 8),
             Row(
@@ -310,44 +316,98 @@ class _StatusPill extends StatelessWidget {
   }
 }
 
-/// The TravAcser's 4-digit start code, shown large. Read digit-by-digit for
-/// screen-reader users (golden rule) so it can be spoken to the User.
-class _StartCode extends StatelessWidget {
-  const _StartCode({required this.otp});
-  final String otp;
+/// The TravAcser enters the User's start code here. Validation is fully offline
+/// (compared against [Assignment.startOtp]); only on a match do we call the
+/// server to record the "In progress" flip, after which both parties see the
+/// trip as started.
+class _StartCodeEntry extends ConsumerStatefulWidget {
+  const _StartCodeEntry({
+    required this.requestId,
+    required this.volunteerId,
+    required this.expectedOtp,
+  });
+  final String requestId;
+  final String volunteerId;
+  final String expectedOtp;
+
+  @override
+  ConsumerState<_StartCodeEntry> createState() => _StartCodeEntryState();
+}
+
+class _StartCodeEntryState extends ConsumerState<_StartCodeEntry> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final spaced = otp.split('').join(' '); // "1 2 3 4" reads digit-by-digit
-    return Semantics(
-      label: 'Start code: $spaced',
-      excludeSemantics: true,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: scheme.primaryContainer,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Start code',
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: scheme.onPrimaryContainer)),
-            const SizedBox(height: 2),
-            Text(
-              spaced,
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    color: scheme.onPrimaryContainer,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 4,
-                  ),
+    final busy = ref.watch(requestControllerProvider).isLoading;
+    // Wrap (not Row) so the field + button reflow instead of overflowing at
+    // large OS text scales (supported up to 1.8×).
+    return Wrap(
+      spacing: 12,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        SizedBox(
+          width: 130,
+          child: TextField(
+            controller: _controller,
+            keyboardType: TextInputType.number,
+            maxLength: AppConstants.tripOtpLength,
+            decoration: const InputDecoration(
+              labelText: 'Start code',
+              counterText: '',
             ),
-          ],
+          ),
         ),
-      ),
+        FilledButton.icon(
+          icon: const Icon(Icons.play_arrow),
+          label: const Text('Start trip'),
+          onPressed: busy ? null : _start,
+        ),
+      ],
     );
+  }
+
+  Future<void> _start() async {
+    final entered = _controller.text.trim();
+    if (entered != widget.expectedOtp) {
+      if (!mounted) return;
+      A11y.announce(context,
+          "That code doesn't match. Please check with the User and try again.");
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(const SnackBar(
+            content: Text("That code doesn't match. Please try again.")));
+      return;
+    }
+    // Capture the messenger + text direction BEFORE the await: a successful
+    // start flips the assignment stream to "started", which rebuilds the card
+    // and unmounts this entry — so a post-await `mounted` check would swallow
+    // the success announcement. The messenger lives above the card and survives.
+    final messenger = ScaffoldMessenger.of(context);
+    final dir = Directionality.of(context);
+    final ok = await ref
+        .read(requestControllerProvider.notifier)
+        .startTrip(widget.requestId, widget.volunteerId);
+    if (ok) {
+      _announce(messenger, dir, 'Code validated. The trip has started.');
+    } else {
+      _announce(
+          messenger, dir, failureMessage(ref.read(requestControllerProvider).error));
+    }
+  }
+
+  void _announce(
+      ScaffoldMessengerState messenger, TextDirection dir, String msg) {
+    SemanticsService.announce(msg, dir);
+    messenger
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text(msg)));
   }
 }

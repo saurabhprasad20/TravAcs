@@ -290,10 +290,11 @@ export const acceptRequest = onCall({region: REGION}, async (req) => {
 });
 
 /**
- * Starts a trip after the User validates the TravAcser's OTP (point 11). The
- * OTP itself is generated + validated entirely on the clients (deterministic,
- * offline); this callable ONLY records the status flip. Requester-only (the
- * User is the one who validates), and only once the scheduled time has arrived.
+ * Starts a trip after the TravAcser validates the User's start code. The code is
+ * deterministic + validated entirely on the clients (offline); this callable
+ * ONLY records the status flip. TravAcser-only (they are the one who enters and
+ * validates the User's code), and only once the scheduled time has arrived. The
+ * User is notified so both sides see "trip started".
  */
 export const startTrip = onCall({region: REGION}, async (req) => {
   const uid = req.auth?.uid;
@@ -302,6 +303,9 @@ export const startTrip = onCall({region: REGION}, async (req) => {
   if (!requestId || !volunteerId) {
     throw new HttpsError("invalid-argument", "requestId and volunteerId are required.");
   }
+  if (uid !== volunteerId) {
+    throw new HttpsError("permission-denied", "Only the TravAcser can start the trip.");
+  }
   const reqRef = db.collection("requests").doc(requestId);
   const assignRef = reqRef.collection("assignments").doc(volunteerId);
   let requesterId: string | undefined;
@@ -309,12 +313,12 @@ export const startTrip = onCall({region: REGION}, async (req) => {
     const reqDoc = await tx.get(reqRef);
     const r = reqDoc.data();
     if (!r) throw new HttpsError("not-found", "Request not found.");
-    if (r.requesterId !== uid) {
-      throw new HttpsError("permission-denied", "Only the User can start the trip.");
-    }
     requesterId = r.requesterId;
     const a = (await tx.get(assignRef)).data();
     if (!a) throw new HttpsError("not-found", "Assignment not found.");
+    if (a.volunteerId !== uid) {
+      throw new HttpsError("permission-denied", "This is not your trip.");
+    }
     if (a.tripStatus !== "assigned") {
       throw new HttpsError("failed-precondition", "This trip can no longer be started.", {code: "INVALID_STATE"});
     }
@@ -328,17 +332,20 @@ export const startTrip = onCall({region: REGION}, async (req) => {
       otpStartedAt: FieldValue.serverTimestamp(),
     });
   });
-  await pushToUser(
-    volunteerId,
-    {title: "Trip started", body: "The User confirmed your code — the trip is now in progress."},
-    {type: "trip_started", requestId}
-  ).catch(() => {});
+  // Notify the User that their code was validated and the trip has started.
+  if (requesterId) {
+    await pushToUser(
+      requesterId,
+      {title: "Trip started", body: "Your TravAcser validated your start code — the trip is now in progress."},
+      {type: "trip_started", requestId}
+    ).catch(() => {});
+  }
   return {ok: true, code: "STARTED"};
 });
 
 /**
  * Ends/completes a TravAcser's trip (by that TravAcser or the requester). The
- * trip must have been started (the User confirmed the TravAcser's start code),
+ * trip must have been started (the TravAcser validated the User's start code),
  * so billing is anchored to the recorded `startedAt`. When no active assignment
  * remains, the request is marked completed.
  */
