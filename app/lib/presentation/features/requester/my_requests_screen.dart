@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/accessibility/announce.dart';
 import '../../../core/error/failure.dart';
+import '../../../core/util/scheduled_time.dart';
 import '../../../domain/entities/assignment.dart';
 import '../../../domain/entities/enums.dart';
 import '../../../domain/entities/request.dart';
@@ -13,10 +14,11 @@ import '../shared/request_card.dart';
 import '../shared/trip_payment.dart';
 import 'request_controller.dart';
 
-/// The requester's ACTIVE requests (scheduled / in progress). Completed trips
-/// move to Trip History. A trip starts when the TravAcser validates the User's
-/// start code; the User can reschedule (before start) or cancel, and either
-/// party can end a started trip.
+/// The requester's ACTIVE requests (scheduled / in progress) as a clean,
+/// list-wise view. Each row is a compact summary (date, status, start code if
+/// accepted); tapping opens a full-screen, scrollable [RequestDetailScreen]
+/// where each label is individually readable and the Cancel / Reschedule / End
+/// actions live. Completed trips move to Trip History.
 class MyRequestsScreen extends ConsumerWidget {
   const MyRequestsScreen({super.key});
 
@@ -29,7 +31,7 @@ class MyRequestsScreen extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text(failureMessage(e))),
         data: (all) {
-          final list = all.where((r) => _isActive(r.status)).toList();
+          final list = all.where((r) => isActiveRequest(r.status)).toList();
           if (list.isEmpty) {
             return const Center(
               child: Padding(
@@ -42,48 +44,267 @@ class MyRequestsScreen extends ConsumerWidget {
           return ListView.builder(
             padding: const EdgeInsets.all(12),
             itemCount: list.length,
-            itemBuilder: (context, i) {
-              final r = list[i];
-              // A trip has only "started" once it is BOTH accepted (a TravAcser
-              // took it) AND its scheduled time has arrived. An unaccepted
-              // request never starts on time alone, so it stays reschedulable.
-              final notStarted = r.acceptedCount == 0 ||
-                  DateTime.now().isBefore(r.scheduledStartAt);
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  RequestCard(
-                    request: r,
-                    actions: [
-                      if (notStarted)
-                        OutlinedButton.icon(
-                          icon: const Icon(Icons.schedule),
-                          label: const Text('Reschedule'),
-                          onPressed: () => _reschedule(context, ref, r),
-                        ),
-                      OutlinedButton.icon(
-                        icon: const Icon(Icons.cancel_outlined),
-                        label: const Text('Cancel'),
-                        onPressed: () => _cancel(context, ref, r),
-                      ),
-                    ],
-                  ),
-                  if (r.acceptedCount > 0)
-                    _RequestAssignments(requestId: r.id),
-                  const SizedBox(height: 8),
-                ],
-              );
-            },
+            itemBuilder: (context, i) =>
+                _RequestSummaryTile(request: list[i]),
           );
         },
       ),
     );
   }
+}
 
-  static bool _isActive(RequestStatus s) =>
-      s != RequestStatus.completed &&
-      s != RequestStatus.closed &&
-      s != RequestStatus.cancelled;
+/// Whether a request is still "active" (shown on My Requests rather than
+/// Trip History).
+bool isActiveRequest(RequestStatus s) =>
+    s != RequestStatus.completed &&
+    s != RequestStatus.closed &&
+    s != RequestStatus.cancelled;
+
+/// Whether a request can still be rescheduled: it hasn't truly started (a trip
+/// only starts once a TravAcser accepted AND it was started), so an unaccepted
+/// request stays reschedulable even past its time.
+bool _rescheduleAllowed(Request r) =>
+    r.acceptedCount == 0 || DateTime.now().isBefore(r.scheduledStartAt);
+
+/// Compact, tappable summary row for one active request: date + time, status,
+/// and the start code (once a TravAcser has accepted). Opens the full detail
+/// page. The whole tile is one screen-reader node with an explicit summary.
+class _RequestSummaryTile extends ConsumerWidget {
+  const _RequestSummaryTile({required this.request});
+  final Request request;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final r = request;
+    final date = DateFormat.yMMMEd().format(r.scheduledDate);
+    final time = formatTime12h(r.startTime);
+
+    // Derive a compact code/status line only when a TravAcser has accepted.
+    ({String visual, String semantic})? code;
+    if (r.acceptedCount > 0) {
+      code = _codeSummary(ref);
+    }
+
+    final semantic = 'Trip on $date at $time, status ${r.status.label}'
+        '${code != null ? ', ${code.semantic}' : ''}. '
+        'Double tap to view details.';
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Semantics(
+        button: true,
+        label: semantic,
+        excludeSemantics: true,
+        child: InkWell(
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => RequestDetailScreen(requestId: r.id),
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('$date · $time',
+                          style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 6),
+                      RequestStatusChip(status: r.status),
+                      if (code != null) ...[
+                        const SizedBox(height: 6),
+                        Text(code.visual,
+                            style: Theme.of(context).textTheme.bodyMedium),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(Icons.chevron_right),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// A short code/status summary across the request's active assignments.
+  ({String visual, String semantic}) _codeSummary(WidgetRef ref) {
+    final async = ref.watch(requestAssignmentsProvider(request.id));
+    final active =
+        async.value?.where((a) => a.isActive).toList() ?? const [];
+    if (active.isEmpty) {
+      return (visual: 'TravAcser assigned', semantic: 'a TravAcser is assigned');
+    }
+    if (active.any((a) => a.tripStatus == TripStatus.started)) {
+      return (visual: 'In progress', semantic: 'trip in progress');
+    }
+    if (active.length == 1) {
+      final spaced = A11y.spellDigits(active.first.startOtp);
+      return (
+        visual: 'Start code: ${active.first.startOtp}',
+        semantic: 'start code $spaced',
+      );
+    }
+    return (
+      visual: 'Start codes ready — open to view',
+      semantic: 'start codes ready, open to view',
+    );
+  }
+}
+
+/// Full-screen, scrollable detail for one active request. Each field is an
+/// individual screen-reader node; the start code, and Cancel / Reschedule / End
+/// trip actions all live inside. Stays live off [myRequestsProvider].
+class RequestDetailScreen extends ConsumerWidget {
+  const RequestDetailScreen({super.key, required this.requestId});
+  final String requestId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(myRequestsProvider);
+    // Refresh time-derived bits (reschedule availability) without an event.
+    ref.watch(clockProvider);
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Trip details')),
+      body: async.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text(failureMessage(e))),
+        data: (all) {
+          Request? r;
+          for (final x in all) {
+            if (x.id == requestId) {
+              r = x;
+              break;
+            }
+          }
+          if (r == null || !isActiveRequest(r.status)) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('This trip is no longer active.',
+                        textAlign: TextAlign.center),
+                    const SizedBox(height: 12),
+                    FilledButton(
+                      onPressed: () => Navigator.of(context).maybePop(),
+                      child: const Text('Back'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+          return _DetailBody(request: r);
+        },
+      ),
+    );
+  }
+}
+
+class _DetailBody extends ConsumerWidget {
+  const _DetailBody({required this.request});
+  final Request request;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final r = request;
+    final date = DateFormat.yMMMEd().format(r.scheduledDate);
+    final time = formatTime12h(r.startTime);
+    final canReschedule = _rescheduleAllowed(r);
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: RequestStatusChip(status: r.status),
+        ),
+        const SizedBox(height: 12),
+        _detailRow(context, Icons.schedule, 'Trip time', '$date, $time'),
+        _detailRow(
+            context, Icons.my_location, 'Pick-up location', r.meetingPoint),
+        _detailRow(context, Icons.place_outlined, 'Destination', r.destination),
+        _detailRow(
+            context, Icons.group_outlined, 'Users travelling', '${r.numTravellers}'),
+        _detailRow(context, Icons.volunteer_activism_outlined,
+            'TravAcsers required', '${r.acceptedCount}/${r.numTravAcsers} filled'),
+        _detailRow(context, Icons.wc_outlined, 'TravAcser preference',
+            r.genderPreference.label),
+        if (r.purpose != null && r.purpose!.isNotEmpty)
+          _detailRow(context, Icons.info_outline, 'Purpose', r.purpose!),
+        if (r.specialNote != null && r.specialNote!.isNotEmpty)
+          _detailRow(context, Icons.sticky_note_2_outlined, 'Note', r.specialNote!),
+        _detailRow(context, Icons.currency_rupee, 'Estimated amount',
+            '₹${r.estimatedAmountInr}  (${r.estimateBreakdown})'),
+        if (r.acceptedCount > 0) ...[
+          const Divider(height: 28),
+          Text('Your TravAcser${r.acceptedCount == 1 ? '' : 's'}',
+              style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 4),
+          _RequestAssignments(requestId: r.id),
+        ],
+        const SizedBox(height: 20),
+        Wrap(
+          alignment: WrapAlignment.end,
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            if (canReschedule)
+              OutlinedButton.icon(
+                icon: const Icon(Icons.schedule),
+                label: const Text('Reschedule'),
+                onPressed: () => _reschedule(context, ref, r),
+              ),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.cancel_outlined),
+              label: const Text('Cancel trip'),
+              onPressed: () => _cancel(context, ref, r),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// A single labelled detail line as its OWN semantic node, so a screen-reader
+  /// user lands on each field individually (unlike the merged summary card).
+  Widget _detailRow(
+      BuildContext context, IconData icon, String label, String value) {
+    return Semantics(
+      label: '$label: $value',
+      excludeSemantics: true,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                        text: '$label: ',
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
+                    TextSpan(text: value),
+                  ],
+                ),
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Future<void> _reschedule(BuildContext context, WidgetRef ref, Request r) async {
     final now = DateTime.now();
@@ -107,9 +328,7 @@ class MyRequestsScreen extends ConsumerWidget {
         .read(requestControllerProvider.notifier)
         .reschedule(r.id, DateUtils.dateOnly(date), startTime);
     if (!context.mounted) return;
-    ok
-        ? A11y.announce(context, 'Trip rescheduled.')
-        : _err(context, ref);
+    ok ? A11y.announce(context, 'Trip rescheduled.') : _err(context, ref);
   }
 
   Future<void> _cancel(BuildContext context, WidgetRef ref, Request r) async {
@@ -137,7 +356,12 @@ class MyRequestsScreen extends ConsumerWidget {
         ? await notifier.cancel(r.id)
         : await notifier.cancelTrip(r.id);
     if (!context.mounted) return;
-    ok ? A11y.announce(context, 'Trip cancelled.') : _err(context, ref);
+    if (ok) {
+      A11y.announce(context, 'Trip cancelled.');
+      Navigator.of(context).maybePop(); // back to the list
+    } else {
+      _err(context, ref);
+    }
   }
 
   void _err(BuildContext context, WidgetRef ref) {
