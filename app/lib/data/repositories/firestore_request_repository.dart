@@ -313,6 +313,7 @@ class FirestoreRequestRepository implements RequestRepository {
       endedAt: (d['endedAt'] as Timestamp?)?.toDate(),
       durationMinutes: (d['durationMinutes'] as num?)?.toInt(),
       amountInr: (d['amountInr'] as num?)?.toInt(),
+      travelCostInr: (d['travelCostInr'] as num?)?.toInt(),
       paymentStatus: PaymentStatus.fromWire(d['paymentStatus'] as String?),
       requesterPaidAt: (d['requesterPaidAt'] as Timestamp?)?.toDate(),
       travAcserReceivedAt: (d['travAcserReceivedAt'] as Timestamp?)?.toDate(),

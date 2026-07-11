@@ -2,6 +2,7 @@ import '../../core/config/constants.dart';
 import '../../core/util/scheduled_time.dart';
 import '../../core/util/trip_otp.dart';
 import 'enums.dart';
+import 'request.dart';
 
 /// One TravAcser's acceptance of a request (`requests/{id}/assignments/{vid}`).
 /// Holds the contact pair (both parties can read their own assignment) plus a
@@ -32,6 +33,7 @@ class Assignment {
     this.endedAt,
     this.durationMinutes,
     this.amountInr,
+    this.travelCostInr,
     this.paymentStatus = PaymentStatus.pending,
     this.requesterPaidAt,
     this.travAcserReceivedAt,
@@ -70,6 +72,9 @@ class Assignment {
   final DateTime? endedAt;
   final int? durationMinutes;
   final int? amountInr;
+  /// Flat travel cost billed on this assignment (₹100 on the first-completed
+  /// assignment of the trip, otherwise 0/null). Once per trip.
+  final int? travelCostInr;
 
   // Payment + ratings (M6).
   final PaymentStatus paymentStatus;
@@ -92,16 +97,21 @@ class Assignment {
   /// trip (item 3).
   bool get needsRescheduleConfirm => rescheduleStatus == 'pending';
 
-  /// Human-readable breakdown of the trip amount, e.g. `"₹135/hr × 1.5 hr"`.
-  /// Uses the billed [durationMinutes] once the trip is completed, otherwise the
-  /// estimated duration. The single-TravAcser rate applies (this is one
-  /// TravAcser's slice of the request).
+  /// Human-readable breakdown of the trip amount, e.g.
+  /// `"₹140/hr × 2 hr"` (plus `" + ₹100 travel"` on the assignment that carries
+  /// the once-per-trip travel cost). Uses the billed [durationMinutes] once the
+  /// trip is completed, otherwise the estimated duration, and shows the charged
+  /// (half-hour rounded-up) hours. The single-TravAcser rate applies (this is
+  /// one TravAcser's slice of the request).
   String get amountBreakdown {
     final mins = durationMinutes ?? expectedDurationMinutes;
-    final hrs = mins / 60.0;
+    final hrs = Request.billableHours(mins);
     final hrsLabel =
         hrs == hrs.roundToDouble() ? hrs.toStringAsFixed(0) : hrs.toStringAsFixed(1);
-    return '₹${AppConstants.hourlyRateInr}/hr × $hrsLabel hr';
+    final base = '₹${AppConstants.hourlyRateInr}/hr × $hrsLabel hr';
+    return (travelCostInr ?? 0) > 0
+        ? '$base + ₹$travelCostInr travel'
+        : base;
   }
 
   /// Scheduled-start anchor: the stored instant, or computed from date +

@@ -10,13 +10,22 @@ import 'package:travacs/domain/entities/request.dart';
 /// logic the rest of the app and the Cloud Functions both rely on.
 void main() {
   group('Request billing & slots', () {
-    test('computeEstimate = hours x rate x TravAcsers, rounded', () {
-      // 120 min = 2h, 1 TravAcser -> 2 * 135 = 270.
-      expect(Request.computeEstimate(120, 1), 270);
-      // 90 min = 1.5h, 2 TravAcsers -> 1.5 * 135 * 2 = 405.
-      expect(Request.computeEstimate(90, 2), 405);
-      // 50 min, 1 -> round(50/60 * 135) = round(112.5) = 113 (round-half-up).
-      expect(Request.computeEstimate(50, 1), 113);
+    test('computeEstimate = service(half-hour rounded up) x TravAcsers + travel', () {
+      // 120 min = 4 blocks (2h) -> 4*70 = 280 service; x1 + 100 travel = 380.
+      expect(Request.computeEstimate(120, 1), 380);
+      // 90 min = 3 blocks (1.5h) -> 210 service; x2 + 100 travel = 520.
+      expect(Request.computeEstimate(90, 2), 520);
+      // 50 min -> ceil(50/30) = 2 blocks (1h) -> 140 service; x1 + 100 = 240.
+      expect(Request.computeEstimate(50, 1), 240);
+      // 298 min (4h58m) -> ceil(298/30) = 10 blocks (5h) -> 700; + 100 = 800.
+      expect(Request.computeEstimate(298, 1), 800);
+    });
+
+    test('serviceCharge rounds duration up to the next half hour', () {
+      expect(Request.serviceCharge(1), 70); // min 1 block
+      expect(Request.serviceCharge(30), 70);
+      expect(Request.serviceCharge(31), 140);
+      expect(Request.serviceCharge(298), 700); // 4h58m -> 5h
     });
 
     test('suggestedTravAcsers: one TravAcser assists up to two travellers', () {
@@ -176,7 +185,8 @@ void main() {
   });
 
   test('AppConstants sanity', () {
-    expect(AppConstants.hourlyRateInr, 135);
+    expect(AppConstants.hourlyRateInr, 140);
+    expect(AppConstants.travelCostInr, 100);
     expect(AppConstants.tripOtpLength, 4);
   });
 }
