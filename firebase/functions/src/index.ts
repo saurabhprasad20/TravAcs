@@ -770,10 +770,14 @@ export const createRazorpayOrder = onCall(
       throw new HttpsError("failed-precondition", "There is nothing to pay for this trip.", {code: "NO_AMOUNT"});
     }
     const keyId = RAZORPAY_KEY_ID.value();
-    // Idempotent: if an order was already created for this still-unpaid trip,
-    // return it rather than creating (and overwriting the stored id with) a new
-    // one — otherwise a retry could orphan an order the User already paid.
-    if (a.razorpayOrderId) {
+    // Idempotent: reuse a previously-created order for this still-unpaid trip
+    // rather than creating (and overwriting the stored id with) a new one —
+    // otherwise a retry could orphan an order the User already paid. BUT only
+    // reuse it when it was created under the *current* key: an order created
+    // under a different key (e.g. an old test-mode order after switching to a
+    // live key) is invalid for this key and makes the Razorpay checkout stall
+    // (it can never load the order), so we must mint a fresh one instead.
+    if (a.razorpayOrderId && a.razorpayKeyId === keyId) {
       return {
         orderId: a.razorpayOrderId,
         keyId,
@@ -799,7 +803,7 @@ export const createRazorpayOrder = onCall(
       throw new HttpsError("internal", "Could not start the payment. Please try again.");
     }
     const order = (await resp.json()) as {id: string};
-    await assignRef.update({razorpayOrderId: order.id});
+    await assignRef.update({razorpayOrderId: order.id, razorpayKeyId: keyId});
     return {
       orderId: order.id,
       keyId,
