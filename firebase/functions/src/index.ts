@@ -384,10 +384,16 @@ export const completeTrip = onCall({region: REGION}, async (req) => {
     if (a.tripStatus !== "started") {
       throw new HttpsError("failed-precondition", "This trip must be started before it can be ended.", {code: "NOT_STARTED"});
     }
-    // Bill from the actual start the User confirmed (recorded by startTrip),
-    // falling back to the scheduled start only if startedAt is somehow missing.
     const startedAt: FirebaseFirestore.Timestamp | undefined = a.startedAt;
     const scheduledStart: FirebaseFirestore.Timestamp | undefined = a.scheduledStartAt;
+    // A trip may START early (the parties meet sooner), but it can never be
+    // ENDED before its scheduled start time. Skip only if the schedule anchor is
+    // somehow missing on a legacy doc.
+    if (scheduledStart && Date.now() < scheduledStart.toMillis()) {
+      throw new HttpsError("failed-precondition", "This trip can't be ended before its scheduled start time.", {code: "EARLY_END"});
+    }
+    // Bill from the actual start the User confirmed (recorded by startTrip),
+    // falling back to the scheduled start only if startedAt is somehow missing.
     const startMs =
       startedAt?.toMillis() ?? scheduledStart?.toMillis() ?? Date.now();
     const minutes = Math.max(1, Math.round((Date.now() - startMs) / 60000));
@@ -470,6 +476,11 @@ export const rescheduleTrip = onCall({region: REGION}, async (req) => {
       throw new HttpsError("failed-precondition", "The trip has already started.", {code: "ALREADY_STARTED"});
     }
     const assigns = await tx.get(reqRef.collection("assignments"));
+    // A trip that has actually started (even early, before its scheduled time)
+    // can only be ended — never rescheduled.
+    if (assigns.docs.some((d) => d.data().tripStatus === "started")) {
+      throw new HttpsError("failed-precondition", "The trip has already started.", {code: "ALREADY_STARTED"});
+    }
     const newDate = Timestamp.fromMillis(scheduledDateMs);
     const newStartAt = Timestamp.fromMillis(scheduledStartAtMs);
     // Each still-assigned TravAcser must re-confirm the new time. They get up to
@@ -587,6 +598,10 @@ export const cancelTrip = onCall({region: REGION}, async (req) => {
     }
 
     if (isRequester) {
+      // A started trip can only be ended, never cancelled.
+      if (assigns.docs.some((d) => d.data().tripStatus === "started")) {
+        throw new HttpsError("failed-precondition", "A started trip can't be cancelled — it can only be ended.", {code: "TRIP_STARTED"});
+      }
       tx.update(reqRef, {status: "cancelled", updatedAt: FieldValue.serverTimestamp()});
       assigns.docs.forEach((d) => {
         const s = d.data().tripStatus;
@@ -597,7 +612,10 @@ export const cancelTrip = onCall({region: REGION}, async (req) => {
       });
     } else {
       const s = myAssign!.data().tripStatus;
-      if (s !== "assigned" && s !== "started") {
+      if (s === "started") {
+        throw new HttpsError("failed-precondition", "A started trip can't be cancelled — it can only be ended.", {code: "TRIP_STARTED"});
+      }
+      if (s !== "assigned") {
         throw new HttpsError("failed-precondition", "This trip can no longer be cancelled.", {code: "INVALID_STATE"});
       }
       tx.update(myAssign!.ref, {tripStatus: "cancelled"});

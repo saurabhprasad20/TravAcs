@@ -67,6 +67,9 @@ class _TripCard extends ConsumerWidget {
     // early) — as long as it isn't already in progress and there's no pending
     // reschedule to confirm first. Billing runs from the actual start.
     final canStart = !inProgress && !a.needsRescheduleConfirm;
+    // A trip may start early, but it can only be ENDED at/after its scheduled
+    // start time (matches the server's EARLY_END guard).
+    final canEnd = inProgress && !now.isBefore(a.effectiveStartAt);
 
     return Card(
       child: Padding(
@@ -114,7 +117,10 @@ class _TripCard extends ConsumerWidget {
             const SizedBox(height: 12),
             Text(
               inProgress
-                  ? 'In progress — end the trip when you finish.'
+                  ? (canEnd
+                      ? 'In progress — end the trip when you finish.'
+                      : 'In progress — you can end the trip once its scheduled '
+                          'start time ($time) arrives.')
                   : canStart
                       ? 'Ask the User for their start code and enter it to begin '
                           'the trip. Scheduled for $time — you can start early if '
@@ -136,16 +142,20 @@ class _TripCard extends ConsumerWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                TextButton(
-                  onPressed: busy ? null : () => _cancel(context, ref),
-                  child: const Text('Cancel'),
-                ),
-                const SizedBox(width: 8),
+                // Once a trip has started it can only be ended, never cancelled.
+                if (!inProgress) ...[
+                  TextButton(
+                    onPressed: busy ? null : () => _cancel(context, ref),
+                    child: const Text('Cancel'),
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 if (inProgress)
                   FilledButton.icon(
                     icon: const Icon(Icons.flag_outlined),
                     label: const Text('End trip'),
-                    onPressed: busy ? null : () => _complete(context, ref),
+                    onPressed:
+                        (busy || !canEnd) ? null : () => _complete(context, ref),
                   ),
               ],
             ),
