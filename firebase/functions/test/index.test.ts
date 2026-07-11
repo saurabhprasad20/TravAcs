@@ -140,6 +140,25 @@ describe("acceptRequest (slot-filling FCFS)", () => {
     const res: any = await acceptRequest(call({requestId: "r3"}, "vol"));
     assert.equal(res.code, "ACCEPTED");
   });
+
+  it("lets a TravAcser re-accept a request they previously cancelled", async () => {
+    await approvedVolunteer("vol");
+    await broadcastRequest("r1");
+
+    await acceptRequest(call({requestId: "r1"}, "vol"));
+    // TravAcser cancels their slot -> request reopens, cancelled assignment
+    // doc remains behind.
+    await cancelTrip(call({requestId: "r1"}, "vol"));
+    const reopened = (await db.doc("requests/r1").get()).data()!;
+    assert.equal(reopened.status, "broadcast");
+    assert.equal(reopened.acceptedCount, 0);
+
+    // Re-accepting must succeed (not "already accepted").
+    const res: any = await acceptRequest(call({requestId: "r1"}, "vol"));
+    assert.equal(res.code, "ACCEPTED");
+    const a = (await db.doc("requests/r1/assignments/vol").get()).data()!;
+    assert.equal(a.tripStatus, "assigned"); // overwritten cleanly
+  });
 });
 
 describe("startTrip (code-gated status flip, TravAcser-driven)", () => {
