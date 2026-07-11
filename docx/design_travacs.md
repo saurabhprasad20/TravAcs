@@ -21,7 +21,7 @@
 | 7 | **App architecture** | **Riverpod** (DI + state) + **layered** (data / domain / presentation) + **Repository pattern**. | SOLID, testable; lets the backend swap (as this migration proved). |
 | 8 | **Matching** | **Region-scoped broadcast:** both sides pick a fixed **`serviceArea`** (Delhi NCR + states/UTs); a request is broadcast only to approved, active TravAcsers whose `serviceArea` **equals** the request's. FCFS decides. (Optional `geohash` later for finer geo-radius.) | Deterministic, no GPS; right scope for targeted FCM. |
 | 9 | **Aadhaar / Verification** | **No Aadhaar data captured or stored in v1.** Volunteers verified **manually/out-of-band** by admin (sets `verificationStatus`). | Avoid PII/compliance burden now. |
-| 10 | **Billing & Payment** | ₹135/hour, **pro-rated per minute**: `amount = round(durationMinutes / 60 * 135)`. External UPI with **two-sided confirmation** (requester marks **Paid**, volunteer marks **Received**; settled when both). | Matches requirements; mutual trust. |
+| 10 | **Billing & Payment** | ₹135/hour, **pro-rated per minute**: `amount = round(durationMinutes / 60 * 135)`. **In-app Razorpay** checkout (`createRazorpayOrder` → checkout → `verifyRazorpayPayment`, server HMAC-verified, credentials in Secret Manager, now on **live** keys). A manual **two-sided confirmation** fallback (`markPaid`/`markReceived`) also exists. | Matches requirements; verified in-app collection with a manual fallback. |
 | 11 | **Trip start** | **6-digit OTP** generated on assignment, stored **hashed** (via a Cloud Function), shown to the requester, entered + verified by the volunteer. | Proof both parties met. |
 | 12 | **Plan/cost** | v1 **foundations (Auth + Firestore + profiles) run on the free Spark plan.** **Blaze** is needed once Cloud Functions ship (FCM fan-out, M3+). Phone Auth has a monthly free verification quota; budget a small per-SMS cost beyond it. | Keep cost minimal early. |
 
@@ -46,7 +46,7 @@ TravAcs connects **visually impaired users ("Requesters")** with **verified volu
 Registration, profiles, request lifecycle, FCFS assignment, OTP trip start, completion + billing, external-payment confirmation, mutual ratings, push notifications, admin verification, accessibility.
 
 ### 1.4 Explicit non-goals (v1)
-- ❌ In-app payments / wallet / commission.
+- ❌ ~~In-app payments~~ / wallet / commission. *(In-app Razorpay payment was added post-v1; wallet/commission remain out of scope.)*
 - ❌ Real-time GPS live tracking on a map.
 - ❌ Aadhaar capture/storage (manual verification for v1).
 - ❌ Email/social login (phone+OTP only in v1).

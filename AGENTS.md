@@ -244,8 +244,18 @@ friction).
 > trip start as a **deterministic offline start-code** (`startTrip` + `app/lib/core/util/trip_otp.dart`):
 > the User reads their code to the TravAcser, who enters and validates it, and billing anchors to the
 > confirmed `startedAt`. The same
-> batch added Razorpay payment, one-trip-per-day, request auto-expiry, reschedule confirm/cancel, and
+> batch added **in-app Razorpay payment**, one-trip-per-day, request auto-expiry, reschedule confirm/cancel, and
 > admin dashboards. Scheduled functions run in `asia-south1`; callables in `asia-south2`.
+>
+> **Razorpay is LIVE.** Credentials live only in **Firebase Secret Manager** (secrets
+> `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET`, never in the repo). `createRazorpayOrder` +
+> `verifyRazorpayPayment` (both `asia-south2`) read them and hand the client the `keyId` at runtime —
+> the Key Secret never leaves the server. Rotating keys = `firebase functions:secrets:set <NAME>
+> --project travacs-dev --data-file <tmp>` then redeploy those two functions. A later gap-fill added
+> **started-trip lock** (a `started` trip can't be cancelled/rescheduled, and can't be ended before
+> `scheduledStartAt`) and **gender-matched broadcast** (only `strict_same_gender` requests are hidden
+> from opposite-gender TravAcsers until the last 10% of lead time, then auto-widened by the scheduled
+> `widenGenderRequests`).
 
 ---
 
@@ -423,8 +433,9 @@ the public Actions API.
   - *Partial multi-TravAcser lifecycle* — a partially-filled request stays `broadcast`; starting one
     assignment doesn't freeze the remaining slots, and some complete+cancel combinations don't cleanly
     reconcile the parent status. Needs a focused lifecycle rework.
-- **Next planned step:** continue user + functions testing of the M12 flow, then iterate; M11
-  store-release remains paused.
+- **Next planned step:** on-device E2E of the **live Razorpay** payment flow (end trip → order →
+  checkout → verify → paid) with a small real transaction, then continue iterating on the trip
+  lifecycle; M11 store-release remains paused.
 
 ---
 
