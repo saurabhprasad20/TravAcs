@@ -322,9 +322,10 @@ class _StatusPill extends StatelessWidget {
   }
 }
 
-/// The TravAcser enters the User's start code here. Validation is fully offline
-/// (compared against [Assignment.startOtp]); only on a match do we call the
-/// server to record the "In progress" flip, after which both parties see the
+/// The TravAcser starts the trip by entering the User's 4-digit start code.
+/// Tapping "Start trip" opens a dialog with a numeric input; validation is fully
+/// offline (compared against [Assignment.startOtp]). Only on a match do we call
+/// the server to record the "In progress" flip, after which both parties see the
 /// trip as started.
 class _StartCodeEntry extends ConsumerStatefulWidget {
   const _StartCodeEntry({
@@ -341,57 +342,25 @@ class _StartCodeEntry extends ConsumerStatefulWidget {
 }
 
 class _StartCodeEntryState extends ConsumerState<_StartCodeEntry> {
-  final _controller = TextEditingController();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     final busy = ref.watch(requestControllerProvider).isLoading;
-    // Wrap (not Row) so the field + button reflow instead of overflowing at
-    // large OS text scales (supported up to 1.8×).
-    return Wrap(
-      spacing: 12,
-      runSpacing: 8,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        SizedBox(
-          width: 130,
-          child: TextField(
-            controller: _controller,
-            keyboardType: TextInputType.number,
-            maxLength: AppConstants.tripOtpLength,
-            decoration: const InputDecoration(
-              labelText: 'Start code',
-              counterText: '',
-            ),
-          ),
-        ),
-        FilledButton.icon(
-          icon: const Icon(Icons.play_arrow),
-          label: const Text('Start trip'),
-          onPressed: busy ? null : _start,
-        ),
-      ],
+    return FilledButton.icon(
+      icon: const Icon(Icons.play_arrow),
+      label: const Text('Start trip'),
+      onPressed: busy ? null : _openCodeDialog,
     );
   }
 
-  Future<void> _start() async {
-    final entered = _controller.text.trim();
-    if (entered != widget.expectedOtp) {
-      if (!mounted) return;
-      A11y.announce(context,
-          "That code doesn't match. Please check with the User and try again.");
-      ScaffoldMessenger.of(context)
-        ..clearSnackBars()
-        ..showSnackBar(const SnackBar(
-            content: Text("That code doesn't match. Please try again.")));
-      return;
-    }
+  Future<void> _openCodeDialog() async {
+    // The dialog validates the entered code offline and only pops `true` on a
+    // correct 4-digit code (otherwise it shows an inline error and stays open).
+    final matched = await showDialog<bool>(
+      context: context,
+      builder: (_) => _StartCodeDialog(expectedOtp: widget.expectedOtp),
+    );
+    if (matched != true || !mounted) return;
+
     // Capture the messenger + text direction BEFORE the await: a successful
     // start flips the assignment stream to "started", which rebuilds the card
     // and unmounts this entry — so a post-await `mounted` check would swallow
@@ -415,5 +384,91 @@ class _StartCodeEntryState extends ConsumerState<_StartCodeEntry> {
     messenger
       ..clearSnackBars()
       ..showSnackBar(SnackBar(content: Text(msg)));
+  }
+}
+
+/// Dialog that collects the User's start code. Pops `true` only when the entered
+/// code matches [expectedOtp]; a wrong code shows an inline error and keeps the
+/// dialog open so the TravAcser can re-check with the User and retry.
+class _StartCodeDialog extends StatefulWidget {
+  const _StartCodeDialog({required this.expectedOtp});
+  final String expectedOtp;
+
+  @override
+  State<_StartCodeDialog> createState() => _StartCodeDialogState();
+}
+
+class _StartCodeDialogState extends State<_StartCodeDialog> {
+  final _controller = TextEditingController();
+  String? _error;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final entered = _controller.text.trim();
+    if (entered.length != AppConstants.tripOtpLength) {
+      setState(() => _error =
+          'Enter the ${AppConstants.tripOtpLength}-digit code from the User.');
+      A11y.announce(context, _error!);
+      return;
+    }
+    if (entered != widget.expectedOtp) {
+      setState(() => _error =
+          "That code doesn't match. Please check with the User and try again.");
+      A11y.announce(context, _error!);
+      return;
+    }
+    Navigator.of(context).pop(true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Enter start code'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Ask the User for their ${AppConstants.tripOtpLength}-digit start '
+            'code and enter it here to begin the trip.',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            keyboardType: TextInputType.number,
+            maxLength: AppConstants.tripOtpLength,
+            textInputAction: TextInputAction.done,
+            onChanged: (_) {
+              if (_error != null) setState(() => _error = null);
+            },
+            onSubmitted: (_) => _submit(),
+            decoration: InputDecoration(
+              labelText: 'Start code',
+              hintText: '4-digit code',
+              counterText: '',
+              errorText: _error,
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton.icon(
+          icon: const Icon(Icons.play_arrow),
+          label: const Text('Start trip'),
+          onPressed: _submit,
+        ),
+      ],
+    );
   }
 }
