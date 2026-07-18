@@ -89,11 +89,17 @@ final requestAssignmentsProvider =
 });
 
 /// The requester's completed-but-unpaid trips ("pending dues"). A User must
-/// clear these before creating a new request. Payment is now per-trip, so this
-/// reads the requester's own requests (not per-assignment).
+/// clear these before creating a new request. Payment is per-trip, so this reads
+/// the requester's own requests. Only trips that carry a trip-level bill
+/// (`tripAmountInr > 0`, i.e. completed under the trip-level payment model) can
+/// be dues — a legacy completed trip with no trip total is not blockable/payable
+/// in-app, so it must not soft-lock the User out of creating new requests.
 final myPendingDuesProvider = Provider<List<Request>>((ref) {
   final all = ref.watch(myRequestsProvider).value ?? const [];
   return all
-      .where((r) => r.status == RequestStatus.completed && !r.isPaid)
+      .where((r) =>
+          r.status == RequestStatus.completed &&
+          (r.tripAmountInr ?? 0) > 0 &&
+          !r.isPaid)
       .toList();
 });

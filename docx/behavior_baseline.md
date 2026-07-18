@@ -158,7 +158,7 @@ Routes: `/splash`, `/auth/phone`, `/auth/otp?phone=…`, `/complete-profile`, `/
 | `myAssignmentsProvider` | StreamProvider | TravAcser's assignments via `collectionGroup('assignments')` where `volunteerId==uid` |
 | `availableRequestsProvider` | StreamProvider | open requests in city, filtered (see below) |
 | `requestAssignmentsProvider` | StreamProvider.family<_,requestId> | assignments of one request (requester view) |
-| `myPendingDuesProvider` | Provider | requester's completed-but-unpaid **trips** (request-level; blocks new request creation) |
+| `myPendingDuesProvider` | Provider | requester's completed trips with a trip-level bill (`tripAmountInr>0`) that are unpaid; blocks new request creation (legacy no-total trips excluded) |
 | `activeTripsProvider` | StreamProvider | admin: all broadcast/assigned/started, ordered by `scheduledStartAt` |
 | `pendingVolunteersProvider` | StreamProvider | admin: volunteers awaiting verification |
 | `functionsProvider` | Provider | `FirebaseFunctions.instanceFor(region:'asia-south2')` |
