@@ -32,6 +32,8 @@ class Request {
     this.volunteerId,
     this.requesterName,
     this.createdAt,
+    this.tripAmountInr,
+    this.requesterPaidAt,
   });
 
   final String id;
@@ -91,6 +93,16 @@ class Request {
   final String? requesterName;
 
   final DateTime? createdAt;
+
+  /// The whole-trip total (sum of every TravAcser's share), set at completion.
+  /// The User pays this once; the admin team distributes each share manually.
+  final int? tripAmountInr;
+
+  /// When the User paid for the whole trip (null = unpaid).
+  final DateTime? requesterPaidAt;
+
+  /// True once the whole trip has been paid for.
+  bool get isPaid => requesterPaidAt != null;
 
   double get durationHours => expectedDurationMinutes / 60.0;
 

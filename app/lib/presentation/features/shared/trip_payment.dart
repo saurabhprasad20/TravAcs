@@ -23,12 +23,11 @@ Future<bool> startTripPayment(
   BuildContext context,
   WidgetRef ref, {
   required String requestId,
-  required String volunteerId,
   String? contact,
 }) async {
   final controller = ref.read(requestControllerProvider.notifier);
 
-  final order = await controller.createRazorpayOrder(requestId, volunteerId);
+  final order = await controller.createRazorpayOrder(requestId);
   if (!context.mounted) return false;
   if (order == null) {
     _announce(context, failureMessage(ref.read(requestControllerProvider).error));
@@ -42,7 +41,6 @@ Future<bool> startTripPayment(
     case _RzKind.success:
       final ok = await controller.verifyRazorpayPayment(
         requestId: requestId,
-        volunteerId: volunteerId,
         razorpayOrderId: result.orderId ?? order.orderId,
         razorpayPaymentId: result.paymentId ?? '',
         razorpaySignature: result.signature ?? '',

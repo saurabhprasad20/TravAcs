@@ -109,12 +109,11 @@ class RequestController extends Notifier<AsyncValue<void>> {
   Future<bool> markPaid(String requestId, String volunteerId) =>
       _run(() => _repo.markPaid(requestId, volunteerId));
 
-  /// Creates a Razorpay order for a completed assignment. Returns the order
-  /// (with key id) on success, or null on failure (error in state).
-  Future<RazorpayOrder?> createRazorpayOrder(
-      String requestId, String volunteerId) async {
+  /// Creates a Razorpay order for the whole trip. Returns the order (with key
+  /// id) on success, or null on failure (error in state).
+  Future<RazorpayOrder?> createRazorpayOrder(String requestId) async {
     state = const AsyncLoading();
-    final res = await _repo.createRazorpayOrder(requestId, volunteerId);
+    final res = await _repo.createRazorpayOrder(requestId);
     return res.match(
       (f) {
         state = AsyncError(f, StackTrace.current);
@@ -127,17 +126,15 @@ class RequestController extends Notifier<AsyncValue<void>> {
     );
   }
 
-  /// Verifies a Razorpay payment server-side and marks the trip paid.
+  /// Verifies a Razorpay payment server-side and marks the whole trip paid.
   Future<bool> verifyRazorpayPayment({
     required String requestId,
-    required String volunteerId,
     required String razorpayOrderId,
     required String razorpayPaymentId,
     required String razorpaySignature,
   }) =>
       _run(() => _repo.verifyRazorpayPayment(
             requestId: requestId,
-            volunteerId: volunteerId,
             razorpayOrderId: razorpayOrderId,
             razorpayPaymentId: razorpayPaymentId,
             razorpaySignature: razorpaySignature,

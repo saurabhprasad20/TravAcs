@@ -98,6 +98,7 @@ class _HistoryCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final busy = ref.watch(requestControllerProvider).isLoading;
     final when = DateFormat.yMMMEd().format(r.scheduledDate);
     final cancelled = r.status == RequestStatus.cancelled;
     return Card(
@@ -110,11 +111,56 @@ class _HistoryCard extends ConsumerWidget {
                 style: Theme.of(context).textTheme.titleMedium),
             Text(cancelled ? 'Cancelled' : 'Completed',
                 style: Theme.of(context).textTheme.bodySmall),
-            if (!cancelled) _Assignments(requestId: r.id),
+            if (!cancelled) ...[
+              const SizedBox(height: 4),
+              // One total for the whole trip (all TravAcsers). The User pays once
+              // to the app; the admin team distributes each share manually.
+              Semantics(
+                label: 'Trip total ₹${r.tripAmountInr ?? 0}, '
+                    '${r.isPaid ? 'paid' : 'payment pending'}',
+                excludeSemantics: true,
+                child: Text(
+                  'Trip total: ₹${r.tripAmountInr ?? 0} · '
+                  '${r.isPaid ? 'Paid' : 'Payment pending'}',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(fontWeight: FontWeight.w600),
+                ),
+              ),
+              // Per-TravAcser breakdown + rating (no per-TravAcser payment).
+              _Assignments(requestId: r.id),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.help_outline,
+                        semanticLabel: 'Get help'),
+                    label: const Text('Get help'),
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                          builder: (_) => const ContactUsScreen()),
+                    ),
+                  ),
+                  if (!r.isPaid && (r.tripAmountInr ?? 0) > 0)
+                    FilledButton.icon(
+                      icon: const Icon(Icons.payments_outlined),
+                      label: const Text('Make payment'),
+                      onPressed: busy ? null : () => _pay(context, ref),
+                    ),
+                ],
+              ),
+            ],
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _pay(BuildContext context, WidgetRef ref) async {
+    await startTripPayment(context, ref, requestId: r.id);
   }
 }
 
@@ -170,51 +216,20 @@ class _AssignmentRow extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('${a.volunteerName} · ₹${a.amountInr ?? 0} · '
-              '${a.paymentStatus.label}'),
+          Text('${a.volunteerName} · ₹${a.amountInr ?? 0}'),
           Text('Breakdown: ${a.amountBreakdown}',
               style: Theme.of(context).textTheme.bodySmall),
           const SizedBox(height: 4),
-          Wrap(
-            spacing: 8,
-            runSpacing: 4,
-            children: [
-              OutlinedButton.icon(
-                icon: const Icon(Icons.help_outline, semanticLabel: 'Get help'),
-                label: const Text('Get help'),
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                      builder: (_) => const ContactUsScreen()),
-                ),
-              ),
-              if (a.requesterPaidAt == null)
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.payments_outlined),
-                  label: const Text('Make payment'),
-                  onPressed: busy ? null : () => _pay(context, ref),
-                ),
-              if (a.ratedByRequester)
-                Text('You rated ${a.requesterRatingStars}★')
-              else
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.star_border),
-                  label: const Text('Rate TravAcser'),
-                  onPressed: busy ? null : () => _rate(context, ref),
-                ),
-            ],
-          ),
+          if (a.ratedByRequester)
+            Text('You rated ${a.requesterRatingStars}★')
+          else
+            OutlinedButton.icon(
+              icon: const Icon(Icons.star_border),
+              label: const Text('Rate TravAcser'),
+              onPressed: busy ? null : () => _rate(context, ref),
+            ),
         ],
       ),
-    );
-  }
-
-  Future<void> _pay(BuildContext context, WidgetRef ref) async {
-    await startTripPayment(
-      context,
-      ref,
-      requestId: requestId,
-      volunteerId: a.volunteerId,
-      contact: a.requesterPhone,
     );
   }
 

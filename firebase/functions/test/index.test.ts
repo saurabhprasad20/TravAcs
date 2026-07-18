@@ -285,6 +285,9 @@ describe("completeTrip (ends a started trip + bills from startedAt)", () => {
 
     const r = (await db.doc("requests/r1").get()).data()!;
     assert.equal(r.status, "completed");
+    // The whole-trip total is stamped on the request for the single payment.
+    assert.equal(r.tripAmountInr, 324);
+    assert.equal(r.paymentStatus, "pending");
   });
 
   it("one party ending concludes the trip for ALL TravAcsers (bills each)", async () => {
@@ -311,6 +314,9 @@ describe("completeTrip (ends a started trip + bills from startedAt)", () => {
 
     const r = (await db.doc("requests/r1").get()).data()!;
     assert.equal(r.status, "completed");
+    // Trip total = both TravAcsers' shares, paid once by the User.
+    assert.equal(r.tripAmountInr, 648);
+    assert.equal(r.paymentStatus, "pending");
   });
 
   it("bills the ₹210 serves-two rate when one TravAcser covers two travellers", async () => {
@@ -557,12 +563,19 @@ describe("submitRating", () => {
 });
 
 describe("verifyRazorpayPayment", () => {
-  it("accepts a valid signature and marks paid; rejects a bad one", async () => {
+  it("accepts a valid signature and marks the whole trip paid; rejects a bad one", async () => {
     process.env.RAZORPAY_KEY_SECRET = "test_secret";
-    await db.doc("requests/r1").set({requesterId: "alice"});
-    await db.doc("requests/r1/assignments/vol").set({
-      volunteerId: "vol", requesterId: "alice", tripStatus: "completed",
-      paymentStatus: "pending", amountInr: 270, razorpayOrderId: "order_1",
+    await db.doc("requests/r1").set({
+      requesterId: "alice", status: "completed", tripAmountInr: 498,
+      paymentStatus: "pending", razorpayOrderId: "order_1",
+    });
+    await db.doc("requests/r1/assignments/v1").set({
+      volunteerId: "v1", requesterId: "alice", tripStatus: "completed",
+      paymentStatus: "pending", amountInr: 249,
+    });
+    await db.doc("requests/r1/assignments/v2").set({
+      volunteerId: "v2", requesterId: "alice", tripStatus: "completed",
+      paymentStatus: "pending", amountInr: 249,
     });
     const sig = crypto
       .createHmac("sha256", "test_secret")
@@ -572,22 +585,28 @@ describe("verifyRazorpayPayment", () => {
     // Wrong signature is rejected.
     await assert.rejects(
       () => verifyRazorpayPayment(call({
-        requestId: "r1", volunteerId: "vol", razorpayOrderId: "order_1",
+        requestId: "r1", razorpayOrderId: "order_1",
         razorpayPaymentId: "pay_1", razorpaySignature: "deadbeef",
       }, "alice")),
       /verified/i
     );
 
-    // Correct signature marks the trip paid.
+    // Correct signature marks the whole trip (all TravAcsers) paid.
     const res: any = await verifyRazorpayPayment(call({
-      requestId: "r1", volunteerId: "vol", razorpayOrderId: "order_1",
+      requestId: "r1", razorpayOrderId: "order_1",
       razorpayPaymentId: "pay_1", razorpaySignature: sig,
     }, "alice"));
     assert.equal(res.code, "PAID");
-    const a = (await db.doc("requests/r1/assignments/vol").get()).data()!;
-    assert.ok(a.requesterPaidAt);
-    assert.equal(a.razorpayPaymentId, "pay_1");
-    assert.equal(a.paymentStatus, "awaiting_other");
+    const r = (await db.doc("requests/r1").get()).data()!;
+    assert.ok(r.requesterPaidAt);
+    assert.equal(r.razorpayPaymentId, "pay_1");
+    assert.equal(r.paymentStatus, "confirmed");
+    const a1 = (await db.doc("requests/r1/assignments/v1").get()).data()!;
+    const a2 = (await db.doc("requests/r1/assignments/v2").get()).data()!;
+    assert.ok(a1.requesterPaidAt);
+    assert.ok(a2.requesterPaidAt);
+    assert.equal(a1.paymentStatus, "confirmed");
+    assert.equal(a2.paymentStatus, "confirmed");
   });
 });
 

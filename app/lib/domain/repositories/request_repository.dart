@@ -85,18 +85,15 @@ abstract interface class RequestRepository {
   /// The User marks a TravAcser's payment as Paid (two-sided).
   FutureResult<Unit> markPaid(String requestId, String volunteerId);
 
-  /// Creates a Razorpay order for a completed assignment's amount (requester
-  /// only). The client opens the checkout with the returned order + key id.
-  FutureResult<RazorpayOrder> createRazorpayOrder(
-    String requestId,
-    String volunteerId,
-  );
+  /// Creates a Razorpay order for the WHOLE trip's total (requester only). The
+  /// client opens the checkout with the returned order + key id, and the User
+  /// makes a single payment covering all TravAcsers.
+  FutureResult<RazorpayOrder> createRazorpayOrder(String requestId);
 
-  /// Verifies a Razorpay payment (signature) server-side and marks the
-  /// assignment paid on success.
+  /// Verifies a Razorpay payment (signature) server-side and marks the whole
+  /// trip paid on success.
   FutureResult<Unit> verifyRazorpayPayment({
     required String requestId,
-    required String volunteerId,
     required String razorpayOrderId,
     required String razorpayPaymentId,
     required String razorpaySignature,

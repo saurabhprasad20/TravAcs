@@ -468,6 +468,7 @@ export const completeTrip = onCall({region: REGION}, async (req) => {
     const pairCount = pairServingCount(travellers, started.length);
     const nowMs = Date.now();
     const notifyVolunteerIds: string[] = [];
+    let tripTotalInr = 0;
     started.forEach((d, i) => {
       const a = d.data();
       const startMs =
@@ -478,6 +479,7 @@ export const completeTrip = onCall({region: REGION}, async (req) => {
       const rate = i < pairCount ? RATE_PAIR_INR : RATE_SOLO_INR;
       const serviceInr = Math.round(billedHours(minutes) * rate);
       const amountInr = serviceInr + TRAVEL_COST_INR;
+      tripTotalInr += amountInr;
       tx.update(d.ref, {
         tripStatus: "completed",
         endedAt: FieldValue.serverTimestamp(),
@@ -496,15 +498,23 @@ export const completeTrip = onCall({region: REGION}, async (req) => {
         tx.update(d.ref, {tripStatus: "closed"});
       }
     });
-    // The whole trip is now concluded.
-    tx.update(reqRef, {status: "completed", updatedAt: FieldValue.serverTimestamp()});
+    // The whole trip is now concluded. The User pays ONE total for the whole
+    // trip (all TravAcsers) to the app's payment account; the admin team
+    // distributes each TravAcser's share manually afterwards. The per-assignment
+    // amounts above are kept only as the breakdown/payout reference.
+    tx.update(reqRef, {
+      status: "completed",
+      tripAmountInr: tripTotalInr,
+      paymentStatus: "pending",
+      updatedAt: FieldValue.serverTimestamp(),
+    });
     return {requesterId: r.requesterId, notifyVolunteerIds, billedCount: started.length};
   });
 
   // Notify the requester and every billed TravAcser that the trip ended. This
   // is NOT a payment notification — amounts are only "pending" here.
   await Promise.all([
-    pushToUser(out.requesterId, {title: "Trip ended", body: "Your trip is complete. Please clear the payment for each TravAcser."}, {type: "trip_completed", requestId}).catch(() => {}),
+    pushToUser(out.requesterId, {title: "Trip ended", body: "Your trip is complete. Please clear the payment to finish."}, {type: "trip_completed", requestId}).catch(() => {}),
     ...out.notifyVolunteerIds.map((v) =>
       pushToUser(v, {title: "Trip ended", body: "The trip was ended — payment is pending from the User."}, {type: "trip_completed", requestId}).catch(() => {})
     ),
@@ -801,58 +811,55 @@ export const markReceived = onCall({region: REGION}, async (req) => {
 });
 
 /**
- * Creates a Razorpay order for a completed assignment's amount and returns the
- * order id + key id so the client can open the Razorpay checkout. Requester
- * only. The Key Secret stays server-side (Secret Manager).
+ * Creates a Razorpay order for the WHOLE trip's total (all TravAcsers) and
+ * returns the order id + key id so the client can open the checkout. Requester
+ * only. The User makes ONE payment for the whole trip to the app's payment
+ * account; the admin team distributes each TravAcser's share manually. The Key
+ * Secret stays server-side (Secret Manager).
  */
 export const createRazorpayOrder = onCall(
   {region: REGION, secrets: [RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET]},
   async (req) => {
     const uid = req.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Please sign in.");
-    const {requestId, volunteerId} = req.data ?? {};
-    if (!requestId || !volunteerId) {
-      throw new HttpsError("invalid-argument", "requestId and volunteerId required.");
+    const {requestId} = req.data ?? {};
+    if (!requestId) {
+      throw new HttpsError("invalid-argument", "requestId required.");
     }
     const reqRef = db.collection("requests").doc(requestId);
-    const assignRef = reqRef.collection("assignments").doc(volunteerId);
-    const [reqSnap, aSnap] = await Promise.all([reqRef.get(), assignRef.get()]);
+    const reqSnap = await reqRef.get();
     const r = reqSnap.data();
-    const a = aSnap.data();
-    if (!r || !a) throw new HttpsError("not-found", "Trip not found.");
+    if (!r) throw new HttpsError("not-found", "Trip not found.");
     if (r.requesterId !== uid) {
       throw new HttpsError("permission-denied", "Only the User can pay.");
     }
-    if (a.tripStatus !== "completed") {
+    if (r.status !== "completed") {
       throw new HttpsError("failed-precondition", "The trip is not completed yet.", {code: "INVALID_STATE"});
     }
-    if (a.requesterPaidAt) {
+    if (r.requesterPaidAt) {
       throw new HttpsError("failed-precondition", "This trip is already paid.", {code: "ALREADY_PAID"});
     }
-    const amountInr: number = a.amountInr ?? 0;
+    const amountInr: number = r.tripAmountInr ?? 0;
     if (amountInr <= 0) {
       throw new HttpsError("failed-precondition", "There is nothing to pay for this trip.", {code: "NO_AMOUNT"});
     }
-    // TEST PHASE: collect a token ₹1 at checkout instead of the real amount. The
-    // real `amountInr` stays on the assignment (History/estimates are unchanged);
+    // TEST PHASE: collect a token ₹1 at checkout instead of the real trip total.
+    // The real `tripAmountInr` stays on the request (History/estimates unchanged);
     // only the Razorpay order + the amount shown at checkout are overridden.
     const billedInr = TEST_BILL_INR;
     const keyId = RAZORPAY_KEY_ID.value();
     // Idempotent: reuse a previously-created order for this still-unpaid trip
-    // rather than creating (and overwriting the stored id with) a new one —
-    // otherwise a retry could orphan an order the User already paid. BUT only
-    // reuse it when it was created under the *current* key AND for the *current*
-    // charge amount: an order made under a different key (e.g. an old test-mode
-    // order after a key switch) can't load and stalls the checkout, and an order
-    // made for a different amount (e.g. a full-value order created before the
-    // ₹1 test override) would over-charge — in both cases mint a fresh one.
+    // rather than minting (and overwriting the stored id with) a new one — a
+    // retry could otherwise orphan an order the User already paid. Only reuse it
+    // when it was created under the *current* key AND for the *current* charge
+    // amount (an old-key or old-amount order can't load / would over-charge).
     if (
-      a.razorpayOrderId &&
-      a.razorpayKeyId === keyId &&
-      a.razorpayAmountInr === billedInr
+      r.razorpayOrderId &&
+      r.razorpayKeyId === keyId &&
+      r.razorpayAmountInr === billedInr
     ) {
       return {
-        orderId: a.razorpayOrderId,
+        orderId: r.razorpayOrderId,
         keyId,
         amountPaise: billedInr * 100,
         amountInr: billedInr,
@@ -866,8 +873,8 @@ export const createRazorpayOrder = onCall(
       body: JSON.stringify({
         amount: billedInr * 100, // paise
         currency: "INR",
-        receipt: `${requestId}_${volunteerId}`.slice(0, 40),
-        notes: {requestId, volunteerId},
+        receipt: `${requestId}`.slice(0, 40),
+        notes: {requestId},
       }),
     });
     if (!resp.ok) {
@@ -876,7 +883,7 @@ export const createRazorpayOrder = onCall(
       throw new HttpsError("internal", "Could not start the payment. Please try again.");
     }
     const order = (await resp.json()) as {id: string};
-    await assignRef.update({
+    await reqRef.update({
       razorpayOrderId: order.id,
       razorpayKeyId: keyId,
       razorpayAmountInr: billedInr,
@@ -893,17 +900,18 @@ export const createRazorpayOrder = onCall(
 
 /**
  * Verifies a Razorpay payment signature (HMAC-SHA256 with the Key Secret) and,
- * if valid, marks the assignment paid (same transition as markPaid). Requester
- * only.
+ * if valid, marks the WHOLE trip paid — the single payment covers every
+ * TravAcser on the trip. Requester only. The admin team distributes each
+ * TravAcser's share manually afterwards.
  */
 export const verifyRazorpayPayment = onCall(
   {region: REGION, secrets: [RAZORPAY_KEY_SECRET]},
   async (req) => {
     const uid = req.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Please sign in.");
-    const {requestId, volunteerId, razorpayOrderId, razorpayPaymentId, razorpaySignature} =
+    const {requestId, razorpayOrderId, razorpayPaymentId, razorpaySignature} =
       req.data ?? {};
-    if (!requestId || !volunteerId || !razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+    if (!requestId || !razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
       throw new HttpsError("invalid-argument", "Missing payment verification fields.");
     }
     const expected = crypto
@@ -917,28 +925,46 @@ export const verifyRazorpayPayment = onCall(
       throw new HttpsError("permission-denied", "The payment could not be verified.", {code: "BAD_SIGNATURE"});
     }
     const reqRef = db.collection("requests").doc(requestId);
-    const assignRef = reqRef.collection("assignments").doc(volunteerId);
+    const volunteerIds: string[] = [];
     await db.runTransaction(async (tx) => {
       const reqDoc = await tx.get(reqRef);
-      if (reqDoc.data()?.requesterId !== uid) {
+      const r = reqDoc.data();
+      if (!r) throw new HttpsError("not-found", "Trip not found.");
+      if (r.requesterId !== uid) {
         throw new HttpsError("permission-denied", "Only the User can pay.");
       }
-      const a = (await tx.get(assignRef)).data();
-      if (!a) throw new HttpsError("not-found", "Assignment not found.");
-      if (a.tripStatus !== "completed") {
+      if (r.status !== "completed") {
         throw new HttpsError("failed-precondition", "The trip is not completed yet.", {code: "INVALID_STATE"});
       }
-      if (a.razorpayOrderId !== razorpayOrderId) {
+      if (r.razorpayOrderId !== razorpayOrderId) {
         throw new HttpsError("failed-precondition", "The payment order did not match this trip.", {code: "ORDER_MISMATCH"});
       }
-      tx.update(assignRef, {
-        razorpayOrderId,
+      // All reads first (Firestore transactions require reads before writes).
+      const assigns = await tx.get(reqRef.collection("assignments"));
+      // Mark the whole trip paid.
+      tx.update(reqRef, {
         razorpayPaymentId,
-        requesterPaidAt: a.requesterPaidAt ?? FieldValue.serverTimestamp(),
-        paymentStatus: paymentStatusOf(true, a.travAcserReceivedAt),
+        requesterPaidAt: r.requesterPaidAt ?? FieldValue.serverTimestamp(),
+        paymentStatus: "confirmed",
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      // Reflect the trip payment on each billed assignment so the TravAcser's
+      // history shows it as paid (their payout from admin is handled off-app).
+      assigns.docs.forEach((d) => {
+        if (d.data().tripStatus === "completed") {
+          volunteerIds.push(d.id);
+          tx.update(d.ref, {
+            requesterPaidAt: d.data().requesterPaidAt ?? FieldValue.serverTimestamp(),
+            paymentStatus: "confirmed",
+          });
+        }
       });
     });
-    await pushToUser(volunteerId, {title: "Payment received", body: "The User paid you via Razorpay."}, {type: "payment_marked", requestId}).catch(() => {});
+    await Promise.all(
+      volunteerIds.map((v) =>
+        pushToUser(v, {title: "Payment received", body: "The User paid for the trip. Your share will be transferred by the team."}, {type: "payment_marked", requestId}).catch(() => {})
+      )
+    );
     return {ok: true, code: "PAID"};
   }
 );

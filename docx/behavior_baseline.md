@@ -100,7 +100,7 @@ Routes: `/splash`, `/auth/phone`, `/auth/otp?phone=…`, `/complete-profile`, `/
 | Path | Written by | Key fields |
 |---|---|---|
 | `profiles/{uid}` | client (editable) + functions (protected) | `role`, `fullName`, `gender?`, `dateOfBirth?`, `phone?`, `isActive`, `serviceArea` (state), `serviceCity` (matching key), `ratingAvg`, `ratingCount`; **volunteer:** `address?`, `verificationStatus`, `verifiedBy?`, `verifiedAt?`, `rejectionReason?`; **requester:** `homeLocationText?` |
-| `requests/{id}` | client `create`; requester may only `cancel`; all else functions | `requesterId`, `requesterName?`, `volunteerId`(null), `status`, `serviceArea`, `serviceCity`, `acceptedCount`, `numTravellers`, `numTravAcsers`, `genderPreference`, `requesterGender?`, `genderRestricted`, `genderWidened`, `genderWidenAt?`, `scheduledDate`, `startTime`, `scheduledStartAt`, `expectedDurationMinutes`, `meetingPoint`, `destination`, `purpose?`, `specialNote?`, `estimatedAmountInr`, `noTravAcserNotifiedAt?`, `cancelReason?`, `createdAt`, `updatedAt` |
+| `requests/{id}` | client `create`; requester may only `cancel`; all else functions | `requesterId`, `requesterName?`, `volunteerId`(null), `status`, `serviceArea`, `serviceCity`, `acceptedCount`, `numTravellers`, `numTravAcsers`, `genderPreference`, `requesterGender?`, `genderRestricted`, `genderWidened`, `genderWidenAt?`, `scheduledDate`, `startTime`, `scheduledStartAt`, `expectedDurationMinutes`, `meetingPoint`, `destination`, `purpose?`, `specialNote?`, `estimatedAmountInr`, `tripAmountInr`, `paymentStatus`, `requesterPaidAt`, `razorpayOrderId`, `razorpayKeyId`, `razorpayAmountInr`, `razorpayPaymentId`, `noTravAcserNotifiedAt?`, `cancelReason?`, `createdAt`, `updatedAt` |
 | `requests/{id}/assignments/{volunteerId}` | **functions only** | contact pair (`volunteerId/Name/Phone`, `requesterId/Name/Phone`), denormalized summary (`scheduledDate`, `startTime`, `scheduledStartAt`, `expectedDurationMinutes`, `meetingPoint`, `destination`, `genderPreference`, `numTravellers`, `amountInrEstimate`), `tripStatus` (assigned/started/completed/closed/cancelled), `acceptedAt`, `startedAt`, `otpStartedAt`, `endedAt`, `durationMinutes`, `serviceChargeInr`, `travelCostInr`, `amountInr`, `paymentStatus`, `requesterPaidAt`, `travAcserReceivedAt`, `razorpayOrderId`, `razorpayKeyId`, `razorpayAmountInr`, `razorpayPaymentId`, `rescheduleStatus`, `rescheduleDeadlineAt`, ratings (`requesterRatingStars/Feedback`, `volunteerRatingStars/Feedback`) |
 | `devices/{uid}/tokens/{token}` | client (self) | `platform`, `updatedAt` (FCM tokens) |
 | `tripLogs/{id}` | functions only (`logManualTrip`) | admin telemetry (manual + future app trips) |
@@ -158,8 +158,7 @@ Routes: `/splash`, `/auth/phone`, `/auth/otp?phone=…`, `/complete-profile`, `/
 | `myAssignmentsProvider` | StreamProvider | TravAcser's assignments via `collectionGroup('assignments')` where `volunteerId==uid` |
 | `availableRequestsProvider` | StreamProvider | open requests in city, filtered (see below) |
 | `requestAssignmentsProvider` | StreamProvider.family<_,requestId> | assignments of one request (requester view) |
-| `myRequesterAssignmentsProvider` | StreamProvider | requester's assignments across all their requests (collection-group) |
-| `myPendingDuesProvider` | Provider | requester's completed-but-unpaid assignments (dues); blocks new request creation |
+| `myPendingDuesProvider` | Provider | requester's completed-but-unpaid **trips** (request-level; blocks new request creation) |
 | `activeTripsProvider` | StreamProvider | admin: all broadcast/assigned/started, ordered by `scheduledStartAt` |
 | `pendingVolunteersProvider` | StreamProvider | admin: volunteers awaiting verification |
 | `functionsProvider` | Provider | `FirebaseFunctions.instanceFor(region:'asia-south2')` |
@@ -272,15 +271,15 @@ Shared helpers: `billedHours`, `pairServingCount`, `istDateKey` (IST day, UTC+5:
 | **onRequestCreated** | onCreate `requests/{id}` | Only if `status=='broadcast'` and `serviceCity` set. If `genderRestricted && requesterGender`: stamp `genderWidenAt = createTime + 0.9×(scheduledStartAt−createTime)` and filter the volunteer query to same gender. Fan-out FCM (`new_request`) to approved+active TravAcsers in the same city, chunked, dead-token pruned. |
 | **acceptRequest** | onCall (TravAcser) | Caller must be approved+active volunteer (`NOT_APPROVED`). Transaction: request must be `broadcast` (`ALREADY_TAKEN`), same city (`WRONG_CITY`), gender gate (`GENDER_MISMATCH` if strict + known requester gender + not widened + different gender), not already live-accepted (`ALREADY_ACCEPTED` — a *cancelled* prior assignment does NOT block re-accept), slots left (`ALREADY_TAKEN`), one-per-IST-day (`ONE_PER_DAY`). Writes the assignment (denormalized, `amountInrEstimate = billedHours(dur)×149 + 100`, `tripStatus:'assigned'`), increments `acceptedCount`, flips request to `assigned` when full. Pushes requester (`assignment`). |
 | **startTrip** | onCall (TravAcser only) | `uid==volunteerId`. Assignment must be `assigned` (`INVALID_STATE`). Sets `tripStatus:'started'`, `startedAt`, `otpStartedAt`. Pushes User (`trip_started`). (Code validation is client-side.) |
-| **completeTrip** | onCall (TravAcser or requester) | Caller's assignment must be `started` (`NOT_STARTED`); reject if `now < scheduledStartAt` (`EARLY_END`). **Concludes for ALL:** bills every `started` assignment (each `serviceInr = round(billedHours(minutes) × rate)` with the ₹210/₹149 split, `travelCostInr=100`, `amountInr`, `paymentStatus:'pending'`), closes any still-`assigned` ones, marks the request `completed`. Pushes requester + each billed TravAcser (`trip_completed`). Returns `{ok, code}` (no amount). |
+| **completeTrip** | onCall (TravAcser or requester) | Caller's assignment must be `started` (`NOT_STARTED`); reject if `now < scheduledStartAt` (`EARLY_END`). **Concludes for ALL:** bills every `started` assignment (each `serviceInr = round(billedHours(minutes) × rate)` with the ₹210/₹149 split, `travelCostInr=100`, `amountInr`, `paymentStatus:'pending'`), closes any still-`assigned` ones, and stamps the **whole-trip total** on the request (`tripAmountInr = Σ amountInr`, `paymentStatus:'pending'`), marking it `completed`. Pushes requester + each billed TravAcser (`trip_completed`). Returns `{ok, code}`. |
 | **rescheduleTrip** | onCall (requester only) | New start must be `now+1min … now+3d` — beyond the day-after window rejects (`BAD_SCHEDULE`, "create a new trip"). Request must be `broadcast`/`assigned` (`INVALID_STATE`). Reject if accepted & original time passed, or any assignment `started` (`ALREADY_STARTED`). Updates request + each `assigned` assignment's schedule, sets each `rescheduleStatus:'pending'` + `rescheduleDeadlineAt = now + clamp(10%×remaining, 10min, remaining)` (min 10-min window so a short-notice reschedule isn't released almost instantly), clears `noTravAcserNotifiedAt`, recomputes gender widen window. Pushes each TravAcser (`trip_rescheduled`). |
 | **respondReschedule** | onCall (TravAcser) | Assignment `rescheduleStatus` must be `pending` (`NO_PENDING`). accept=true → `confirmed`; accept=false → `cancelled`+`declined`, decrement `acceptedCount`, reopen `assigned→broadcast`, push requester (`trip_cancelled`). |
 | **cancelTrip** | onCall (either party) | Request not `completed`/`cancelled` (`INVALID_STATE`). **Requester:** reject if any assignment `started` (`TRIP_STARTED`); else request→`cancelled`, all active assignments→`cancelled`, push each TravAcser. **TravAcser:** their assignment must not be `started` (`TRIP_STARTED`) and must be `assigned` (`INVALID_STATE`); →`cancelled`, decrement count, reopen, push requester. |
 | **markPaid** | onCall (requester only) | Assignment must be `completed` (`INVALID_STATE`). Sets `requesterPaidAt` (idempotent), recomputes `paymentStatus`. Push TravAcser (`payment_marked`). |
 | **markReceived** | onCall (TravAcser) | Sets `travAcserReceivedAt`, recomputes `paymentStatus`. |
 | **submitRating** | onCall (either party) | Stars integer 1–5, feedback ≤1000 chars. Assignment `completed` (`INVALID_STATE`). Derives rater/ratee; blocks a second rating from the same side (`ALREADY_RATED`); writes rating onto the assignment and updates ratee `ratingAvg`/`ratingCount` (rolling, rounded to 0.1). |
-| **createRazorpayOrder** | onCall (requester only) | secrets `RAZORPAY_KEY_ID/SECRET`. Assignment `completed`, not paid (`ALREADY_PAID`), real `amountInr>0` (`NO_AMOUNT`). **TEST PHASE: charges/returns `TEST_BILL_INR`=₹1** (checkout shows ₹1; the stored real `amountInr` is untouched). **Reuses a stored order only if `razorpayKeyId==current keyId` AND `razorpayAmountInr==billed`** (else mints fresh — auto-heals stale/test-key *and* stale full-value orders); stamps `razorpayOrderId`+`razorpayKeyId`+`razorpayAmountInr`. Returns `{orderId, keyId, amountPaise, amountInr(=1), currency}`. |
-| **verifyRazorpayPayment** | onCall (requester only) | secret `RAZORPAY_KEY_SECRET`. HMAC-SHA256 verify `orderId|paymentId` (timing-safe) (`BAD_SIGNATURE`). Assignment `completed`, `razorpayOrderId` matches (`ORDER_MISMATCH`). Sets `requesterPaidAt`+ids, recomputes `paymentStatus`. Push TravAcser. |
+| **createRazorpayOrder** | onCall (requester only) | secrets `RAZORPAY_KEY_ID/SECRET`. **Trip-level** (keyed by `requestId`, not per TravAcser): request `completed`, not paid (`ALREADY_PAID`), real `tripAmountInr>0` (`NO_AMOUNT`). **TEST PHASE: charges/returns `TEST_BILL_INR`=₹1** (checkout shows ₹1; real `tripAmountInr` untouched). Reuses a stored order only if `razorpayKeyId==current keyId` AND `razorpayAmountInr==billed` (else mints fresh); stamps `razorpayOrderId`+`razorpayKeyId`+`razorpayAmountInr` on the **request**. Returns `{orderId, keyId, amountPaise, amountInr(=1), currency}`. |
+| **verifyRazorpayPayment** | onCall (requester only) | secret `RAZORPAY_KEY_SECRET`. **Trip-level** (keyed by `requestId`). HMAC-SHA256 verify `orderId|paymentId` (timing-safe) (`BAD_SIGNATURE`). Request `completed`, `razorpayOrderId` matches (`ORDER_MISMATCH`). Marks the **whole trip** paid: request `requesterPaidAt`+`paymentStatus:'confirmed'`, and stamps every `completed` assignment `requesterPaidAt`+`paymentStatus:'confirmed'`. Pushes each TravAcser. One payment covers all TravAcsers; the admin team distributes each share manually off-app. |
 | **setVerification** | onCall (admin claim only) | Target profile role `volunteer`. Sets `verificationStatus` approved/rejected + `verifiedBy/At` + `rejectionReason`. Push volunteer (`verification_result`). |
 | **logManualTrip** | onCall (admin claim only) | Requires `userDetails`, `travAcserDetails`, `tripDateMs`. Adds a `tripLogs` doc. |
 | **expireStaleRequests** | scheduled every 5 min | For `broadcast` requests with `scheduledStartAt<=now+30m`, re-checked in a txn: at/after start & still unaccepted → `cancelled` (`cancelReason:'no_travacser'`, push `no_travacser_cancelled`); before start & not yet warned & live >10 min → set `noTravAcserNotifiedAt`, push `no_travacser_warning`. |
@@ -372,19 +371,23 @@ requests: `status+createdAt↓`, `status+serviceCity+createdAt↓`, `requesterId
   `notifier.cancel(id)` if `acceptedCount==0 && status.isCancellable` else `cancelTrip(id)`. Reschedule
   → **Today/Tomorrow/Day-after chip dialog** (no custom date beyond day-after; advises "create a new
   trip") + time picker → `reschedule(...)`. A **Get help** button (→ `ContactUsScreen`) also sits in
-  the actions `Wrap`. Per-assignment tile: shows start-code box (`_StartCodeDisplay`, "Read this code
-  to your TravAcser") until in progress; when in progress shows "End trip & pay" enabled only when
-  `canEnd = inProgress && !now.isBefore(effectiveStartAt)` → `completeTrip(...)` (concludes for all)
-  then chains `startTripPayment(...)`.
-- **NewRequestScreen (dues guard):** on Submit, if `myPendingDuesProvider` is non-empty → alert
-  dialog "Alert, you have pending dues, kindly clear them before creating new ones." (+ announce) and
-  the request is NOT created. Otherwise proceeds to the review sheet.
+  the actions `Wrap`. Per-assignment tile shows contact + status + the start-code box
+  (`_StartCodeDisplay`, "Read this code to your TravAcser") until in progress. When any assignment is
+  in progress, a **single trip-level "End trip & pay"** button (not per TravAcser) is shown, enabled
+  only when `canEnd = now >= scheduledStartAt` → `completeTrip(...)` (concludes all) then chains the
+  single `startTripPayment(requestId)`.
+- **NewRequestScreen (dues guard):** warms `myRequestsProvider` in build; on Submit, if it's still
+  loading it asks to retry, and if `myPendingDuesProvider` (completed-but-unpaid trips) is non-empty →
+  alert dialog "Alert, you have pending dues, kindly clear them before creating new ones." and the
+  request is NOT created. Otherwise proceeds to the review sheet.
 - **Requester TripHistoryScreen:** `myRequestsProvider`, terminal statuses only
   (completed/closed/cancelled), `HistoryControls` (filter all/completed/cancelled; sort newest/oldest;
-  page size 15). Card: `when · destination`, "Cancelled" or `_Assignments` (completed/closed rows:
-  `volunteerName · ₹amountInr · paymentStatus.label`, breakdown). Buttons: **Get help** (→ Contact
-  us), **Make payment** if `requesterPaidAt==null` → `startTripPayment(...)` (collects ₹1 in test
-  phase); **Rate TravAcser** if `!ratedByRequester` → `showRatingSheet` → `submitRating`.
+  page size 15). Card: `when · destination`, "Cancelled"/"Completed", then for a completed trip a
+  **single trip total + payment status** (`Trip total: ₹tripAmountInr · Paid/Payment pending`), a
+  per-TravAcser **breakdown** (`volunteerName · ₹amountInr` + breakdown, or "Not started — no charge"
+  for a `closed` slice) with a per-TravAcser **Rate TravAcser** button, and card-level **Get help** +
+  a **single "Make payment"** button (`startTripPayment(requestId)`, collects ₹1 in test phase) shown
+  only while `!isPaid`.
 
 ### 14.4 TravAcser side
 - **AvailableRequestsScreen:** `!approved` → pending-verification message (support email/phone);
@@ -405,9 +408,9 @@ requests: `status+createdAt↓`, `status+serviceCity+createdAt↓`, `requesterId
 - **TravAcser TripHistoryScreen:** terminal assignments; earnings summary (`totalBilled` = Σ
   amountInr of non-cancelled; `totalReceived` = Σ where `paymentStatus==confirmed`). Filter/sort/page
   15. Card: `when · destination`, "Cancelled" or `duration min · ₹amountInr earned`, breakdown,
-  payment label. A **Get help** button (→ Contact us) shows on every card (incl. cancelled). Buttons:
-  **Mark received** if `travAcserReceivedAt==null` → `markReceived`; **Rate the User** if
-  `!ratedByVolunteer` → `submitRating`.
+  **payment status** (informational — no "Mark received" step; the payout is a manual admin transfer).
+  A **Get help** button (→ Contact us) shows on every card. **Rate the User** if `!ratedByVolunteer` →
+  `submitRating`.
 
 ### 14.5 Shell, Admin, Menu
 - **AppShell:** in `initState` (post-frame) registers FCM token, subscribes to token-refresh and
@@ -426,14 +429,22 @@ requests: `status+createdAt↓`, `status+serviceCity+createdAt↓`, `requesterId
 ---
 
 ## 15. Payments
-Two mechanisms coexist:
-1. **In-app Razorpay (LIVE)** — end trip → `createRazorpayOrder` → `startTripPayment`
-   (`shared/trip_payment.dart`: opens the Razorpay checkout via `razorpay_flutter`, offers
-   UPI/cards/GPay/wallets) → `verifyRazorpayPayment` (server HMAC verify → marks paid). Never surfaces
-   raw SDK text (golden rule #1); cancels/errors are announced with curated messages. Credentials live
-   only in Secret Manager; the client receives `keyId` at runtime.
-2. **Manual two-sided confirmation (fallback)** — `markPaid` (requester) + `markReceived`
-   (TravAcser) → `paymentStatus` pending→awaiting_other→confirmed.
+**One total payment per trip.** The User pays a single amount covering ALL TravAcsers on the trip to
+the app's Razorpay account; the **admin team distributes each TravAcser's share manually, off-app**.
+Payment state lives on the **request** (`tripAmountInr`, `requesterPaidAt`, `paymentStatus`,
+`razorpay*`), not per assignment — the per-assignment `amountInr` remains only as the payout breakdown.
+- **In-app Razorpay (LIVE)** — end trip → `createRazorpayOrder(requestId)` → `startTripPayment`
+  (`shared/trip_payment.dart`: opens the Razorpay checkout via `razorpay_flutter`, offers
+  UPI/cards/GPay/wallets) → `verifyRazorpayPayment(requestId)` (server HMAC verify → marks the **whole
+  trip** paid + stamps every completed assignment). Never surfaces raw SDK text (golden rule #1);
+  cancels/errors are announced with curated messages. Credentials live only in Secret Manager; the
+  client receives `keyId` at runtime. **TEST PHASE: only ₹1 is collected** (real `tripAmountInr` stays
+  on the request + in history).
+- There is a **single** "End trip & pay" (active trip) / "Make payment" (Trip History) button per
+  trip — NOT one per TravAcser. The TravAcser side has **no "Mark received"** step (their payout is a
+  manual admin transfer); their history just shows the payment status.
+- The legacy per-assignment `markPaid`/`markReceived` callables still exist in the backend but are no
+  longer used by the client.
 
 ---
 
@@ -486,8 +497,10 @@ functions test"` = **33 functions tests**; `… "npm --prefix rules-tests test"`
    ₹1** while the stored `amountInr` stays real.
 6. **One party ends → concluded for all** — `completeTrip` bills every `started` assignment and
    completes the request in one transaction; TravAcsers don't each end their own slice.
-7. **Pending dues block new trips** — a requester with a completed-but-unpaid assignment is blocked
-   at request-submit time (`myPendingDuesProvider`).
+7. **One total payment per trip** — the User pays a single amount (all TravAcsers' shares) to the
+   app's Razorpay account; payment state lives on the request (`tripAmountInr`/`requesterPaidAt`);
+   admin distributes each share manually off-app. No per-TravAcser payment or "Mark received".
+   **TEST PHASE: checkout collects ₹1** while the stored amounts stay real.
 8. **Reschedule window** — Today/Tomorrow/Day-after only (server bound ≤ now+3d); the reschedule
    hold gives the TravAcser a yes/no window (≥10 min) before the slot reopens.
 9. **Gender restriction** — only `strict_same_gender` + known requester gender restricts, until the

@@ -196,11 +196,10 @@ class FirestoreRequestRepository implements RequestRepository {
       _call('markPaid', {'requestId': requestId, 'volunteerId': volunteerId});
 
   @override
-  FutureResult<RazorpayOrder> createRazorpayOrder(
-      String requestId, String volunteerId) async {
+  FutureResult<RazorpayOrder> createRazorpayOrder(String requestId) async {
     try {
       final res = await _functions.httpsCallable('createRazorpayOrder').call<dynamic>(
-          {'requestId': requestId, 'volunteerId': volunteerId});
+          {'requestId': requestId});
       final d = Map<String, dynamic>.from(res.data as Map);
       return success(RazorpayOrder(
         orderId: d['orderId'] as String,
@@ -217,14 +216,12 @@ class FirestoreRequestRepository implements RequestRepository {
   @override
   FutureResult<Unit> verifyRazorpayPayment({
     required String requestId,
-    required String volunteerId,
     required String razorpayOrderId,
     required String razorpayPaymentId,
     required String razorpaySignature,
   }) =>
       _call('verifyRazorpayPayment', {
         'requestId': requestId,
-        'volunteerId': volunteerId,
         'razorpayOrderId': razorpayOrderId,
         'razorpayPaymentId': razorpayPaymentId,
         'razorpaySignature': razorpaySignature,
@@ -385,6 +382,8 @@ class FirestoreRequestRepository implements RequestRepository {
       estimatedAmountInr: (d['estimatedAmountInr'] as num?)?.toInt() ?? 0,
       requesterName: d['requesterName'] as String?,
       createdAt: (d['createdAt'] as Timestamp?)?.toDate(),
+      tripAmountInr: (d['tripAmountInr'] as num?)?.toInt(),
+      requesterPaidAt: (d['requesterPaidAt'] as Timestamp?)?.toDate(),
     );
   }
 }
