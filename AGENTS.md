@@ -445,6 +445,7 @@ the public Actions API.
 ## Where to look next
 | Topic | File |
 |---|---|
+| **Behavior baseline (code-verified; regression-safety reference)** | `docx/behavior_baseline.md` |
 | Deep system design (§0–§18) | `docx/design_travacs.md` |
 | Product requirements / user stories | `docx/appRequirements.md` |
 | Engineering standards | `docx/EngPrinciples.md` |
