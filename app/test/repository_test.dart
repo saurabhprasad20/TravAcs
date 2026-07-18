@@ -148,7 +148,7 @@ void main() {
       expect(doc['acceptedCount'], 0);
       expect(doc['volunteerId'], isNull);
       expect(doc['serviceCity'], 'delhi_ncr');
-      expect(doc['estimatedAmountInr'], 380); // 2h=4 blocks*₹70=280 *1 + ₹100 travel
+      expect(doc['estimatedAmountInr'], 520); // 2 travellers/1 TravAcser 2h: 2×₹210 + ₹100 travel
       expect(doc['genderPreference'], 'prefer_same_gender');
       expect(doc['scheduledStartAt'], isNotNull); // auto-start anchor
     });

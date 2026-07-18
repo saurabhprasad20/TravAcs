@@ -10,22 +10,38 @@ import 'package:travacs/domain/entities/request.dart';
 /// logic the rest of the app and the Cloud Functions both rely on.
 void main() {
   group('Request billing & slots', () {
-    test('computeEstimate = service(half-hour rounded up) x TravAcsers + travel', () {
-      // 120 min = 4 blocks (2h) -> 4*70 = 280 service; x1 + 100 travel = 380.
-      expect(Request.computeEstimate(120, 1), 380);
-      // 90 min = 3 blocks (1.5h) -> 210 service; x2 + 100 travel = 520.
-      expect(Request.computeEstimate(90, 2), 520);
-      // 50 min -> ceil(50/30) = 2 blocks (1h) -> 140 service; x1 + 100 = 240.
-      expect(Request.computeEstimate(50, 1), 240);
-      // 298 min (4h58m) -> ceil(298/30) = 10 blocks (5h) -> 700; + 100 = 800.
-      expect(Request.computeEstimate(298, 1), 800);
+    test('billedHours: min 1 hour + per-hour rounding (<=14 none, 15-40 +30m, 41-60 +1h)', () {
+      expect(Request.billedHours(1), 1.0); // min 1 hour
+      expect(Request.billedHours(60), 1.0);
+      expect(Request.billedHours(74), 1.0); // 1h14m -> 1h
+      expect(Request.billedHours(75), 1.5); // 1h15m -> 1.5h
+      expect(Request.billedHours(100), 1.5); // 1h40m -> 1.5h
+      expect(Request.billedHours(101), 2.0); // 1h41m -> 2h
+      expect(Request.billedHours(120), 2.0); // 2h
+      expect(Request.billedHours(134), 2.0); // 2h14m -> 2h
+      expect(Request.billedHours(135), 2.5); // 2h15m -> 2.5h
+      expect(Request.billedHours(161), 3.0); // 2h41m -> 3h
     });
 
-    test('serviceCharge rounds duration up to the next half hour', () {
-      expect(Request.serviceCharge(1), 70); // min 1 block
-      expect(Request.serviceCharge(30), 70);
-      expect(Request.serviceCharge(31), 140);
-      expect(Request.serviceCharge(298), 700); // 4h58m -> 5h
+    test('computeEstimate = billedHours x split rate + Rs.100 travel per TravAcser', () {
+      // 1 traveller, 1 TravAcser, 1h -> 149 service + 100 travel = 249.
+      expect(Request.computeEstimate(60, 1, 1), 249);
+      // 2 travellers, 1 TravAcser (serves 2), 1h -> 210 + 100 = 310.
+      expect(Request.computeEstimate(60, 2, 1), 310);
+      // 2 travellers, 2 TravAcsers (serve 1 each), 1h -> 298 + 200 travel = 498.
+      expect(Request.computeEstimate(60, 2, 2), 498);
+      // 3 travellers, 2 TravAcsers -> pair 1 (210) + solo 1 (149) = 359; +200 = 559.
+      expect(Request.computeEstimate(60, 3, 2), 559);
+      // Duration rounding: 1h41m at 1/1 -> 2h x 149 + 100 = 398.
+      expect(Request.computeEstimate(101, 1, 1), 398);
+    });
+
+    test('pairServingCount distributes the serves-two rate evenly', () {
+      expect(Request.pairServingCount(1, 1), 0);
+      expect(Request.pairServingCount(2, 1), 1);
+      expect(Request.pairServingCount(2, 2), 0);
+      expect(Request.pairServingCount(3, 2), 1);
+      expect(Request.pairServingCount(4, 2), 2);
     });
 
     test('suggestedTravAcsers: one TravAcser assists up to two travellers', () {
@@ -185,7 +201,8 @@ void main() {
   });
 
   test('AppConstants sanity', () {
-    expect(AppConstants.hourlyRateInr, 140);
+    expect(AppConstants.rateSoloInr, 149);
+    expect(AppConstants.ratePairInr, 210);
     expect(AppConstants.travelCostInr, 100);
     expect(AppConstants.tripOtpLength, 4);
   });

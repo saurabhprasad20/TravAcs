@@ -22,20 +22,40 @@ const REGION = "asia-south2";
 // functions run in asia-south1 (Mumbai). Callables stay in asia-south2 to match
 // the client (functionsProvider).
 const SCHEDULER_REGION = "asia-south1";
-const HOURLY_RATE_INR = 140;
-/** Billing granularity: trip time is rounded UP to the next 30-minute block. */
-const BILLING_BLOCK_MINUTES = 30;
-/** Flat travel cost (INR) added ONCE per trip (not per TravAcser). */
+/** Per-hour service charge for a TravAcser serving one traveller. */
+const RATE_SOLO_INR = 149;
+/** Per-hour service charge for a TravAcser serving two travellers. */
+const RATE_PAIR_INR = 210;
+/** Flat travel cost (INR) charged PER TravAcser (× number of TravAcsers). */
 const TRAVEL_COST_INR = 100;
+/**
+ * TEST-PHASE payment override: the amount actually collected at checkout is
+ * forced to this (₹1) so no real money moves during testing. The real computed
+ * `amountInr` is still stored on the assignment (History/estimates stay real).
+ * Remove this override to bill the real amount.
+ */
+const TEST_BILL_INR = 1;
 
 /**
- * Service charge (one TravAcser's time) for `minutes`: billed at the hourly
- * rate in 30-minute blocks rounded UP to the next half hour (minimum one
- * block). e.g. 4h58m → 10 blocks → ₹700 at ₹140/hr.
+ * Billed hours for `minutes` under the company rounding rule: minimum 1 hour,
+ * then after the first hour extra minutes past each whole hour round as ≤14→0,
+ * 15–40→+0.5h, 41–60→+1h (applies to every subsequent hour).
  */
-function serviceChargeInr(minutes: number): number {
-  const blocks = Math.max(1, Math.ceil(minutes / BILLING_BLOCK_MINUTES));
-  return blocks * (HOURLY_RATE_INR / 2);
+function billedHours(minutes: number): number {
+  if (minutes <= 60) return 1;
+  const whole = Math.floor(minutes / 60);
+  const extra = minutes - whole * 60;
+  const add = extra <= 14 ? 0 : extra <= 40 ? 0.5 : 1;
+  return whole + add;
+}
+
+/**
+ * How many of `n` TravAcsers serve two travellers (the ₹210 rate) given
+ * `travellers` on the trip, distributed as evenly as possible (≤2 each).
+ */
+function pairServingCount(travellers: number, n: number): number {
+  if (n <= 0) return 0;
+  return Math.min(Math.max(travellers - n, 0), n);
 }
 
 /** India Standard Time offset (UTC+5:30) in milliseconds. */
@@ -296,9 +316,12 @@ export const acceptRequest = onCall({region: REGION}, async (req) => {
     }
 
     // ---- writes ----
-    // Per-TravAcser estimate = time-based service charge only (the flat travel
-    // cost is a trip-level line item billed once, at completion).
-    const perTravAcserInr = serviceChargeInr(r.expectedDurationMinutes ?? 60);
+    // Per-TravAcser accept-time estimate = billed hours × the single-traveller
+    // rate + ₹100 travel. The final ₹210 (serves-two) split can only be
+    // resolved at completion, when the number of TravAcsers on the trip is known.
+    const perTravAcserInr =
+      Math.round(billedHours(r.expectedDurationMinutes ?? 60) * RATE_SOLO_INR) +
+      TRAVEL_COST_INR;
     tx.set(assignRef, {
       volunteerId: uid,
       volunteerName: vol.fullName ?? "",
@@ -393,10 +416,11 @@ export const startTrip = onCall({region: REGION}, async (req) => {
 });
 
 /**
- * Ends/completes a TravAcser's trip (by that TravAcser or the requester). The
- * trip must have been started (the TravAcser validated the User's start code),
- * so billing is anchored to the recorded `startedAt`. When no active assignment
- * remains, the request is marked completed.
+ * Ends/completes a trip (by any TravAcser on it or the requester). The caller's
+ * assignment must have been started; billing is anchored to each TravAcser's
+ * recorded `startedAt`. One party ending concludes the trip for EVERYONE: all
+ * `started` assignments are billed and any unstarted ones are closed, then the
+ * request is marked completed.
  */
 export const completeTrip = onCall({region: REGION}, async (req) => {
   const uid = req.auth?.uid;
@@ -408,7 +432,6 @@ export const completeTrip = onCall({region: REGION}, async (req) => {
   }
 
   const reqRef = db.collection("requests").doc(requestId);
-  const assignRef = reqRef.collection("assignments").doc(volunteerId);
 
   const out = await db.runTransaction(async (tx) => {
     const reqDoc = await tx.get(reqRef);
@@ -418,65 +441,76 @@ export const completeTrip = onCall({region: REGION}, async (req) => {
     if (uid !== volunteerId && uid !== r.requesterId) {
       throw new HttpsError("permission-denied", "You cannot complete this trip.");
     }
-    const assignDoc = await tx.get(assignRef);
-    if (!assignDoc.exists) throw new HttpsError("not-found", "Assignment not found.");
-    const a = assignDoc.data() as FirebaseFirestore.DocumentData;
-    if (a.tripStatus !== "started") {
+    const assignsSnap = await tx.get(reqRef.collection("assignments"));
+    const callerDoc = assignsSnap.docs.find((d) => d.id === volunteerId);
+    if (!callerDoc) throw new HttpsError("not-found", "Assignment not found.");
+    if (callerDoc.data().tripStatus !== "started") {
       throw new HttpsError("failed-precondition", "This trip must be started before it can be ended.", {code: "NOT_STARTED"});
     }
-    const startedAt: FirebaseFirestore.Timestamp | undefined = a.startedAt;
-    const scheduledStart: FirebaseFirestore.Timestamp | undefined = a.scheduledStartAt;
+    const callerScheduled = callerDoc.data().scheduledStartAt as
+      | FirebaseFirestore.Timestamp
+      | undefined;
     // A trip may START early (the parties meet sooner), but it can never be
-    // ENDED before its scheduled start time. Skip only if the schedule anchor is
-    // somehow missing on a legacy doc.
-    if (scheduledStart && Date.now() < scheduledStart.toMillis()) {
+    // ENDED before its scheduled start time.
+    if (callerScheduled && Date.now() < callerScheduled.toMillis()) {
       throw new HttpsError("failed-precondition", "This trip can't be ended before its scheduled start time.", {code: "EARLY_END"});
     }
-    // Bill from the actual start the User confirmed (recorded by startTrip),
-    // falling back to the scheduled start only if startedAt is somehow missing.
-    const startMs =
-      startedAt?.toMillis() ?? scheduledStart?.toMillis() ?? Date.now();
-    const minutes = Math.max(1, Math.round((Date.now() - startMs) / 60000));
-    const serviceInr = serviceChargeInr(minutes);
-    // The flat travel cost is charged ONCE per trip — to the first assignment
-    // that completes. A request-level flag guarantees it isn't billed twice
-    // (a concurrent second completion re-reads the flag on transaction retry).
-    const travelInr = r.travelCostCharged === true ? 0 : TRAVEL_COST_INR;
-    const amountInr = serviceInr + travelInr;
-    tx.update(assignRef, {
-      tripStatus: "completed",
-      startedAt: startedAt ?? FieldValue.serverTimestamp(),
-      endedAt: FieldValue.serverTimestamp(),
-      durationMinutes: minutes,
-      serviceChargeInr: serviceInr,
-      travelCostInr: travelInr,
-      amountInr,
-      paymentStatus: "pending",
+
+    // Item 5: one party ending concludes the trip for EVERY TravAcser. Bill all
+    // `started` assignments together and close any that never started.
+    const started = assignsSnap.docs.filter(
+      (d) => d.data().tripStatus === "started"
+    );
+    // Deterministic even split of the ₹210 (serves-two) rate across the
+    // TravAcsers who are being billed (sort by id so retries are stable).
+    started.sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
+    const travellers: number = r.numTravellers ?? started.length;
+    const pairCount = pairServingCount(travellers, started.length);
+    const nowMs = Date.now();
+    const notifyVolunteerIds: string[] = [];
+    started.forEach((d, i) => {
+      const a = d.data();
+      const startMs =
+        (a.startedAt as FirebaseFirestore.Timestamp | undefined)?.toMillis() ??
+        (a.scheduledStartAt as FirebaseFirestore.Timestamp | undefined)?.toMillis() ??
+        nowMs;
+      const minutes = Math.max(1, Math.round((nowMs - startMs) / 60000));
+      const rate = i < pairCount ? RATE_PAIR_INR : RATE_SOLO_INR;
+      const serviceInr = Math.round(billedHours(minutes) * rate);
+      const amountInr = serviceInr + TRAVEL_COST_INR;
+      tx.update(d.ref, {
+        tripStatus: "completed",
+        endedAt: FieldValue.serverTimestamp(),
+        durationMinutes: minutes,
+        serviceChargeInr: serviceInr,
+        travelCostInr: TRAVEL_COST_INR,
+        amountInr,
+        paymentStatus: "pending",
+      });
+      notifyVolunteerIds.push(d.id);
     });
-    if (travelInr > 0) {
-      tx.update(reqRef, {travelCostCharged: true});
-    }
-    return {requesterId: r.requesterId, amountInr};
+    // Any assignment that never started is closed (no bill) so the trip fully
+    // concludes for everyone.
+    assignsSnap.docs.forEach((d) => {
+      if (d.data().tripStatus === "assigned") {
+        tx.update(d.ref, {tripStatus: "closed"});
+      }
+    });
+    // The whole trip is now concluded.
+    tx.update(reqRef, {status: "completed", updatedAt: FieldValue.serverTimestamp()});
+    return {requesterId: r.requesterId, notifyVolunteerIds, billedCount: started.length};
   });
 
-  // Mark the request completed once no active assignment remains.
-  const assignsSnap = await reqRef.collection("assignments").get();
-  const statuses = assignsSnap.docs.map((d) => d.data().tripStatus);
-  const anyActive = statuses.some((s) => s === "assigned" || s === "started");
-  const anyCompleted = statuses.some((s) => s === "completed" || s === "closed");
-  if (!anyActive && anyCompleted) {
-    await reqRef.update({status: "completed", updatedAt: FieldValue.serverTimestamp()});
-  }
-
-  // Notify both parties that the trip ended. This is NOT a payment
-  // notification — the amount is only "pending" here; the actual payment
-  // notifications are sent from markPaid / markReceived once the User pays.
+  // Notify the requester and every billed TravAcser that the trip ended. This
+  // is NOT a payment notification — amounts are only "pending" here.
   await Promise.all([
-    pushToUser(out.requesterId, {title: "Trip ended", body: `Amount due: ₹${out.amountInr} (payment pending). Mark it paid once you pay.`}, {type: "trip_completed", requestId}).catch(() => {}),
-    pushToUser(volunteerId, {title: "Trip ended", body: `Amount ₹${out.amountInr} — payment pending from the User.`}, {type: "trip_completed", requestId}).catch(() => {}),
+    pushToUser(out.requesterId, {title: "Trip ended", body: "Your trip is complete. Please clear the payment for each TravAcser."}, {type: "trip_completed", requestId}).catch(() => {}),
+    ...out.notifyVolunteerIds.map((v) =>
+      pushToUser(v, {title: "Trip ended", body: "The trip was ended — payment is pending from the User."}, {type: "trip_completed", requestId}).catch(() => {})
+    ),
   ]);
 
-  return {ok: true, code: "COMPLETED", amountInr: out.amountInr};
+  return {ok: true, code: "COMPLETED"};
 });
 
 /**
@@ -495,14 +529,16 @@ export const rescheduleTrip = onCall({region: REGION}, async (req) => {
   ) {
     throw new HttpsError("invalid-argument", "requestId, scheduledDateMs, startTime, scheduledStartAtMs required.");
   }
-  // The new start must be a bounded future time — reject past or absurd values a
-  // tampered client could send.
+  // The new start must be a bounded future time within the reschedule window
+  // (up to the day after tomorrow) — reject past or out-of-window values a
+  // tampered client could send. Beyond that the User is asked to create a new
+  // trip instead.
   const nowMs = Date.now();
   if (
     scheduledStartAtMs < nowMs + 60000 ||
-    scheduledStartAtMs > nowMs + 90 * 24 * 60 * 60000
+    scheduledStartAtMs > nowMs + 3 * 24 * 60 * 60000
   ) {
-    throw new HttpsError("invalid-argument", "The new trip time must be in the future (within 90 days).", {code: "BAD_SCHEDULE"});
+    throw new HttpsError("invalid-argument", "You can only reschedule up to the day after tomorrow. Please create a new trip instead.", {code: "BAD_SCHEDULE"});
   }
 
   const reqRef = db.collection("requests").doc(requestId);
@@ -533,14 +569,17 @@ export const rescheduleTrip = onCall({region: REGION}, async (req) => {
     }
     const newDate = Timestamp.fromMillis(scheduledDateMs);
     const newStartAt = Timestamp.fromMillis(scheduledStartAtMs);
-    // Each still-assigned TravAcser must re-confirm the new time. They get up to
-    // 10% of the remaining time (now → new start) to respond before the slot is
-    // auto-released and the request reopens (enforced by
-    // expireRescheduleConfirmations).
+    // Each still-assigned TravAcser must re-confirm the new time before the slot
+    // is auto-released and the request reopens (enforced by
+    // expireRescheduleConfirmations). The window is 10% of the remaining lead
+    // time, but never less than 10 minutes (so a short-notice reschedule can't
+    // release the slot almost instantly) and never more than the remaining time.
     const remainingMs = Math.max(0, scheduledStartAtMs - Date.now());
-    const rescheduleDeadlineAt = Timestamp.fromMillis(
-      Date.now() + Math.round(remainingMs * 0.1)
+    const windowMs = Math.min(
+      remainingMs,
+      Math.max(10 * 60000, Math.round(remainingMs * 0.1))
     );
+    const rescheduleDeadlineAt = Timestamp.fromMillis(Date.now() + windowMs);
     tx.update(reqRef, {
       scheduledDate: newDate,
       startTime,
@@ -794,6 +833,10 @@ export const createRazorpayOrder = onCall(
     if (amountInr <= 0) {
       throw new HttpsError("failed-precondition", "There is nothing to pay for this trip.", {code: "NO_AMOUNT"});
     }
+    // TEST PHASE: collect a token ₹1 at checkout instead of the real amount. The
+    // real `amountInr` stays on the assignment (History/estimates are unchanged);
+    // only the Razorpay order + the amount shown at checkout are overridden.
+    const billedInr = TEST_BILL_INR;
     const keyId = RAZORPAY_KEY_ID.value();
     // Idempotent: reuse a previously-created order for this still-unpaid trip
     // rather than creating (and overwriting the stored id with) a new one —
@@ -806,8 +849,8 @@ export const createRazorpayOrder = onCall(
       return {
         orderId: a.razorpayOrderId,
         keyId,
-        amountPaise: amountInr * 100,
-        amountInr,
+        amountPaise: billedInr * 100,
+        amountInr: billedInr,
         currency: "INR",
       };
     }
@@ -816,7 +859,7 @@ export const createRazorpayOrder = onCall(
       method: "POST",
       headers: {"Content-Type": "application/json", "Authorization": `Basic ${auth}`},
       body: JSON.stringify({
-        amount: amountInr * 100, // paise
+        amount: billedInr * 100, // paise
         currency: "INR",
         receipt: `${requestId}_${volunteerId}`.slice(0, 40),
         notes: {requestId, volunteerId},
@@ -832,8 +875,8 @@ export const createRazorpayOrder = onCall(
     return {
       orderId: order.id,
       keyId,
-      amountPaise: amountInr * 100,
-      amountInr,
+      amountPaise: billedInr * 100,
+      amountInr: billedInr,
       currency: "INR",
     };
   }

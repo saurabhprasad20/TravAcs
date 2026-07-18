@@ -97,21 +97,25 @@ class Assignment {
   /// trip (item 3).
   bool get needsRescheduleConfirm => rescheduleStatus == 'pending';
 
-  /// Human-readable breakdown of the trip amount, e.g.
-  /// `"₹140/hr × 2 hr"` (plus `" + ₹100 travel"` on the assignment that carries
-  /// the once-per-trip travel cost). Uses the billed [durationMinutes] once the
-  /// trip is completed, otherwise the estimated duration, and shows the charged
-  /// (half-hour rounded-up) hours. The single-TravAcser rate applies (this is
-  /// one TravAcser's slice of the request).
+  /// Human-readable breakdown of this TravAcser's slice of the trip amount,
+  /// e.g. `"1.5 hr × ₹149/hr + ₹100 travel"`. Uses the billed [durationMinutes]
+  /// once completed, otherwise the estimated duration, and the rate implied by
+  /// how many travellers this TravAcser served (₹149 solo / ₹210 pair).
   String get amountBreakdown {
     final mins = durationMinutes ?? expectedDurationMinutes;
-    final hrs = Request.billableHours(mins);
+    final hrs = Request.billedHours(mins);
     final hrsLabel =
         hrs == hrs.roundToDouble() ? hrs.toStringAsFixed(0) : hrs.toStringAsFixed(1);
-    final base = '₹${AppConstants.hourlyRateInr}/hr × $hrsLabel hr';
-    return (travelCostInr ?? 0) > 0
-        ? '$base + ₹$travelCostInr travel'
-        : base;
+    final travel = travelCostInr ?? AppConstants.travelCostInr;
+    // Infer the per-head rate from the recorded charge when available, else
+    // assume the single-traveller rate.
+    final billedService = (amountInr != null && travelCostInr != null)
+        ? amountInr! - travelCostInr!
+        : null;
+    final rate = (billedService != null && hrs > 0)
+        ? (billedService / hrs).round()
+        : AppConstants.rateSoloInr;
+    return '$hrsLabel hr × ₹$rate/hr + ₹$travel travel';
   }
 
   /// Scheduled-start anchor: the stored instant, or computed from date +

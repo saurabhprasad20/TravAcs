@@ -10,6 +10,7 @@ import '../../../core/util/scheduled_time.dart';
 import '../../../domain/entities/assignment.dart';
 import '../../providers/core_providers.dart';
 import '../../providers/request_providers.dart';
+import '../menu/info_screens.dart';
 import '../requester/request_controller.dart';
 
 /// The TravAcser's ACTIVE trips (scheduled or in progress), live. Completed
@@ -139,17 +140,25 @@ class _TripCard extends ConsumerWidget {
               ),
             ],
             const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 8,
+              runSpacing: 4,
               children: [
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.help_outline, semanticLabel: 'Get help'),
+                  label: const Text('Get help'),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                        builder: (_) => const ContactUsScreen()),
+                  ),
+                ),
                 // Once a trip has started it can only be ended, never cancelled.
-                if (!inProgress) ...[
+                if (!inProgress)
                   TextButton(
                     onPressed: busy ? null : () => _cancel(context, ref),
                     child: const Text('Cancel'),
                   ),
-                  const SizedBox(width: 8),
-                ],
                 if (inProgress)
                   FilledButton.icon(
                     icon: const Icon(Icons.flag_outlined),

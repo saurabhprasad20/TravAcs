@@ -190,8 +190,7 @@ class _CompleteProfileScreenState
                 const SizedBox(height: 16),
                 DropdownButtonFormField<Gender>(
                   value: _gender,
-                  decoration:
-                      const InputDecoration(labelText: 'Gender (optional)'),
+                  decoration: const InputDecoration(labelText: 'Gender'),
                   items: Gender.values
                       .map((g) => DropdownMenuItem(
                             value: g,
@@ -199,6 +198,7 @@ class _CompleteProfileScreenState
                           ))
                       .toList(),
                   onChanged: (g) => setState(() => _gender = g),
+                  validator: (g) => g == null ? 'Please select your gender' : null,
                 ),
                 const SizedBox(height: 16),
                 Semantics(

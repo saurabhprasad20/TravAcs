@@ -10,6 +10,7 @@ import '../../../domain/entities/enums.dart';
 import '../../../domain/entities/request.dart';
 import '../../providers/core_providers.dart';
 import '../../providers/request_providers.dart';
+import '../menu/info_screens.dart';
 import '../shared/request_card.dart';
 import '../shared/trip_payment.dart';
 import 'request_controller.dart';
@@ -273,6 +274,14 @@ class _DetailBody extends ConsumerWidget {
           spacing: 8,
           runSpacing: 8,
           children: [
+            OutlinedButton.icon(
+              icon: const Icon(Icons.help_outline, semanticLabel: 'Get help'),
+              label: const Text('Get help'),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                    builder: (_) => const ContactUsScreen()),
+              ),
+            ),
             if (canReschedule)
               OutlinedButton.icon(
                 icon: const Icon(Icons.schedule),
@@ -326,12 +335,40 @@ class _DetailBody extends ConsumerWidget {
 
   Future<void> _reschedule(BuildContext context, WidgetRef ref, Request r) async {
     final now = DateTime.now();
-    final date = await showDatePicker(
+    final today = DateUtils.dateOnly(now);
+    // Rescheduling is limited to Today / Tomorrow / Day after — anything beyond
+    // that, the User is advised to create a new trip instead.
+    final options = <String, DateTime>{
+      'Today': today,
+      'Tomorrow': today.add(const Duration(days: 1)),
+      'Day after': today.add(const Duration(days: 2)),
+    };
+    final date = await showDialog<DateTime>(
       context: context,
-      initialDate: r.scheduledDate.isBefore(now) ? now : r.scheduledDate,
-      firstDate: DateUtils.dateOnly(now),
-      lastDate: now.add(const Duration(days: 60)),
-      helpText: 'New trip date',
+      builder: (ctx) => SimpleDialog(
+        title: const Text('New trip day'),
+        children: [
+          for (final e in options.entries)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, e.value),
+              child: Semantics(
+                button: true,
+                label: '${e.key}, ${DateFormat.yMMMEd().format(e.value)}',
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Text('${e.key} · ${DateFormat.yMMMEd().format(e.value)}'),
+                ),
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+            child: Text(
+              'To move a trip further out, cancel it and create a new one.',
+              style: Theme.of(ctx).textTheme.bodySmall,
+            ),
+          ),
+        ],
+      ),
     );
     if (date == null || !context.mounted) return;
     final time = await showTimePicker(

@@ -49,6 +49,10 @@ abstract interface class RequestRepository {
   /// The signed-in TravAcser's assignments across all requests, newest first.
   Stream<List<Assignment>> watchMyAssignments();
 
+  /// The signed-in requester's assignments across all their requests (via a
+  /// collection-group query). Used to detect unpaid completed trips (dues).
+  Stream<List<Assignment>> watchMyRequesterAssignments();
+
   /// All TravAcsers who have accepted [requestId] (for the requester's view).
   Stream<List<Assignment>> watchRequestAssignments(String requestId);
 

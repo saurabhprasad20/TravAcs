@@ -79,7 +79,8 @@ class FirestoreRequestRepository implements RequestRepository {
         'purpose': purpose,
         'specialNote': specialNote,
         'estimatedAmountInr':
-            Request.computeEstimate(expectedDurationMinutes, numTravAcsers),
+            Request.computeEstimate(
+                expectedDurationMinutes, numTravellers, numTravAcsers),
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
@@ -264,6 +265,19 @@ class FirestoreRequestRepository implements RequestRepository {
     return _db
         .collectionGroup('assignments')
         .where('volunteerId', isEqualTo: uid)
+        .snapshots()
+        .map((snap) =>
+            snap.docs.map(_toAssignment).whereType<Assignment>().toList())
+        .mapErrorToFailure();
+  }
+
+  @override
+  Stream<List<Assignment>> watchMyRequesterAssignments() {
+    final uid = _uid;
+    if (uid == null) return Stream.value(const []);
+    return _db
+        .collectionGroup('assignments')
+        .where('requesterId', isEqualTo: uid)
         .snapshots()
         .map((snap) =>
             snap.docs.map(_toAssignment).whereType<Assignment>().toList())

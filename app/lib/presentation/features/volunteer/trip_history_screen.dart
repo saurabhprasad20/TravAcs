@@ -7,6 +7,7 @@ import '../../../core/error/failure.dart';
 import '../../../domain/entities/assignment.dart';
 import '../../../domain/entities/enums.dart';
 import '../../providers/request_providers.dart';
+import '../menu/info_screens.dart';
 import '../requester/request_controller.dart';
 import '../shared/history_controls.dart';
 import '../shared/rating_sheet.dart';
@@ -151,17 +152,30 @@ class _HistoryCard extends ConsumerWidget {
                 ],
               ),
             ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.help_outline, semanticLabel: 'Get help'),
+                label: const Text('Get help'),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                      builder: (_) => const ContactUsScreen()),
+                ),
+              ),
+            ),
             if (!cancelled) ...[
               const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
+              Wrap(
+                alignment: WrapAlignment.end,
+                spacing: 8,
+                runSpacing: 4,
                 children: [
                   if (a.travAcserReceivedAt == null)
                     OutlinedButton(
                       onPressed: busy ? null : () => _markReceived(context, ref),
                       child: const Text('Mark received'),
                     ),
-                  const SizedBox(width: 8),
                   if (a.ratedByVolunteer)
                     Text('You rated ${a.volunteerRatingStars}★')
                   else

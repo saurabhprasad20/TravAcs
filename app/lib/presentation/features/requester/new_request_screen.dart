@@ -9,6 +9,7 @@ import '../../../domain/entities/enums.dart';
 import '../../../domain/entities/profile.dart';
 import '../../../domain/entities/request.dart';
 import '../../providers/profile_providers.dart';
+import '../../providers/request_providers.dart';
 import '../../providers/shell_providers.dart';
 import 'request_controller.dart';
 
@@ -57,7 +58,8 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
   }
 
   int get _minTravAcsers => Request.suggestedTravAcsers(_numTravellers);
-  int get _estimate => Request.computeEstimate(_durationMinutes, _numTravAcsers);
+  int get _estimate =>
+      Request.computeEstimate(_durationMinutes, _numTravellers, _numTravAcsers);
 
   /// Caps for the party size (design: up to 6 travellers, up to 6 TravAcsers).
   static const int _maxTravellers = 6;
@@ -91,6 +93,28 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
     final scheduleError = _validateSchedule();
     if (scheduleError != null) {
       _announceError(scheduleError);
+      return;
+    }
+
+    // Block creating a new trip while the User has unpaid completed trips.
+    if (ref.read(myPendingDuesProvider).isNotEmpty) {
+      if (!mounted) return;
+      const msg =
+          'Alert, you have pending dues, kindly clear them before creating new ones.';
+      A11y.announce(context, msg);
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Pending dues'),
+          content: const Text(msg),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
       return;
     }
 
@@ -519,7 +543,9 @@ class _ReviewSheet extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 'This is an estimate based on the expected duration '
-                '(₹${AppConstants.hourlyRateInr}/hour per TravAcser). The final '
+                '(₹${AppConstants.rateSoloInr}/hour per TravAcser for one '
+                'traveller, ₹${AppConstants.ratePairInr}/hour for two, plus '
+                '₹${AppConstants.travelCostInr} travel per TravAcser). The final '
                 'amount may vary with the actual trip duration.',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
