@@ -130,13 +130,17 @@ class Request {
 
   /// Estimated bill for the whole trip: each TravAcser's billed hours × their
   /// per-head rate (₹149 solo / ₹210 pair), plus ₹100 travel PER TravAcser.
+  /// Rounds each TravAcser's service charge INDEPENDENTLY (then sums) so the
+  /// estimate matches exactly what the server bills per assignment at
+  /// completion — a single aggregate round would diverge by ₹1 on half-hour
+  /// trips with multiple TravAcsers.
   static int computeEstimate(
       int durationMinutes, int numTravellers, int numTravAcsers) {
     final hours = billedHours(durationMinutes);
     final pair = pairServingCount(numTravellers, numTravAcsers);
     final solo = numTravAcsers - pair;
-    final hourlyTotal = pair * AppConstants.ratePairInr + solo * AppConstants.rateSoloInr;
-    final service = (hours * hourlyTotal).round();
+    final service = pair * (hours * AppConstants.ratePairInr).round() +
+        solo * (hours * AppConstants.rateSoloInr).round();
     final travel = AppConstants.travelCostInr * numTravAcsers;
     return service + travel;
   }

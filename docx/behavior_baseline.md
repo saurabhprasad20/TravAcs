@@ -101,7 +101,7 @@ Routes: `/splash`, `/auth/phone`, `/auth/otp?phone=…`, `/complete-profile`, `/
 |---|---|---|
 | `profiles/{uid}` | client (editable) + functions (protected) | `role`, `fullName`, `gender?`, `dateOfBirth?`, `phone?`, `isActive`, `serviceArea` (state), `serviceCity` (matching key), `ratingAvg`, `ratingCount`; **volunteer:** `address?`, `verificationStatus`, `verifiedBy?`, `verifiedAt?`, `rejectionReason?`; **requester:** `homeLocationText?` |
 | `requests/{id}` | client `create`; requester may only `cancel`; all else functions | `requesterId`, `requesterName?`, `volunteerId`(null), `status`, `serviceArea`, `serviceCity`, `acceptedCount`, `numTravellers`, `numTravAcsers`, `genderPreference`, `requesterGender?`, `genderRestricted`, `genderWidened`, `genderWidenAt?`, `scheduledDate`, `startTime`, `scheduledStartAt`, `expectedDurationMinutes`, `meetingPoint`, `destination`, `purpose?`, `specialNote?`, `estimatedAmountInr`, `noTravAcserNotifiedAt?`, `cancelReason?`, `createdAt`, `updatedAt` |
-| `requests/{id}/assignments/{volunteerId}` | **functions only** | contact pair (`volunteerId/Name/Phone`, `requesterId/Name/Phone`), denormalized summary (`scheduledDate`, `startTime`, `scheduledStartAt`, `expectedDurationMinutes`, `meetingPoint`, `destination`, `genderPreference`, `numTravellers`, `amountInrEstimate`), `tripStatus` (assigned/started/completed/closed/cancelled), `acceptedAt`, `startedAt`, `otpStartedAt`, `endedAt`, `durationMinutes`, `serviceChargeInr`, `travelCostInr`, `amountInr`, `paymentStatus`, `requesterPaidAt`, `travAcserReceivedAt`, `razorpayOrderId`, `razorpayKeyId`, `razorpayPaymentId`, `rescheduleStatus`, `rescheduleDeadlineAt`, ratings (`requesterRatingStars/Feedback`, `volunteerRatingStars/Feedback`) |
+| `requests/{id}/assignments/{volunteerId}` | **functions only** | contact pair (`volunteerId/Name/Phone`, `requesterId/Name/Phone`), denormalized summary (`scheduledDate`, `startTime`, `scheduledStartAt`, `expectedDurationMinutes`, `meetingPoint`, `destination`, `genderPreference`, `numTravellers`, `amountInrEstimate`), `tripStatus` (assigned/started/completed/closed/cancelled), `acceptedAt`, `startedAt`, `otpStartedAt`, `endedAt`, `durationMinutes`, `serviceChargeInr`, `travelCostInr`, `amountInr`, `paymentStatus`, `requesterPaidAt`, `travAcserReceivedAt`, `razorpayOrderId`, `razorpayKeyId`, `razorpayAmountInr`, `razorpayPaymentId`, `rescheduleStatus`, `rescheduleDeadlineAt`, ratings (`requesterRatingStars/Feedback`, `volunteerRatingStars/Feedback`) |
 | `devices/{uid}/tokens/{token}` | client (self) | `platform`, `updatedAt` (FCM tokens) |
 | `tripLogs/{id}` | functions only (`logManualTrip`) | admin telemetry (manual + future app trips) |
 | `trips/{id}`, `ratings/{id}` | functions only | rules present; ratings actually live on the assignment |
@@ -279,7 +279,7 @@ Shared helpers: `billedHours`, `pairServingCount`, `istDateKey` (IST day, UTC+5:
 | **markPaid** | onCall (requester only) | Assignment must be `completed` (`INVALID_STATE`). Sets `requesterPaidAt` (idempotent), recomputes `paymentStatus`. Push TravAcser (`payment_marked`). |
 | **markReceived** | onCall (TravAcser) | Sets `travAcserReceivedAt`, recomputes `paymentStatus`. |
 | **submitRating** | onCall (either party) | Stars integer 1–5, feedback ≤1000 chars. Assignment `completed` (`INVALID_STATE`). Derives rater/ratee; blocks a second rating from the same side (`ALREADY_RATED`); writes rating onto the assignment and updates ratee `ratingAvg`/`ratingCount` (rolling, rounded to 0.1). |
-| **createRazorpayOrder** | onCall (requester only) | secrets `RAZORPAY_KEY_ID/SECRET`. Assignment `completed`, not paid (`ALREADY_PAID`), real `amountInr>0` (`NO_AMOUNT`). **TEST PHASE: charges/returns `TEST_BILL_INR`=₹1** (checkout shows ₹1; the stored real `amountInr` is untouched). **Reuses stored order only if `razorpayKeyId==current keyId`** (else mints fresh — auto-heals stale/test-key orders); stamps `razorpayOrderId`+`razorpayKeyId`. Returns `{orderId, keyId, amountPaise, amountInr(=1), currency}`. |
+| **createRazorpayOrder** | onCall (requester only) | secrets `RAZORPAY_KEY_ID/SECRET`. Assignment `completed`, not paid (`ALREADY_PAID`), real `amountInr>0` (`NO_AMOUNT`). **TEST PHASE: charges/returns `TEST_BILL_INR`=₹1** (checkout shows ₹1; the stored real `amountInr` is untouched). **Reuses a stored order only if `razorpayKeyId==current keyId` AND `razorpayAmountInr==billed`** (else mints fresh — auto-heals stale/test-key *and* stale full-value orders); stamps `razorpayOrderId`+`razorpayKeyId`+`razorpayAmountInr`. Returns `{orderId, keyId, amountPaise, amountInr(=1), currency}`. |
 | **verifyRazorpayPayment** | onCall (requester only) | secret `RAZORPAY_KEY_SECRET`. HMAC-SHA256 verify `orderId|paymentId` (timing-safe) (`BAD_SIGNATURE`). Assignment `completed`, `razorpayOrderId` matches (`ORDER_MISMATCH`). Sets `requesterPaidAt`+ids, recomputes `paymentStatus`. Push TravAcser. |
 | **setVerification** | onCall (admin claim only) | Target profile role `volunteer`. Sets `verificationStatus` approved/rejected + `verifiedBy/At` + `rejectionReason`. Push volunteer (`verification_result`). |
 | **logManualTrip** | onCall (admin claim only) | Requires `userDetails`, `travAcserDetails`, `tripDateMs`. Adds a `tripLogs` doc. |
@@ -500,6 +500,19 @@ functions test"` = **33 functions tests**; `… "npm --prefix rules-tests test"`
 ---
 
 ## 19. Known gaps (documented, not bugs to "fix" incidentally)
+- **Pair-rate identity is positional.** In a multi-TravAcser trip, `completeTrip` assigns the ₹210
+  (serves-two) rate to the first `pairCount` started assignments *sorted by volunteerId* — the app
+  does not track which TravAcser actually served two travellers. When TravAcsers ran different
+  durations, the trip total depends on which id gets the pair rate. Accepted for the even-split model
+  (no per-traveller attendance tracking); revisit if attendance is ever recorded.
+- **Accept-time earning estimate assumes the solo rate** (₹149/hr) even when the trip guarantees a
+  pair; the final `completeTrip` bill (which may apply ₹210) is authoritative. Informational only.
+- **Pending-dues block is client-side.** `NewRequestScreen` warms `myRequesterAssignmentsProvider`
+  and blocks submit while it loads or when dues exist, but request creation is still a direct client
+  Firestore write, so the block is not server-authoritative (a modified client or a cross-device race
+  could bypass it). A robust fix is a server-side dues flag + a callable `createRequest` transaction.
+- **Gender-required is client-side** (`complete_profile_screen` validator); the Security Rules still
+  permit a missing/invalid `gender` on profile writes.
 - One-trip-per-day has a theoretical millisecond race (robust fix = a deterministic
   `volunteerDailySlots/{uid_ISTdate}` guard doc).
 - Offline start-code has no true physical-presence guarantee (both sides can compute it) — intentional.

@@ -96,7 +96,15 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
       return;
     }
 
-    // Block creating a new trip while the User has unpaid completed trips.
+    // Block creating a new trip while the User has unpaid completed trips. Read
+    // the underlying stream's state so we don't fall through while it's still
+    // loading (its `.value` would be null and the dues would look empty).
+    final duesAsync = ref.read(myRequesterAssignmentsProvider);
+    if (duesAsync.isLoading) {
+      if (!mounted) return;
+      _announceError('Checking your account… please tap submit again in a moment.');
+      return;
+    }
     if (ref.read(myPendingDuesProvider).isNotEmpty) {
       if (!mounted) return;
       const msg =
@@ -217,6 +225,10 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
   Widget build(BuildContext context) {
     final my = ref.watch(myProfileProvider).value;
     final busy = ref.watch(requestControllerProvider).isLoading;
+    // Warm the requester's assignments stream so the pending-dues check has data
+    // ready by the time the user taps submit (otherwise its first read returns
+    // an empty/loading value and the dues block is silently bypassed).
+    ref.watch(myRequesterAssignmentsProvider);
 
     return Scaffold(
       body: my == null

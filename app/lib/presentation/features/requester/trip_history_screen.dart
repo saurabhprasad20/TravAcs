@@ -154,6 +154,17 @@ class _AssignmentRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final busy = ref.watch(requestControllerProvider).isLoading;
+    // A `closed` assignment never started (e.g. a second TravAcser on a trip
+    // another TravAcser ended) — there is no charge and nothing to pay/rate.
+    final noCharge =
+        a.tripStatus == TripStatus.closed || (a.amountInr ?? 0) <= 0;
+    if (noCharge) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Text('${a.volunteerName} · Not started — no charge',
+            style: Theme.of(context).textTheme.bodyMedium),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.only(top: 6),
       child: Column(

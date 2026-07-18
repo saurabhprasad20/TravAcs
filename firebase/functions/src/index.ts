@@ -841,11 +841,16 @@ export const createRazorpayOrder = onCall(
     // Idempotent: reuse a previously-created order for this still-unpaid trip
     // rather than creating (and overwriting the stored id with) a new one —
     // otherwise a retry could orphan an order the User already paid. BUT only
-    // reuse it when it was created under the *current* key: an order created
-    // under a different key (e.g. an old test-mode order after switching to a
-    // live key) is invalid for this key and makes the Razorpay checkout stall
-    // (it can never load the order), so we must mint a fresh one instead.
-    if (a.razorpayOrderId && a.razorpayKeyId === keyId) {
+    // reuse it when it was created under the *current* key AND for the *current*
+    // charge amount: an order made under a different key (e.g. an old test-mode
+    // order after a key switch) can't load and stalls the checkout, and an order
+    // made for a different amount (e.g. a full-value order created before the
+    // ₹1 test override) would over-charge — in both cases mint a fresh one.
+    if (
+      a.razorpayOrderId &&
+      a.razorpayKeyId === keyId &&
+      a.razorpayAmountInr === billedInr
+    ) {
       return {
         orderId: a.razorpayOrderId,
         keyId,
@@ -871,7 +876,11 @@ export const createRazorpayOrder = onCall(
       throw new HttpsError("internal", "Could not start the payment. Please try again.");
     }
     const order = (await resp.json()) as {id: string};
-    await assignRef.update({razorpayOrderId: order.id, razorpayKeyId: keyId});
+    await assignRef.update({
+      razorpayOrderId: order.id,
+      razorpayKeyId: keyId,
+      razorpayAmountInr: billedInr,
+    });
     return {
       orderId: order.id,
       keyId,
