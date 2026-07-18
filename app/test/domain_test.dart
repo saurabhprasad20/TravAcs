@@ -34,6 +34,10 @@ void main() {
       expect(Request.computeEstimate(60, 3, 2), 559);
       // Duration rounding: 1h41m at 1/1 -> 2h x 149 + 100 = 398.
       expect(Request.computeEstimate(101, 1, 1), 398);
+      // Per-assignment rounding parity with the server: 75 min (1.5h), 2 solo
+      // TravAcsers -> 2 * round(1.5*149)=2*224=448 service + 200 travel = 648
+      // (NOT round(1.5*298)+200 = 647). Must match the server's per-assignment sum.
+      expect(Request.computeEstimate(75, 2, 2), 648);
     });
 
     test('pairServingCount distributes the serves-two rate evenly', () {
