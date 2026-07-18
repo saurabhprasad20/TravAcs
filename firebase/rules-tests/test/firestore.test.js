@@ -259,9 +259,34 @@ describe("requests", () => {
     );
   });
 
+  it("cannot create a request carrying server-managed payment fields (allowlist)", async () => {
+    const carol = testEnv.authenticatedContext("carol").firestore();
+    await assertFails(
+      setDoc(doc(carol, "requests/rf1"), request("carol", { tripAmountInr: 999 }))
+    );
+    await assertFails(
+      setDoc(doc(carol, "requests/rf2"), request("carol", { requesterPaidAt: new Date() }))
+    );
+    await assertFails(
+      setDoc(doc(carol, "requests/rf3"), request("carol", { razorpayOrderId: "order_x" }))
+    );
+  });
+
   it("the requester may cancel before anyone accepts", async () => {
     const alice = testEnv.authenticatedContext("alice").firestore();
     await assertSucceeds(updateDoc(doc(alice, "requests/r1"), { status: "cancelled" }));
+  });
+
+  it("a cancel update may only change status (not ownership/amounts)", async () => {
+    const alice = testEnv.authenticatedContext("alice").firestore();
+    // Sneaking a requesterId change (to forge a trip into someone else's history)
+    // or a payment field alongside the cancel must be rejected.
+    await assertFails(
+      updateDoc(doc(alice, "requests/r1"), { status: "cancelled", requesterId: "mallory" })
+    );
+    await assertFails(
+      updateDoc(doc(alice, "requests/r1"), { status: "cancelled", tripAmountInr: 5 })
+    );
   });
 
   it("cannot cancel once a slot is filled", async () => {

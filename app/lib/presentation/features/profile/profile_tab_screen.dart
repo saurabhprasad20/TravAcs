@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/accessibility/announce.dart';
 import '../../../core/config/constants.dart';
+import '../../../core/error/failure.dart';
 import '../../../domain/entities/city.dart';
 import '../../../domain/entities/enums.dart';
 import '../../../domain/entities/profile.dart';
@@ -18,12 +19,15 @@ class ProfileTabScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final my = ref.watch(myProfileProvider).value;
+    final profileAsync = ref.watch(myProfileProvider);
 
     return Scaffold(
-      body: my == null
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
+      body: profileAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => _ProfileError(message: failureMessage(e)),
+        data: (my) => my == null
+            ? const Center(child: CircularProgressIndicator())
+            : ListView(
               padding: const EdgeInsets.all(16),
               children: [
                 _InfoTile(label: 'Name', value: my.profile.fullName),
@@ -66,6 +70,42 @@ class ProfileTabScreen extends ConsumerWidget {
                 ),
               ],
             ),
+      ),
+    );
+  }
+}
+
+/// Error state for the Profile tab: shows the mapped message with Retry / Sign
+/// out so a failed profile fetch never leaves an infinite spinner.
+class _ProfileError extends ConsumerWidget {
+  const _ProfileError({required this.message});
+  final String message;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(message, textAlign: TextAlign.center),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () => ref.invalidate(myProfileProvider),
+              child: const Text('Retry'),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () async {
+                await ref.read(messagingRepositoryProvider).unregisterToken();
+                await ref.read(authControllerProvider.notifier).signOut();
+              },
+              child: const Text('Sign out'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -126,11 +166,17 @@ class _RegionTile extends ConsumerWidget {
       builder: (_) => _RegionPickerSheet(initialState: state, initialCity: city),
     );
     if (result == null) return;
-    final ok = await ref
-        .read(profileControllerProvider.notifier)
-        .setServiceArea(result.$1, result.$2);
-    if (ok && context.mounted) {
+    final notifier = ref.read(profileControllerProvider.notifier);
+    final ok = await notifier.setServiceArea(result.$1, result.$2);
+    if (!context.mounted) return;
+    if (ok) {
       A11y.announce(context, 'Location set to ${result.$2.label}.');
+    } else {
+      final msg = failureMessage(ref.read(profileControllerProvider).error);
+      A11y.announce(context, msg);
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text(msg)));
     }
   }
 }

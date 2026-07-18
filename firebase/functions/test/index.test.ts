@@ -22,13 +22,14 @@ const startTrip = fft.wrap(fns.startTrip);
 const rescheduleTrip = fft.wrap(fns.rescheduleTrip);
 const cancelTrip = fft.wrap(fns.cancelTrip);
 const respondReschedule = fft.wrap(fns.respondReschedule);
-const markPaid = fft.wrap(fns.markPaid);
-const markReceived = fft.wrap(fns.markReceived);
 const submitRating = fft.wrap(fns.submitRating);
 const setVerification = fft.wrap(fns.setVerification);
 const verifyRazorpayPayment = fft.wrap(fns.verifyRazorpayPayment);
+const createRazorpayOrder = fft.wrap(fns.createRazorpayOrder);
 const logManualTrip = fft.wrap(fns.logManualTrip);
 const widenGenderRequests = fft.wrap(fns.widenGenderRequests);
+const expireStaleRequests = fft.wrap(fns.expireStaleRequests);
+const expireRescheduleConfirmations = fft.wrap(fns.expireRescheduleConfirmations);
 
 const HOUR = 60 * 60000;
 
@@ -510,35 +511,6 @@ describe("cancelTrip", () => {
   });
 });
 
-describe("two-sided payment", () => {
-  async function seedCompleted(): Promise<void> {
-    await db.doc("requests/r1").set({requesterId: "alice"});
-    await db.doc("requests/r1/assignments/vol").set({
-      volunteerId: "vol", requesterId: "alice",
-      tripStatus: "completed", paymentStatus: "pending",
-    });
-  }
-
-  it("paid then received reaches confirmed", async () => {
-    await seedCompleted();
-    await markPaid(call({requestId: "r1", volunteerId: "vol"}, "alice"));
-    let a = (await db.doc("requests/r1/assignments/vol").get()).data()!;
-    assert.equal(a.paymentStatus, "awaiting_other");
-
-    await markReceived(call({requestId: "r1"}, "vol"));
-    a = (await db.doc("requests/r1/assignments/vol").get()).data()!;
-    assert.equal(a.paymentStatus, "confirmed");
-  });
-
-  it("only the requester can mark Paid", async () => {
-    await seedCompleted();
-    await assert.rejects(
-      () => markPaid(call({requestId: "r1", volunteerId: "vol"}, "mallory")),
-      /User/i
-    );
-  });
-});
-
 describe("submitRating", () => {
   it("updates the ratee's rolling average and blocks duplicates", async () => {
     await db.doc("profiles/vol").set({role: "volunteer", ratingAvg: 0, ratingCount: 0});
@@ -644,5 +616,185 @@ describe("logManualTrip (admin gate)", () => {
     assert.equal(log.source, "manual");
     assert.equal(log.userDetails, "Bob 999");
     assert.equal(log.createdBy, "root");
+  });
+});
+
+describe("conclude-all (mixed started/assigned)", () => {
+  it("bills the started assignment and CLOSES the unstarted one with no bill", async () => {
+    await db.doc("requests/r1").set({requesterId: "alice", status: "assigned", numTravellers: 2, numTravAcsers: 2});
+    await db.doc("requests/r1/assignments/v1").set({
+      volunteerId: "v1", requesterId: "alice", tripStatus: "started",
+      startedAt: Timestamp.fromMillis(Date.now() - 100 * 60000),
+      scheduledStartAt: Timestamp.fromMillis(Date.now() - 3 * HOUR),
+    });
+    await db.doc("requests/r1/assignments/v2").set({
+      volunteerId: "v2", requesterId: "alice", tripStatus: "assigned",
+      scheduledStartAt: Timestamp.fromMillis(Date.now() - 3 * HOUR),
+    });
+
+    await completeTrip(call({requestId: "r1", volunteerId: "v1"}, "v1"));
+
+    const a1 = (await db.doc("requests/r1/assignments/v1").get()).data()!;
+    const a2 = (await db.doc("requests/r1/assignments/v2").get()).data()!;
+    assert.equal(a1.tripStatus, "completed");
+    assert.equal(a2.tripStatus, "closed"); // never started -> closed, no bill
+    assert.equal(a2.amountInr, undefined);
+    const r = (await db.doc("requests/r1").get()).data()!;
+    assert.equal(r.status, "completed");
+    // Only the one started assignment contributes to the trip total.
+    assert.equal(r.tripAmountInr, a1.amountInr);
+  });
+});
+
+describe("idempotent retries", () => {
+  it("startTrip is idempotent on a second call", async () => {
+    await db.doc("requests/r1").set({requesterId: "alice", status: "assigned"});
+    await db.doc("requests/r1/assignments/vol").set({
+      volunteerId: "vol", requesterId: "alice", tripStatus: "assigned",
+      scheduledStartAt: Timestamp.fromMillis(Date.now() - HOUR),
+    });
+    const r1: any = await startTrip(call({requestId: "r1", volunteerId: "vol"}, "vol"));
+    assert.equal(r1.code, "STARTED");
+    const r2: any = await startTrip(call({requestId: "r1", volunteerId: "vol"}, "vol"));
+    assert.equal(r2.code, "STARTED"); // retry succeeds
+    const a = (await db.doc("requests/r1/assignments/vol").get()).data()!;
+    assert.equal(a.tripStatus, "started");
+  });
+
+  it("completeTrip is idempotent on a second call", async () => {
+    await db.doc("requests/r1").set({requesterId: "alice", status: "assigned"});
+    await db.doc("requests/r1/assignments/vol").set({
+      volunteerId: "vol", requesterId: "alice", tripStatus: "started",
+      startedAt: Timestamp.fromMillis(Date.now() - 90 * 60000),
+      scheduledStartAt: Timestamp.fromMillis(Date.now() - 3 * HOUR),
+    });
+    const r1: any = await completeTrip(call({requestId: "r1", volunteerId: "vol"}, "vol"));
+    assert.equal(r1.code, "COMPLETED");
+    const amt = (await db.doc("requests/r1/assignments/vol").get()).data()!.amountInr;
+    const r2: any = await completeTrip(call({requestId: "r1", volunteerId: "vol"}, "vol"));
+    assert.equal(r2.code, "COMPLETED");
+    assert.equal((await db.doc("requests/r1/assignments/vol").get()).data()!.amountInr, amt);
+  });
+});
+
+describe("reschedule vs started-trip lock", () => {
+  it("expireRescheduleConfirmations does NOT cancel a trip that started meanwhile", async () => {
+    await db.doc("requests/r1").set({requesterId: "alice", status: "assigned", acceptedCount: 1});
+    await db.doc("requests/r1/assignments/vol").set({
+      volunteerId: "vol", requesterId: "alice", tripStatus: "started",
+      rescheduleStatus: "pending",
+      rescheduleDeadlineAt: Timestamp.fromMillis(Date.now() - 60000),
+    });
+    await expireRescheduleConfirmations({});
+    const a = (await db.doc("requests/r1/assignments/vol").get()).data()!;
+    assert.equal(a.tripStatus, "started");
+    const r = (await db.doc("requests/r1").get()).data()!;
+    assert.equal(r.acceptedCount, 1);
+  });
+
+  it("respondReschedule(decline) does not cancel an already-started trip", async () => {
+    await db.doc("requests/r1").set({requesterId: "alice", status: "assigned", acceptedCount: 1});
+    await db.doc("requests/r1/assignments/vol").set({
+      volunteerId: "vol", requesterId: "alice", tripStatus: "started",
+      rescheduleStatus: "pending",
+    });
+    const res: any = await respondReschedule(call({requestId: "r1", accept: false}, "vol"));
+    assert.equal(res.code, "DECLINED");
+    const a = (await db.doc("requests/r1/assignments/vol").get()).data()!;
+    assert.equal(a.tripStatus, "started");
+    assert.equal(a.rescheduleStatus, undefined);
+    const r = (await db.doc("requests/r1").get()).data()!;
+    assert.equal(r.acceptedCount, 1);
+  });
+
+  it("expireRescheduleConfirmations releases a still-assigned pending slot", async () => {
+    await db.doc("requests/r1").set({requesterId: "alice", status: "assigned", acceptedCount: 1});
+    await db.doc("requests/r1/assignments/vol").set({
+      volunteerId: "vol", requesterId: "alice", tripStatus: "assigned",
+      rescheduleStatus: "pending",
+      rescheduleDeadlineAt: Timestamp.fromMillis(Date.now() - 60000),
+    });
+    await expireRescheduleConfirmations({});
+    const a = (await db.doc("requests/r1/assignments/vol").get()).data()!;
+    assert.equal(a.tripStatus, "cancelled");
+    const r = (await db.doc("requests/r1").get()).data()!;
+    assert.equal(r.acceptedCount, 0);
+    assert.equal(r.status, "broadcast");
+  });
+});
+
+describe("expireStaleRequests", () => {
+  it("auto-cancels an unaccepted request whose scheduled start has passed", async () => {
+    await db.doc("requests/r1").set({
+      requesterId: "alice", status: "broadcast", acceptedCount: 0,
+      scheduledStartAt: Timestamp.fromMillis(Date.now() - 60000),
+      createdAt: Timestamp.fromMillis(Date.now() - 60 * 60000),
+    });
+    await expireStaleRequests({});
+    const r = (await db.doc("requests/r1").get()).data()!;
+    assert.equal(r.status, "cancelled");
+    assert.equal(r.cancelReason, "no_travacser");
+  });
+
+  it("does not cancel a request that has already been accepted", async () => {
+    await db.doc("requests/r1").set({
+      requesterId: "alice", status: "broadcast", acceptedCount: 1,
+      scheduledStartAt: Timestamp.fromMillis(Date.now() - 60000),
+      createdAt: Timestamp.fromMillis(Date.now() - 60 * 60000),
+    });
+    await expireStaleRequests({});
+    const r = (await db.doc("requests/r1").get()).data()!;
+    assert.notEqual(r.status, "cancelled");
+  });
+});
+
+describe("createRazorpayOrder (trip-level, Rs.1 test override)", () => {
+  const origFetch = globalThis.fetch;
+  before(() => {
+    process.env.RAZORPAY_KEY_ID = "rzp_test_key";
+    process.env.RAZORPAY_KEY_SECRET = "test_secret";
+    (globalThis as any).fetch = async () => ({
+      ok: true,
+      json: async () => ({id: "order_stub_1"}),
+      text: async () => "",
+    });
+  });
+  after(() => {
+    (globalThis as any).fetch = origFetch;
+  });
+
+  it("charges Rs.1 for the whole trip and stores the order on the request", async () => {
+    await db.doc("requests/r1").set({
+      requesterId: "alice", status: "completed", tripAmountInr: 498,
+    });
+    const res: any = await createRazorpayOrder(call({requestId: "r1"}, "alice"));
+    assert.equal(res.amountInr, 1); // test-phase Rs.1, NOT the real 498
+    assert.equal(res.amountPaise, 100);
+    assert.equal(res.orderId, "order_stub_1");
+    const r = (await db.doc("requests/r1").get()).data()!;
+    assert.equal(r.razorpayOrderId, "order_stub_1");
+    assert.equal(r.razorpayAmountInr, 1);
+    assert.equal(r.tripAmountInr, 498); // real amount untouched
+  });
+
+  it("reuses the stored order on a retry (same key + amount)", async () => {
+    await db.doc("requests/r1").set({
+      requesterId: "alice", status: "completed", tripAmountInr: 498,
+      razorpayOrderId: "order_existing", razorpayKeyId: "rzp_test_key",
+      razorpayAmountInr: 1,
+    });
+    const res: any = await createRazorpayOrder(call({requestId: "r1"}, "alice"));
+    assert.equal(res.orderId, "order_existing"); // reused, not re-minted
+  });
+
+  it("rejects when the trip is already paid", async () => {
+    await db.doc("requests/r1").set({
+      requesterId: "alice", status: "completed", tripAmountInr: 498,
+      requesterPaidAt: Timestamp.now(),
+    });
+    await assert.rejects(
+      () => createRazorpayOrder(call({requestId: "r1"}, "alice")),
+      /already paid/i
+    );
   });
 });

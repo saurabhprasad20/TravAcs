@@ -205,7 +205,7 @@ class _ManualEntryTabState extends ConsumerState<_ManualEntryTab> {
       lastDate: now.add(const Duration(days: 365)),
       helpText: 'Trip date',
     );
-    if (picked != null) setState(() => _date = DateUtils.dateOnly(picked));
+    if (picked != null && mounted) setState(() => _date = DateUtils.dateOnly(picked));
   }
 
   Future<void> _submit() async {
@@ -392,6 +392,7 @@ class _PendingCard extends ConsumerWidget {
         ],
       ),
     );
+    controller.dispose();
     if (reason == null) return; // cancelled
     final ok = await ref
         .read(adminControllerProvider.notifier)

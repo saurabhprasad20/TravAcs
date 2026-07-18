@@ -94,15 +94,32 @@ service cloud.firestore {
         && request.resource.data.numTravellers >= 1
         && request.resource.data.numTravellers <= 10
         // A client cannot pre-widen a gender-restricted request.
-        && request.resource.data.get('genderWidened', false) == false;
+        && request.resource.data.get('genderWidened', false) == false
+        // Field allowlist: a create may ONLY carry these client-writable fields.
+        // This blocks a crafted client from pre-seeding server-managed money /
+        // payment / scheduling fields (tripAmountInr, paymentStatus,
+        // requesterPaidAt, razorpay*, genderWidenAt, cancelReason, etc.).
+        && request.resource.data.keys().hasOnly([
+             'requesterId', 'requesterName', 'volunteerId', 'status',
+             'serviceArea', 'serviceCity', 'acceptedCount', 'numTravellers',
+             'numTravAcsers', 'genderPreference', 'requesterGender',
+             'genderRestricted', 'genderWidened', 'scheduledDate', 'startTime',
+             'scheduledStartAt', 'expectedDurationMinutes', 'meetingPoint',
+             'destination', 'purpose', 'specialNote', 'estimatedAmountInr',
+             'createdAt', 'updatedAt'
+           ]);
 
       // The requester may only CANCEL, and only before anyone accepts. Accept,
       // start, complete and payment transitions are done by Cloud Functions
-      // (Admin SDK), never by clients.
+      // (Admin SDK), never by clients. The update may ONLY flip status to
+      // 'cancelled' (plus updatedAt) — it must not touch ownership, amounts,
+      // payment fields, or any other data in the same write.
       allow update: if resource.data.requesterId == request.auth.uid
         && resource.data.status in ['draft', 'broadcast']
         && resource.data.get('acceptedCount', 0) == 0
-        && request.resource.data.status == 'cancelled';
+        && request.resource.data.status == 'cancelled'
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status', 'updatedAt']);
 
       allow delete: if false;
 

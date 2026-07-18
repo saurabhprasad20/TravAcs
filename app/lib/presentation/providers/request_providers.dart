@@ -39,11 +39,26 @@ final myAssignmentsProvider = StreamProvider<List<Assignment>>((ref) {
 
 /// Open requests in the TravAcser's city, EXCLUDING ones they already accepted.
 /// Empty unless the volunteer is approved and has a city set.
-final availableRequestsProvider = StreamProvider<List<Request>>((ref) {
+/// Raw Firestore stream of open requests in the TravAcser's city. Created ONCE
+/// (not re-subscribed on every clock tick). The gender/accepted/time filtering
+/// is applied by [availableRequestsProvider] on top of this cached stream.
+final _availableRequestsRawProvider = StreamProvider<List<Request>>((ref) {
   final my = ref.watch(myProfileProvider).value;
   final city = my?.profile.serviceCity;
   final approved = my?.volunteer?.isApproved ?? false;
   if (city == null || !approved) return Stream.value(const []);
+  return ref.watch(requestRepositoryProvider).watchAvailableRequests(city);
+});
+
+/// Open requests in the TravAcser's city, EXCLUDING ones they already accepted,
+/// past-start ones, and same-gender-restricted ones that aren't theirs (until
+/// widened). This is a pure filter over [_availableRequestsRawProvider]: it
+/// re-runs on each clock tick to advance the time cutoff WITHOUT tearing down
+/// and recreating the Firestore snapshot listener (which would recharge a full
+/// collection read every 30s). Empty unless the volunteer is approved + has a
+/// city set.
+final availableRequestsProvider = Provider<AsyncValue<List<Request>>>((ref) {
+  final my = ref.watch(myProfileProvider).value;
   // The TravAcser's own gender, used to hide same-gender-restricted requests
   // that aren't theirs (until such a request widens to all genders).
   final myGender = my?.profile.gender;
@@ -62,29 +77,25 @@ final availableRequestsProvider = StreamProvider<List<Request>>((ref) {
 
   // Hide only requests that can no longer be accepted — i.e. past their
   // scheduled start (the server auto-cancels those). Short-notice trips stay on
-  // the feed right up to their start time. Watch the clock so this advances even
-  // without a new Firestore event.
+  // the feed right up to their start time. Watch the clock so this re-filters
+  // even without a new Firestore event.
   ref.watch(clockProvider);
   final now = DateTime.now();
 
-  return ref
-      .watch(requestRepositoryProvider)
-      .watchAvailableRequests(city)
-      .map((list) => list
-          .where((r) =>
-              !acceptedIds.contains(r.id) &&
-              r.scheduledStartAt.isAfter(now) &&
-              // Same-gender-restricted requests are hidden from other-gender
-              // TravAcsers until they widen to all genders.
-              (!r.genderRestricted ||
-                  r.genderWidened ||
-                  r.requesterGender == myGender))
-          .toList());
+  return ref.watch(_availableRequestsRawProvider).whenData((list) => list
+      .where((r) =>
+          !acceptedIds.contains(r.id) &&
+          r.scheduledStartAt.isAfter(now) &&
+          (!r.genderRestricted ||
+              r.genderWidened ||
+              r.requesterGender == myGender))
+      .toList());
 });
 
-/// TravAcsers who have accepted a given request (requester's view).
+/// TravAcsers who have accepted a given request (requester's view). autoDispose
+/// so per-request listeners are released when no screen is watching them.
 final requestAssignmentsProvider =
-    StreamProvider.family<List<Assignment>, String>((ref, requestId) {
+    StreamProvider.autoDispose.family<List<Assignment>, String>((ref, requestId) {
   return ref.watch(requestRepositoryProvider).watchRequestAssignments(requestId);
 });
 

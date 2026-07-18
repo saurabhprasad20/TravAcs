@@ -1,24 +1,31 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 
-import '../../../core/accessibility/announce.dart';
 import '../../../core/config/constants.dart';
 import '../../../core/error/error_reporter.dart';
 import '../../../core/error/failure.dart';
 import '../../../domain/entities/razorpay_order.dart';
 import '../requester/request_controller.dart';
 
-/// Runs the full Razorpay payment for one completed assignment:
+/// Runs the full Razorpay payment for a completed trip:
 /// create order (server) → open the Razorpay checkout → verify the signature
-/// (server) → mark the trip paid. Returns true only if the payment completed
-/// and was verified.
+/// (server) → mark the whole trip paid. Returns true only if the payment
+/// completed and was verified.
 ///
 /// The Razorpay checkout itself offers UPI, cards, GPay, PhonePe, Paytm and
 /// wallets; we don't build those buttons ourselves. Payment status changes are
 /// announced for screen-reader users.
+///
+/// IMPORTANT: verification must NOT depend on a live widget context. Ending the
+/// trip commits server-side immediately, which can rebuild/remove the calling
+/// widget (e.g. the trip-detail body) while the native Razorpay sheet is still
+/// open. So we capture the ScaffoldMessenger + TextDirection up front and use
+/// the (app-scoped) controller notifier captured before the first await — the
+/// signature verification always runs even after the caller unmounts.
 Future<bool> startTripPayment(
   BuildContext context,
   WidgetRef ref, {
@@ -26,35 +33,43 @@ Future<bool> startTripPayment(
   String? contact,
 }) async {
   final controller = ref.read(requestControllerProvider.notifier);
+  // Capture context-bound handles BEFORE any await so announcements survive the
+  // caller unmounting.
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  final dir = Directionality.maybeOf(context) ?? TextDirection.ltr;
+  void announce(String msg) {
+    SemanticsService.announce(msg, dir);
+    messenger
+      ?..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text(msg)));
+  }
 
   final order = await controller.createRazorpayOrder(requestId);
-  if (!context.mounted) return false;
   if (order == null) {
-    _announce(context, failureMessage(ref.read(requestControllerProvider).error));
+    announce(failureMessage(ref.read(requestControllerProvider).error));
     return false;
   }
 
   final result = await _RazorpayCheckout(order, contact: contact).open();
-  if (!context.mounted) return false;
 
   switch (result.kind) {
     case _RzKind.success:
+      // Always verify — money has been collected; skipping this would leave the
+      // trip unpaid despite a successful charge.
       final ok = await controller.verifyRazorpayPayment(
         requestId: requestId,
         razorpayOrderId: result.orderId ?? order.orderId,
         razorpayPaymentId: result.paymentId ?? '',
         razorpaySignature: result.signature ?? '',
       );
-      if (!context.mounted) return ok;
-      _announce(
-        context,
+      announce(
         ok
             ? 'Payment of \u20b9${order.amountInr} successful.'
             : failureMessage(ref.read(requestControllerProvider).error),
       );
       return ok;
     case _RzKind.cancelled:
-      _announce(context, 'Payment cancelled. You can pay later from Trip History.');
+      announce('Payment cancelled. You can pay later from Trip History.');
       return false;
     case _RzKind.error:
       // Never surface the raw SDK text to the user (golden rule #1): log it as
@@ -62,16 +77,9 @@ Future<bool> startTripPayment(
       ErrorReporter.reportNonFatal(
         UnexpectedFailure(debugDetail: 'Razorpay: ${result.message ?? 'unknown'}'),
       );
-      _announce(context, 'Payment could not be completed. Please try again.');
+      announce('Payment could not be completed. Please try again.');
       return false;
   }
-}
-
-void _announce(BuildContext context, String msg) {
-  A11y.announce(context, msg);
-  ScaffoldMessenger.of(context)
-    ..clearSnackBars()
-    ..showSnackBar(SnackBar(content: Text(msg)));
 }
 
 enum _RzKind { success, cancelled, error }

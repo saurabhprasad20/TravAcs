@@ -50,6 +50,7 @@ class HistoryControls extends StatelessWidget {
           Expanded(
             child: Semantics(
               label: 'Filter trips',
+              excludeSemantics: true,
               child: DropdownButtonFormField<HistoryFilter>(
                 value: filter,
                 isExpanded: true,
@@ -69,6 +70,7 @@ class HistoryControls extends StatelessWidget {
           Expanded(
             child: Semantics(
               label: 'Sort trips',
+              excludeSemantics: true,
               child: DropdownButtonFormField<HistorySort>(
                 value: sort,
                 isExpanded: true,

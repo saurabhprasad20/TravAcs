@@ -14,9 +14,10 @@ import '../shared/rating_sheet.dart';
 import '../shared/trip_payment.dart';
 import 'request_controller.dart';
 
-/// The requester's completed/closed/cancelled requests (Trip History tab).
-/// Mark-as-Paid + Rate live here, per assigned TravAcser (M12). Ordered newest
-/// first, filterable, and capped at the most recent [kHistoryPageSize] trips.
+/// The requester's completed/closed/cancelled requests (Trip History tab). One
+/// trip total + a single "Make payment" (whole trip) live here, plus a per-
+/// TravAcser breakdown and rating. Ordered newest first, filterable, and capped
+/// at the most recent [kHistoryPageSize] trips.
 class TripHistoryScreen extends ConsumerStatefulWidget {
   const TripHistoryScreen({super.key});
 
@@ -30,6 +31,11 @@ class _TripHistoryScreenState extends ConsumerState<TripHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(myRequestsProvider, (prev, next) {
+      if (next.hasError && (prev == null || !prev.hasError)) {
+        A11y.announce(context, failureMessage(next.error));
+      }
+    });
     final requests = ref.watch(myRequestsProvider);
 
     return Scaffold(
