@@ -93,7 +93,7 @@ describe("acceptRequest (slot-filling FCFS)", () => {
 
     const a = (await db.doc("requests/r1/assignments/vol").get()).data()!;
     assert.equal(a.tripStatus, "assigned");
-    assert.equal(a.amountInrEstimate, 280); // 2h = 4 half-hour blocks * ₹70
+    assert.equal(a.amountInrEstimate, 398); // 2h × ₹149 (solo) + ₹100 travel
     assert.equal(a.genderPreference, "prefer_same_gender");
     assert.ok(a.scheduledStartAt, "scheduledStartAt denormalized");
 
@@ -263,52 +263,68 @@ describe("startTrip (code-gated status flip, TravAcser-driven)", () => {
 });
 
 describe("completeTrip (ends a started trip + bills from startedAt)", () => {
-  it("bills from the confirmed startedAt (not scheduledStartAt) and completes the request", async () => {
-    await db.doc("requests/r1").set({requesterId: "alice", status: "assigned"});
+  it("bills each TravAcser from their startedAt with the split rate + ₹100 travel", async () => {
+    await db.doc("requests/r1").set({requesterId: "alice", status: "assigned", numTravellers: 1, numTravAcsers: 1});
     await db.doc("requests/r1/assignments/vol").set({
       volunteerId: "vol", requesterId: "alice", tripStatus: "started",
-      startedAt: Timestamp.fromMillis(Date.now() - 100 * 60000), // ~100 min → block 4 (91-120)
+      startedAt: Timestamp.fromMillis(Date.now() - 100 * 60000), // 100 min → billedHours 1.5
       // scheduledStartAt is deliberately earlier — billing must ignore it.
       scheduledStartAt: Timestamp.fromMillis(Date.now() - 3 * HOUR),
     });
 
     const res: any = await completeTrip(call({requestId: "r1", volunteerId: "vol"}, "vol"));
     assert.equal(res.code, "COMPLETED");
-    // 100 min → ceil(100/30)=4 blocks → ₹280 service + ₹100 travel (first) = ₹380.
-    assert.equal(res.amountInr, 380);
 
     const a = (await db.doc("requests/r1/assignments/vol").get()).data()!;
     assert.equal(a.tripStatus, "completed");
     assert.equal(a.paymentStatus, "pending");
-    assert.equal(a.serviceChargeInr, 280);
+    // 100 min → 1.5 h × ₹149 = 224 (rounded) service + ₹100 travel = ₹324.
+    assert.equal(a.serviceChargeInr, 224);
     assert.equal(a.travelCostInr, 100);
+    assert.equal(a.amountInr, 324);
 
     const r = (await db.doc("requests/r1").get()).data()!;
     assert.equal(r.status, "completed");
-    assert.equal(r.travelCostCharged, true);
   });
 
-  it("charges the flat travel cost only once per trip (on the first completion)", async () => {
-    await db.doc("requests/r1").set({requesterId: "alice", status: "assigned"});
+  it("one party ending concludes the trip for ALL TravAcsers (bills each)", async () => {
+    // 2 travellers, 2 TravAcsers → both serve one traveller (solo ₹149 each).
+    await db.doc("requests/r1").set({requesterId: "alice", status: "assigned", numTravellers: 2, numTravAcsers: 2});
     const base = {
       requesterId: "alice", tripStatus: "started",
-      startedAt: Timestamp.fromMillis(Date.now() - 100 * 60000), // ~100 min → block 4
+      startedAt: Timestamp.fromMillis(Date.now() - 100 * 60000),
       scheduledStartAt: Timestamp.fromMillis(Date.now() - 3 * HOUR),
     };
     await db.doc("requests/r1/assignments/v1").set({volunteerId: "v1", ...base});
     await db.doc("requests/r1/assignments/v2").set({volunteerId: "v2", ...base});
 
-    const first: any = await completeTrip(call({requestId: "r1", volunteerId: "v1"}, "v1"));
-    assert.equal(first.amountInr, 380); // 280 service + 100 travel
+    // v1 ends → v2 is concluded too, without v2 acting.
+    const res: any = await completeTrip(call({requestId: "r1", volunteerId: "v1"}, "v1"));
+    assert.equal(res.code, "COMPLETED");
 
-    const second: any = await completeTrip(call({requestId: "r1", volunteerId: "v2"}, "v2"));
-    assert.equal(second.amountInr, 280); // 280 service, travel already charged
-
+    const a1 = (await db.doc("requests/r1/assignments/v1").get()).data()!;
     const a2 = (await db.doc("requests/r1/assignments/v2").get()).data()!;
-    assert.equal(a2.travelCostInr, 0);
+    assert.equal(a1.tripStatus, "completed");
+    assert.equal(a2.tripStatus, "completed");
+    assert.equal(a1.amountInr, 324); // 1.5h × 149 + 100
+    assert.equal(a2.amountInr, 324);
+
     const r = (await db.doc("requests/r1").get()).data()!;
-    assert.equal(r.travelCostCharged, true);
-    assert.equal(r.status, "completed"); // both done
+    assert.equal(r.status, "completed");
+  });
+
+  it("bills the ₹210 serves-two rate when one TravAcser covers two travellers", async () => {
+    await db.doc("requests/r1").set({requesterId: "alice", status: "assigned", numTravellers: 2, numTravAcsers: 1});
+    await db.doc("requests/r1/assignments/vol").set({
+      volunteerId: "vol", requesterId: "alice", tripStatus: "started",
+      startedAt: Timestamp.fromMillis(Date.now() - 100 * 60000),
+      scheduledStartAt: Timestamp.fromMillis(Date.now() - 3 * HOUR),
+    });
+    await completeTrip(call({requestId: "r1", volunteerId: "vol"}, "vol"));
+    const a = (await db.doc("requests/r1/assignments/vol").get()).data()!;
+    // 1.5h × ₹210 = 315 service + ₹100 travel = ₹415.
+    assert.equal(a.serviceChargeInr, 315);
+    assert.equal(a.amountInr, 415);
   });
 
   it("cannot end a trip that has not been started", async () => {
@@ -381,6 +397,19 @@ describe("rescheduleTrip", () => {
         scheduledStartAtMs: newMs,
       }, "alice")),
       /already started/i
+    );
+  });
+  it("rejects a new time beyond the day-after window", async () => {
+    await approvedVolunteer("vol");
+    await broadcastRequest("r1");
+    await acceptRequest(call({requestId: "r1"}, "vol"));
+    const farMs = Date.now() + 5 * 24 * HOUR; // 5 days out
+    await assert.rejects(
+      () => rescheduleTrip(call({
+        requestId: "r1", scheduledDateMs: farMs, startTime: "14:00",
+        scheduledStartAtMs: farMs,
+      }, "alice")),
+      /day after tomorrow|create a new trip/i
     );
   });
 });

@@ -28,8 +28,11 @@ Accessibility-first mobile app pairing **visually-impaired Users** ("requester")
 Firebase backend (Phone-OTP Auth, Firestore, Cloud Functions, FCM, Crashlytics). Project
 `travacs-dev`; callables in `asia-south2`, scheduled functions in `asia-south1`.
 
-**Pricing (current):** service charge **₹140/hr billed in 30-min blocks rounded UP** (`70 ×
-ceil(minutes/30)`) **+ a flat ₹100 travel cost once per trip** (not per TravAcser). See §9.
+**Pricing (current):** service charge **₹149/hr per TravAcser serving 1 traveller, ₹210/hr serving 2**
+(one TravAcser assists up to two people); **travel ₹100 per TravAcser** (× number of TravAcsers). Minimum
+1-hour bill; after the first hour, extra minutes past each whole hour round ≤14→none, 15–40→+30 min,
+41–60→+1 h. **TEST PHASE: only ₹1 is collected at checkout** (real amount stays on the doc + in history).
+See §9.
 
 ### Roles & terminology (wire value vs label)
 `UserRole` wire values stay `requester`/`volunteer`/`admin`; **user-facing labels are
@@ -97,7 +100,7 @@ Routes: `/splash`, `/auth/phone`, `/auth/otp?phone=…`, `/complete-profile`, `/
 | Path | Written by | Key fields |
 |---|---|---|
 | `profiles/{uid}` | client (editable) + functions (protected) | `role`, `fullName`, `gender?`, `dateOfBirth?`, `phone?`, `isActive`, `serviceArea` (state), `serviceCity` (matching key), `ratingAvg`, `ratingCount`; **volunteer:** `address?`, `verificationStatus`, `verifiedBy?`, `verifiedAt?`, `rejectionReason?`; **requester:** `homeLocationText?` |
-| `requests/{id}` | client `create`; requester may only `cancel`; all else functions | `requesterId`, `requesterName?`, `volunteerId`(null), `status`, `serviceArea`, `serviceCity`, `acceptedCount`, `numTravellers`, `numTravAcsers`, `genderPreference`, `requesterGender?`, `genderRestricted`, `genderWidened`, `genderWidenAt?`, `scheduledDate`, `startTime`, `scheduledStartAt`, `expectedDurationMinutes`, `meetingPoint`, `destination`, `purpose?`, `specialNote?`, `estimatedAmountInr`, `travelCostCharged?`, `noTravAcserNotifiedAt?`, `cancelReason?`, `createdAt`, `updatedAt` |
+| `requests/{id}` | client `create`; requester may only `cancel`; all else functions | `requesterId`, `requesterName?`, `volunteerId`(null), `status`, `serviceArea`, `serviceCity`, `acceptedCount`, `numTravellers`, `numTravAcsers`, `genderPreference`, `requesterGender?`, `genderRestricted`, `genderWidened`, `genderWidenAt?`, `scheduledDate`, `startTime`, `scheduledStartAt`, `expectedDurationMinutes`, `meetingPoint`, `destination`, `purpose?`, `specialNote?`, `estimatedAmountInr`, `noTravAcserNotifiedAt?`, `cancelReason?`, `createdAt`, `updatedAt` |
 | `requests/{id}/assignments/{volunteerId}` | **functions only** | contact pair (`volunteerId/Name/Phone`, `requesterId/Name/Phone`), denormalized summary (`scheduledDate`, `startTime`, `scheduledStartAt`, `expectedDurationMinutes`, `meetingPoint`, `destination`, `genderPreference`, `numTravellers`, `amountInrEstimate`), `tripStatus` (assigned/started/completed/closed/cancelled), `acceptedAt`, `startedAt`, `otpStartedAt`, `endedAt`, `durationMinutes`, `serviceChargeInr`, `travelCostInr`, `amountInr`, `paymentStatus`, `requesterPaidAt`, `travAcserReceivedAt`, `razorpayOrderId`, `razorpayKeyId`, `razorpayPaymentId`, `rescheduleStatus`, `rescheduleDeadlineAt`, ratings (`requesterRatingStars/Feedback`, `volunteerRatingStars/Feedback`) |
 | `devices/{uid}/tokens/{token}` | client (self) | `platform`, `updatedAt` (FCM tokens) |
 | `tripLogs/{id}` | functions only (`logManualTrip`) | admin telemetry (manual + future app trips) |
@@ -111,10 +114,11 @@ Routes: `/splash`, `/auth/phone`, `/auth/otp?phone=…`, `/complete-profile`, `/
 
 ## 6. Domain entities & enums (`domain/entities/`)
 - **`Request`** — request fields above + **static billing helpers** (source of truth mirrored on the
-  server): `billingBlocks(min)=ceil(min/30)` (min 1), `billableHours(min)=blocks/2`,
-  `serviceCharge(min)=70×blocks`, `computeEstimate(min,n)=serviceCharge(min)×n+100`,
-  `suggestedTravAcsers(t)=(t+1)~/2`. Getters: `slotsRemaining=(numTravAcsers-acceptedCount).clamp`,
-  `isFull`, `durationHours`.
+  server): `billedHours(min)` (min 1 h, then per-hour rounding ≤14→0, 15–40→+0.5, 41–60→+1),
+  `hourlyRateFor(travellersServed)` (₹149 solo / ₹210 pair), `pairServingCount(travellers, travAcsers)`
+  = `clamp(travellers − travAcsers, 0, travAcsers)`, `computeEstimate(min, numTravellers,
+  numTravAcsers)` = `billedHours × (pair×210 + solo×149) + 100×numTravAcsers`,
+  `suggestedTravAcsers(t)=(t+1)~/2`. Getters: `slotsRemaining`, `isFull`, `durationHours`.
 - **`Assignment`** — one TravAcser's trip slice. Getters: `ratedByRequester/Volunteer`,
   `needsRescheduleConfirm = rescheduleStatus=='pending'`, `effectiveStartAt = scheduledStartAt ??
   combineDateAndTime(...)`, `startOtp = tripStartOtp(...)` (§8), `isInProgress(now)=tripStatus==started`,
@@ -154,6 +158,8 @@ Routes: `/splash`, `/auth/phone`, `/auth/otp?phone=…`, `/complete-profile`, `/
 | `myAssignmentsProvider` | StreamProvider | TravAcser's assignments via `collectionGroup('assignments')` where `volunteerId==uid` |
 | `availableRequestsProvider` | StreamProvider | open requests in city, filtered (see below) |
 | `requestAssignmentsProvider` | StreamProvider.family<_,requestId> | assignments of one request (requester view) |
+| `myRequesterAssignmentsProvider` | StreamProvider | requester's assignments across all their requests (collection-group) |
+| `myPendingDuesProvider` | Provider | requester's completed-but-unpaid assignments (dues); blocks new request creation |
 | `activeTripsProvider` | StreamProvider | admin: all broadcast/assigned/started, ordered by `scheduledStartAt` |
 | `pendingVolunteersProvider` | StreamProvider | admin: volunteers awaiting verification |
 | `functionsProvider` | Provider | `FirebaseFunctions.instanceFor(region:'asia-south2')` |
@@ -197,19 +203,28 @@ Repository→callable mapping (`FirestoreRequestRepository`): `acceptRequest`, `
 ---
 
 ## 9. Billing / pricing model (client + server must match)
-- Constants (`constants.dart`): `hourlyRateInr=140`, `billingBlockMinutes=30`, `travelCostInr=100`,
-  `tripOtpLength=4`, `tripOtpSalt='travacs-trip-otp-v1'`, `loginOtpLength=6`,
+- Constants (`constants.dart`): `rateSoloInr=149`, `ratePairInr=210`, `travelCostInr=100` (**per
+  TravAcser**), `tripOtpLength=4`, `tripOtpSalt='travacs-trip-otp-v1'`, `loginOtpLength=6`,
   `otpResendCooldownSeconds=30`, `appName='TravAcs'`, `appVersion='1.0.0'`, placeholder support
-  email/phone.
-- **Estimate (at create + accept):** `serviceCharge(min) = 70 × ceil(min/30)` per TravAcser;
-  `estimate = serviceCharge × numTravAcsers + 100`. Accept-time `amountInrEstimate` on each
-  assignment is **service charge only** (travel is a trip-level line item).
-- **Actual bill (at `completeTrip`):** `minutes = max(1, round((now − startedAt)/60000))`,
-  `serviceInr = 70 × ceil(minutes/30)`, `travelInr = 100` **only if** `request.travelCostCharged` is
-  not already true (first assignment to complete), else 0; `amountInr = serviceInr + travelInr`. When
-  travel is charged, `request.travelCostCharged` is set true in the same transaction (once-per-trip
-  guard, retry-safe). Worked example: 12:48→17:46 = 4h58m → `ceil(298/30)=10` blocks → ₹700 + ₹100 =
-  **₹800**.
+  email/phone. Server mirrors: `RATE_SOLO_INR=149`, `RATE_PAIR_INR=210`, `TRAVEL_COST_INR=100`,
+  `TEST_BILL_INR=1`.
+- **Billed hours** (`billedHours(min)`): minimum **1 hour**; after the first hour, extra minutes past
+  each whole hour round ≤14→0, 15–40→+0.5 h, 41–60→+1 h (repeats every hour). E.g. 1h14m→1, 1h15m–
+  1h40m→1.5, 1h41m–2h→2.
+- **Per-TravAcser rate:** ₹149/hr serving one traveller, ₹210/hr serving two. Across the N
+  TravAcsers on a trip, `pairCount = clamp(numTravellers − N, 0, N)` bill ₹210, the rest ₹149
+  (deterministic order = sort by volunteerId).
+- **Estimate (create):** `billedHours(expDur) × (pair×210 + solo×149) + 100 × numTravAcsers`.
+  Accept-time `amountInrEstimate` per assignment = `billedHours(expDur) × 149 + 100` (assumes solo;
+  the ₹210 split resolves only at completion when N is known).
+- **Actual bill (at `completeTrip`, per assignment):** `minutes = max(1, round((now −
+  startedAt)/60000))`, `serviceInr = round(billedHours(minutes) × rate)`, `travelInr = 100` (always,
+  per TravAcser); `amountInr = serviceInr + travelInr`. All started assignments are billed together
+  (see §10 conclude-all). Worked example: 2 travellers, 1 TravAcser, 100 min → `billedHours=1.5` ×
+  ₹210 = ₹315 + ₹100 = **₹415**.
+- **TEST PHASE:** `createRazorpayOrder` overrides the checkout amount to **₹1** (`TEST_BILL_INR`); the
+  real `amountInr` stays on the assignment (Trip History + estimates show real amounts). Removing the
+  override needs no data cleanup.
 
 ---
 
@@ -217,7 +232,7 @@ Repository→callable mapping (`FirestoreRequestRepository`): `acceptRequest`, `
 Two statuses evolve: the **request** `status` and each **assignment** `tripStatus`.
 
 ```
-request.status:  broadcast ──accept(fills all slots)──► assigned ──(all assignments completed)──► completed
+request.status:  broadcast ──accept(fills all slots)──► assigned ──(one party ends → ALL billed)──► completed
                     │  ▲                                    │  ▲                                     
      cancel/expire  │  │ reopen (a TravAcser cancels/       │  │ reopen (reschedule-decline/expire)  
                     ▼  │  declines/reschedule-expires)      ▼  │                                      
@@ -241,29 +256,30 @@ Key rules enforced across server + UI:
   **but can never be ended before `scheduledStartAt`** (`completeTrip` `EARLY_END`).
 - **One accepted trip per IST day** per TravAcser (`acceptRequest` `ONE_PER_DAY`, active
   assignments only). Known theoretical millisecond race (documented gap).
-- **Request marked `completed`** by `completeTrip` only when no assignment is `assigned`/`started` and
-  at least one is `completed`/`closed`.
+- **One party ending concludes the trip for ALL** — `completeTrip` bills **every** `started`
+  assignment together, closes any still-`assigned` (unstarted) ones, and marks the request
+  `completed` in the same transaction. Individual TravAcsers do not each end their own slice.
 
 ---
 
 ## 11. Cloud Functions (`firebase/functions/src/index.ts`) — 15 functions
 Callables region `asia-south2` (`REGION`); scheduled region `asia-south1` (`SCHEDULER_REGION`).
-Shared helpers: `serviceChargeInr`, `istDateKey` (IST day, UTC+5:30), `sendMulticastChunked`
-(chunks 500/token, prunes dead tokens), `pushToUser`, `paymentStatusOf`.
+Shared helpers: `billedHours`, `pairServingCount`, `istDateKey` (IST day, UTC+5:30),
+`sendMulticastChunked` (chunks 500/token, prunes dead tokens), `pushToUser`, `paymentStatusOf`.
 
 | Function | Trigger | Behavior & guards (error `code`s) |
 |---|---|---|
 | **onRequestCreated** | onCreate `requests/{id}` | Only if `status=='broadcast'` and `serviceCity` set. If `genderRestricted && requesterGender`: stamp `genderWidenAt = createTime + 0.9×(scheduledStartAt−createTime)` and filter the volunteer query to same gender. Fan-out FCM (`new_request`) to approved+active TravAcsers in the same city, chunked, dead-token pruned. |
-| **acceptRequest** | onCall (TravAcser) | Caller must be approved+active volunteer (`NOT_APPROVED`). Transaction: request must be `broadcast` (`ALREADY_TAKEN`), same city (`WRONG_CITY`), gender gate (`GENDER_MISMATCH` if strict + known requester gender + not widened + different gender), not already live-accepted (`ALREADY_ACCEPTED` — a *cancelled* prior assignment does NOT block re-accept), slots left (`ALREADY_TAKEN`), one-per-IST-day (`ONE_PER_DAY`). Writes the assignment (denormalized, `amountInrEstimate`=service charge, `tripStatus:'assigned'`), increments `acceptedCount`, flips request to `assigned` when full. Pushes requester (`assignment`). |
+| **acceptRequest** | onCall (TravAcser) | Caller must be approved+active volunteer (`NOT_APPROVED`). Transaction: request must be `broadcast` (`ALREADY_TAKEN`), same city (`WRONG_CITY`), gender gate (`GENDER_MISMATCH` if strict + known requester gender + not widened + different gender), not already live-accepted (`ALREADY_ACCEPTED` — a *cancelled* prior assignment does NOT block re-accept), slots left (`ALREADY_TAKEN`), one-per-IST-day (`ONE_PER_DAY`). Writes the assignment (denormalized, `amountInrEstimate = billedHours(dur)×149 + 100`, `tripStatus:'assigned'`), increments `acceptedCount`, flips request to `assigned` when full. Pushes requester (`assignment`). |
 | **startTrip** | onCall (TravAcser only) | `uid==volunteerId`. Assignment must be `assigned` (`INVALID_STATE`). Sets `tripStatus:'started'`, `startedAt`, `otpStartedAt`. Pushes User (`trip_started`). (Code validation is client-side.) |
-| **completeTrip** | onCall (TravAcser or requester) | Assignment must be `started` (`NOT_STARTED`). Reject if `now < scheduledStartAt` (`EARLY_END`). Bills from `startedAt`; writes `serviceChargeInr`, `travelCostInr` (once/trip via `travelCostCharged`), `amountInr`, `tripStatus:'completed'`, `paymentStatus:'pending'`. Marks request `completed` when no active assignment remains. Pushes both (`trip_completed`). |
-| **rescheduleTrip** | onCall (requester only) | New start must be `now+1min … now+90d` (`BAD_SCHEDULE`). Request must be `broadcast`/`assigned` (`INVALID_STATE`). Reject if accepted & original time passed, or any assignment `started` (`ALREADY_STARTED`). Updates request + each `assigned` assignment's schedule, sets each `rescheduleStatus:'pending'` + `rescheduleDeadlineAt = now + 10%×remaining`, clears `noTravAcserNotifiedAt`, recomputes gender widen window. Pushes each TravAcser (`trip_rescheduled`). |
+| **completeTrip** | onCall (TravAcser or requester) | Caller's assignment must be `started` (`NOT_STARTED`); reject if `now < scheduledStartAt` (`EARLY_END`). **Concludes for ALL:** bills every `started` assignment (each `serviceInr = round(billedHours(minutes) × rate)` with the ₹210/₹149 split, `travelCostInr=100`, `amountInr`, `paymentStatus:'pending'`), closes any still-`assigned` ones, marks the request `completed`. Pushes requester + each billed TravAcser (`trip_completed`). Returns `{ok, code}` (no amount). |
+| **rescheduleTrip** | onCall (requester only) | New start must be `now+1min … now+3d` — beyond the day-after window rejects (`BAD_SCHEDULE`, "create a new trip"). Request must be `broadcast`/`assigned` (`INVALID_STATE`). Reject if accepted & original time passed, or any assignment `started` (`ALREADY_STARTED`). Updates request + each `assigned` assignment's schedule, sets each `rescheduleStatus:'pending'` + `rescheduleDeadlineAt = now + clamp(10%×remaining, 10min, remaining)` (min 10-min window so a short-notice reschedule isn't released almost instantly), clears `noTravAcserNotifiedAt`, recomputes gender widen window. Pushes each TravAcser (`trip_rescheduled`). |
 | **respondReschedule** | onCall (TravAcser) | Assignment `rescheduleStatus` must be `pending` (`NO_PENDING`). accept=true → `confirmed`; accept=false → `cancelled`+`declined`, decrement `acceptedCount`, reopen `assigned→broadcast`, push requester (`trip_cancelled`). |
 | **cancelTrip** | onCall (either party) | Request not `completed`/`cancelled` (`INVALID_STATE`). **Requester:** reject if any assignment `started` (`TRIP_STARTED`); else request→`cancelled`, all active assignments→`cancelled`, push each TravAcser. **TravAcser:** their assignment must not be `started` (`TRIP_STARTED`) and must be `assigned` (`INVALID_STATE`); →`cancelled`, decrement count, reopen, push requester. |
 | **markPaid** | onCall (requester only) | Assignment must be `completed` (`INVALID_STATE`). Sets `requesterPaidAt` (idempotent), recomputes `paymentStatus`. Push TravAcser (`payment_marked`). |
 | **markReceived** | onCall (TravAcser) | Sets `travAcserReceivedAt`, recomputes `paymentStatus`. |
 | **submitRating** | onCall (either party) | Stars integer 1–5, feedback ≤1000 chars. Assignment `completed` (`INVALID_STATE`). Derives rater/ratee; blocks a second rating from the same side (`ALREADY_RATED`); writes rating onto the assignment and updates ratee `ratingAvg`/`ratingCount` (rolling, rounded to 0.1). |
-| **createRazorpayOrder** | onCall (requester only) | secrets `RAZORPAY_KEY_ID/SECRET`. Assignment `completed`, not paid (`ALREADY_PAID`), `amountInr>0` (`NO_AMOUNT`). **Reuses stored order only if `razorpayKeyId==current keyId`** (else mints fresh — auto-heals stale/test-key orders); stamps `razorpayOrderId`+`razorpayKeyId`. Returns `{orderId, keyId, amountPaise, amountInr, currency}`. |
+| **createRazorpayOrder** | onCall (requester only) | secrets `RAZORPAY_KEY_ID/SECRET`. Assignment `completed`, not paid (`ALREADY_PAID`), real `amountInr>0` (`NO_AMOUNT`). **TEST PHASE: charges/returns `TEST_BILL_INR`=₹1** (checkout shows ₹1; the stored real `amountInr` is untouched). **Reuses stored order only if `razorpayKeyId==current keyId`** (else mints fresh — auto-heals stale/test-key orders); stamps `razorpayOrderId`+`razorpayKeyId`. Returns `{orderId, keyId, amountPaise, amountInr(=1), currency}`. |
 | **verifyRazorpayPayment** | onCall (requester only) | secret `RAZORPAY_KEY_SECRET`. HMAC-SHA256 verify `orderId|paymentId` (timing-safe) (`BAD_SIGNATURE`). Assignment `completed`, `razorpayOrderId` matches (`ORDER_MISMATCH`). Sets `requesterPaidAt`+ids, recomputes `paymentStatus`. Push TravAcser. |
 | **setVerification** | onCall (admin claim only) | Target profile role `volunteer`. Sets `verificationStatus` approved/rejected + `verifiedBy/At` + `rejectionReason`. Push volunteer (`verification_result`). |
 | **logManualTrip** | onCall (admin claim only) | Requires `userDetails`, `travAcserDetails`, `tripDateMs`. Adds a `tripLogs` doc. |
@@ -288,8 +304,9 @@ Helpers: `isSignedIn`, `isAdmin` (`token.admin==true`), `profileData(uid)`, `isA
   `status∈{draft,broadcast}` and `acceptedCount==0`, and only to set `status=='cancelled'` (i.e.
   cancel-before-any-accept). No delete.
 - **assignments (nested + collection-group):** direct read by that TravAcser, the requester, or admin;
-  collection-group read gated on `resource.data.volunteerId==uid` (field, not doc id). **Writes:
-  false** (functions only).
+  collection-group read gated on `resource.data.volunteerId==uid` **or** `resource.data.requesterId==uid`
+  (fields, not doc id) — so a TravAcser lists their own trips and a requester lists their own trips'
+  assignments (used for the pending-dues check). **Writes: false** (functions only).
 - **trips / ratings:** read by parties/admin; writes false. **tripLogs:** admin read; writes false.
 - **devices/{uid}/tokens/{token}:** read+write self.
 
@@ -298,9 +315,9 @@ Helpers: `isSignedIn`, `isAdmin` (`token.admin==true`), `profileData(uid)`, `isA
 ## 13. Composite indexes (`firestore.indexes.json`)
 requests: `status+createdAt↓`, `status+serviceCity+createdAt↓`, `requesterId+createdAt↓`,
 `volunteerId+status`, `status+scheduledStartAt`, `genderRestricted+genderWidened`. assignments
-(collection-group): `rescheduleStatus+rescheduleDeadlineAt`; field override `volunteerId`
-(collection + collection-group). profiles: `role+verificationStatus+isActive+serviceCity` (+`gender`),
-`role+verificationStatus`.
+(collection-group): `rescheduleStatus+rescheduleDeadlineAt`; field overrides `volunteerId` **and
+`requesterId`** (collection + collection-group). profiles:
+`role+verificationStatus+isActive+serviceCity` (+`gender`), `role+verificationStatus`.
 
 ---
 
@@ -319,12 +336,12 @@ requests: `status+createdAt↓`, `status+serviceCity+createdAt↓`, `requesterId
 
 ### 14.2 Profile
 - **CompleteProfileScreen:** `SegmentedButton<UserRole>` (requester/volunteer). Fields: full name
-  (required), state (required; changing it resets city), city (required; disabled until state), gender
-  (optional), DOB (optional; picker default now−25y, range now−100y…now), and **address (required only
-  for volunteer)** / homeLocationText (requester only). Submit reads
-  `firebaseAuth.currentUser?.phoneNumber`, calls `profileController.save(...)` (address only if
-  volunteer; homeLocationText only if requester); success announces "Profile created…". Disabled while
-  loading.
+  (required), state (required; changing it resets city), city (required; disabled until state),
+  **gender (REQUIRED — validator "Please select your gender")**, DOB (optional; picker default now−25y,
+  range now−100y…now), and **address (required only for volunteer)** / homeLocationText (requester
+  only). Submit reads `firebaseAuth.currentUser?.phoneNumber`, calls `profileController.save(...)`
+  (address only if volunteer; homeLocationText only if requester); success announces "Profile
+  created…". Disabled while loading.
 - **ProfileTabScreen:** shows Name, Role, Phone?, Gender?, region (`city, state` or "Not set"),
   Rating. Region tile opens `_RegionPickerSheet` (state dropdown + city radios; Save enabled only when
   both chosen) → `setServiceArea`. **Volunteer-only:** `_VerificationCard` (approved/pending/rejected
@@ -353,16 +370,21 @@ requests: `status+createdAt↓`, `status+serviceCity+createdAt↓`, `requesterId
   `canReschedule = !anyStarted && (acceptedCount==0 || now.isBefore(scheduledStartAt))`; **Cancel** if
   `!anyStarted`. `anyStarted = any active assignment tripStatus==started`. Cancel confirm →
   `notifier.cancel(id)` if `acceptedCount==0 && status.isCancellable` else `cancelTrip(id)`. Reschedule
-  → date+time pickers → `reschedule(...)`. Per-assignment tile: shows start-code box
-  (`_StartCodeDisplay`, "Read this code to your TravAcser") until in progress; when in progress shows
-  "End trip & pay" enabled only when `canEnd = inProgress && !now.isBefore(effectiveStartAt)` →
-  `completeTrip(...)` then chains `startTripPayment(...)`.
+  → **Today/Tomorrow/Day-after chip dialog** (no custom date beyond day-after; advises "create a new
+  trip") + time picker → `reschedule(...)`. A **Get help** button (→ `ContactUsScreen`) also sits in
+  the actions `Wrap`. Per-assignment tile: shows start-code box (`_StartCodeDisplay`, "Read this code
+  to your TravAcser") until in progress; when in progress shows "End trip & pay" enabled only when
+  `canEnd = inProgress && !now.isBefore(effectiveStartAt)` → `completeTrip(...)` (concludes for all)
+  then chains `startTripPayment(...)`.
+- **NewRequestScreen (dues guard):** on Submit, if `myPendingDuesProvider` is non-empty → alert
+  dialog "Alert, you have pending dues, kindly clear them before creating new ones." (+ announce) and
+  the request is NOT created. Otherwise proceeds to the review sheet.
 - **Requester TripHistoryScreen:** `myRequestsProvider`, terminal statuses only
   (completed/closed/cancelled), `HistoryControls` (filter all/completed/cancelled; sort newest/oldest;
   page size 15). Card: `when · destination`, "Cancelled" or `_Assignments` (completed/closed rows:
-  `volunteerName · ₹amountInr · paymentStatus.label`, breakdown). Buttons: **Make payment** if
-  `requesterPaidAt==null` → `startTripPayment(...)`; **Rate TravAcser** if `!ratedByRequester` →
-  `showRatingSheet` → `submitRating`.
+  `volunteerName · ₹amountInr · paymentStatus.label`, breakdown). Buttons: **Get help** (→ Contact
+  us), **Make payment** if `requesterPaidAt==null` → `startTripPayment(...)` (collects ₹1 in test
+  phase); **Rate TravAcser** if `!ratedByRequester` → `showRatingSheet` → `submitRating`.
 
 ### 14.4 TravAcser side
 - **AvailableRequestsScreen:** `!approved` → pending-verification message (support email/phone);
@@ -372,7 +394,8 @@ requests: `status+createdAt↓`, `status+serviceCity+createdAt↓`, `requesterId
 - **MyTripsScreen:** `myAssignmentsProvider` filtered to `isActive`. `_TripCard` header: date·time +
   `_StatusPill` (In progress / Ready to start / Scheduled). Reschedule banner if
   `needsRescheduleConfirm` (Continue → `respondReschedule(true)`, Cancel trip → `respondReschedule
-  (false)`). Details + User contact (Semantics). Flags: `inProgress=isInProgress(now)`,
+  (false)`). Actions `Wrap` includes **Get help** (→ Contact us). Details + User contact (Semantics).
+  Flags: `inProgress=isInProgress(now)`,
   `canStart=!inProgress && !needsRescheduleConfirm`, `canEnd=inProgress &&
   !now.isBefore(effectiveStartAt)`. **Start:** `_StartCodeEntry` (shown when `canStart`) →
   `_StartCodeDialog` (numeric, `maxLength=tripOtpLength=4`; wrong length / mismatch → inline error +
@@ -382,8 +405,9 @@ requests: `status+createdAt↓`, `status+serviceCity+createdAt↓`, `requesterId
 - **TravAcser TripHistoryScreen:** terminal assignments; earnings summary (`totalBilled` = Σ
   amountInr of non-cancelled; `totalReceived` = Σ where `paymentStatus==confirmed`). Filter/sort/page
   15. Card: `when · destination`, "Cancelled" or `duration min · ₹amountInr earned`, breakdown,
-  payment label. Buttons: **Mark received** if `travAcserReceivedAt==null` → `markReceived`; **Rate the
-  User** if `!ratedByVolunteer` → `submitRating`.
+  payment label. A **Get help** button (→ Contact us) shows on every card (incl. cancelled). Buttons:
+  **Mark received** if `travAcserReceivedAt==null` → `markReceived`; **Rate the User** if
+  `!ratedByVolunteer` → `submitRating`.
 
 ### 14.5 Shell, Admin, Menu
 - **AppShell:** in `initState` (post-frame) registers FCM token, subscribes to token-refresh and
@@ -427,21 +451,21 @@ codes/`toString()`/stack live only in `debugDetail`. `mapErrorToFailure()` maps 
 ## 17. Regression safety net (tests)
 Run: `cd app; flutter analyze; flutter test` (**73 tests**) and, from `firebase/`, the emulator suites
 (`npx -y firebase-tools@13 emulators:exec --only firestore --project demo-travacs "npm --prefix
-functions test"` = **31 functions tests**; `… "npm --prefix rules-tests test"` = **30 rules tests**).
+functions test"` = **33 functions tests**; `… "npm --prefix rules-tests test"` = **32 rules tests**).
 
 | Suite | Guards |
 |---|---|
-| `app/test/domain_test.dart` | billing math (`serviceCharge`, `computeEstimate` incl. the ₹800 example), `suggestedTravAcsers`, constants (`hourlyRateInr==140`, `travelCostInr==100`), enum mapping |
+| `app/test/domain_test.dart` | billing math (`billedHours` rounding, `computeEstimate` new signature incl. ₹149/₹210 + ₹100/TravAcser examples, `pairServingCount`), `suggestedTravAcsers`, constants (`rateSoloInr==149`, `ratePairInr==210`, `travelCostInr==100`), enum mapping |
 | `app/test/provider_test.dart` | `availableRequestsProvider` filtering incl. gender feed hiding |
-| `app/test/repository_test.dart` | create writes `estimatedAmountInr==380`, error→Failure mapping, callable wiring |
+| `app/test/repository_test.dart` | create writes `estimatedAmountInr==520`, error→Failure mapping, callable wiring |
 | `app/test/accessibility_test.dart` | `meetsGuideline` (tap-target/labeled/contrast) + semantic labels — **`RequestCard` MergeSemantics is guarded here; do not remove it** |
 | `app/test/my_requests_flow_test.dart` | compact list → detail navigation |
 | `app/test/widget_flow_test.dart` | rating sheet gating, OTP entry short-code rejection, resend cooldown |
 | `app/test/error_mapper_test.dart` | no raw text leaks; code→Failure mapping |
 | `app/test/trip_otp_test.dart` | deterministic start-code |
 | `app/test/menu_test.dart`, `messaging_repository_test.dart`, `widget_test.dart` | drawer, FCM token register/unregister, smoke |
-| `firebase/functions/test/index.test.ts` (31) | accept FCFS + guards (gender, one-per-day), start/complete billing incl. once-per-trip travel, cancel-started reject, reschedule guards, two-sided payment, ratings, razorpay verify, admin gates |
-| `firebase/rules-tests/test/firestore.test.js` (30) | default-deny, function-only writes, region + gender read-gating, cancel-before-accept |
+| `firebase/functions/test/index.test.ts` (33) | accept FCFS + guards (gender, one-per-day), complete billing (split rate + ₹100/TravAcser) + **conclude-all** + pair rate, EARLY_END, cancel-started reject, reschedule guards + day-after bound, two-sided payment, ratings, razorpay verify, admin gates |
+| `firebase/rules-tests/test/firestore.test.js` (32) | default-deny, function-only writes, region + gender read-gating, **requester collection-group read**, cancel-before-accept |
 
 ---
 
@@ -456,14 +480,22 @@ functions test"` = **31 functions tests**; `… "npm --prefix rules-tests test"`
    writes exist: create request, and cancel-before-any-accept.
 4. **Started trip is locked** — no cancel/reschedule once an assignment is `started`; cannot end
    before `scheduledStartAt`; may start early.
-5. **Travel cost once per trip** (`travelCostCharged`); service charge = ₹140/hr in 30-min blocks
-   rounded up. Client and server formulas must stay identical.
-6. **Gender restriction** — only `strict_same_gender` + known requester gender restricts, until the
+5. **Billing** — service charge ₹149/hr (serves 1) / ₹210/hr (serves 2) per TravAcser via even
+   split; billed hours = min 1 h + per-hour rounding (≤14→0, 15–40→+30 m, 41–60→+1 h); travel ₹100
+   **per TravAcser**. Client and server formulas must stay identical. **TEST PHASE: checkout collects
+   ₹1** while the stored `amountInr` stays real.
+6. **One party ends → concluded for all** — `completeTrip` bills every `started` assignment and
+   completes the request in one transaction; TravAcsers don't each end their own slice.
+7. **Pending dues block new trips** — a requester with a completed-but-unpaid assignment is blocked
+   at request-submit time (`myPendingDuesProvider`).
+8. **Reschedule window** — Today/Tomorrow/Day-after only (server bound ≤ now+3d); the reschedule
+   hold gives the TravAcser a yes/no window (≥10 min) before the slot reopens.
+9. **Gender restriction** — only `strict_same_gender` + known requester gender restricts, until the
    last 10% of lead time (`widenGenderRequests`). `acceptRequest` is the authoritative gate.
-7. **Region-scoped matching** — a TravAcser only sees/accepts same-`serviceCity` broadcast requests.
-8. **Region pinning** — callables `asia-south2`; scheduled `asia-south1`; client
-   `functionsProvider` must match.
-9. **Secrets never in the repo** — Razorpay/config regenerated locally.
+10. **Region-scoped matching** — a TravAcser only sees/accepts same-`serviceCity` broadcast requests.
+11. **Region pinning** — callables `asia-south2`; scheduled `asia-south1`; client
+    `functionsProvider` must match.
+12. **Profile gender is required.** **Secrets never in the repo** — Razorpay/config regenerated locally.
 
 ---
 

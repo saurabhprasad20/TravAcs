@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/repositories/firestore_request_repository.dart';
 import '../../domain/entities/assignment.dart';
+import '../../domain/entities/enums.dart';
 import '../../domain/entities/request.dart';
 import '../../domain/repositories/request_repository.dart';
 import 'auth_providers.dart';
@@ -85,4 +86,22 @@ final availableRequestsProvider = StreamProvider<List<Request>>((ref) {
 final requestAssignmentsProvider =
     StreamProvider.family<List<Assignment>, String>((ref, requestId) {
   return ref.watch(requestRepositoryProvider).watchRequestAssignments(requestId);
+});
+
+/// The requester's completed-but-unpaid trips ("pending dues"). A User must
+/// clear these before creating a new request. Uses the requester's own
+/// collection-group assignment stream, filtered to completed + not-yet-paid.
+final myPendingDuesProvider = Provider<List<Assignment>>((ref) {
+  final all = ref.watch(myRequesterAssignmentsProvider).value ?? const [];
+  return all
+      .where((a) =>
+          a.tripStatus == TripStatus.completed && a.requesterPaidAt == null)
+      .toList();
+});
+
+/// Live stream of the requester's assignments across all their requests.
+final myRequesterAssignmentsProvider =
+    StreamProvider<List<Assignment>>((ref) {
+  ref.watch(authStateChangesProvider);
+  return ref.watch(requestRepositoryProvider).watchMyRequesterAssignments();
 });

@@ -325,6 +325,22 @@ describe("assignments and secrets (function-only writes)", () => {
       where("volunteerId", "==", "vol"),
     )));
   });
+
+  it("a requester can list assignments across THEIR OWN requests via collectionGroup", async () => {
+    const alice = testEnv.authenticatedContext("alice").firestore();
+    await assertSucceeds(getDocs(query(
+      collectionGroup(alice, "assignments"),
+      where("requesterId", "==", "alice"),
+    )));
+  });
+
+  it("a stranger cannot collectionGroup-read a requester's assignments", async () => {
+    const other = testEnv.authenticatedContext("other").firestore();
+    await assertFails(getDocs(query(
+      collectionGroup(other, "assignments"),
+      where("requesterId", "==", "alice"),
+    )));
+  });
 });
 
 describe("ratings and devices", () => {

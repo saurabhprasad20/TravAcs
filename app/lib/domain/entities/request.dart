@@ -98,44 +98,63 @@ class Request {
   static int suggestedTravAcsers(int travellers) =>
       travellers <= 0 ? 1 : ((travellers + 1) ~/ 2);
 
-  /// Number of billable 30-minute blocks for [durationMinutes], rounded UP to
-  /// the next half hour (minimum one block). A 4h58m trip → 10 blocks (5h).
-  static int billingBlocks(int durationMinutes) {
-    if (durationMinutes <= 0) return 1;
-    final blocks =
-        (durationMinutes + AppConstants.billingBlockMinutes - 1) ~/
-            AppConstants.billingBlockMinutes;
-    return blocks < 1 ? 1 : blocks;
+  /// Billable hours for [durationMinutes] under the company rounding rule:
+  ///   • minimum billing is 1 hour;
+  ///   • after the first hour, extra minutes past each whole hour round as:
+  ///     ≤14 → no charge, 15–40 → +0.5 h, 41–60 → +1 h.
+  /// Applies to every subsequent hour (1h14m→1, 1h15m–1h40m→1.5, 1h41m–2h→2).
+  static double billedHours(int durationMinutes) {
+    if (durationMinutes <= 60) return 1.0;
+    final whole = durationMinutes ~/ 60;
+    final extra = durationMinutes - whole * 60;
+    final add = extra <= 14
+        ? 0.0
+        : extra <= 40
+            ? 0.5
+            : 1.0;
+    return whole + add;
   }
 
-  /// Billable hours (blocks × 0.5) for [durationMinutes], after the half-hour
-  /// round-up. Used to display the charged duration.
-  static double billableHours(int durationMinutes) =>
-      billingBlocks(durationMinutes) / 2.0;
+  /// Per-hour rate for a TravAcser serving [travellersServed] people:
+  /// ₹149/hr for one traveller, ₹210/hr for two.
+  static int hourlyRateFor(int travellersServed) =>
+      travellersServed >= 2 ? AppConstants.ratePairInr : AppConstants.rateSoloInr;
 
-  /// Service charge (one TravAcser's time) for [durationMinutes]: billed at the
-  /// hourly rate in 30-minute blocks rounded UP to the next half hour, i.e.
-  /// `₹70 × ceil(minutes / 30)`.
-  static int serviceCharge(int durationMinutes) =>
-      billingBlocks(durationMinutes) * (AppConstants.hourlyRateInr ~/ 2);
+  /// How many of [numTravAcsers] serve two travellers (the "pair" rate) given
+  /// [numTravellers] on the trip, distributed as evenly as possible (≤2 each).
+  static int pairServingCount(int numTravellers, int numTravAcsers) {
+    if (numTravAcsers <= 0) return 0;
+    final pair = numTravellers - numTravAcsers;
+    return pair.clamp(0, numTravAcsers);
+  }
 
-  /// Estimated bill: the per-TravAcser service charge × number of TravAcsers,
-  /// plus a single flat travel cost for the whole trip.
-  static int computeEstimate(int durationMinutes, int numTravAcsers) =>
-      serviceCharge(durationMinutes) * numTravAcsers +
-      AppConstants.travelCostInr;
+  /// Estimated bill for the whole trip: each TravAcser's billed hours × their
+  /// per-head rate (₹149 solo / ₹210 pair), plus ₹100 travel PER TravAcser.
+  static int computeEstimate(
+      int durationMinutes, int numTravellers, int numTravAcsers) {
+    final hours = billedHours(durationMinutes);
+    final pair = pairServingCount(numTravellers, numTravAcsers);
+    final solo = numTravAcsers - pair;
+    final hourlyTotal = pair * AppConstants.ratePairInr + solo * AppConstants.rateSoloInr;
+    final service = (hours * hourlyTotal).round();
+    final travel = AppConstants.travelCostInr * numTravAcsers;
+    return service + travel;
+  }
+
+  static String _hoursLabel(double hrs) =>
+      hrs == hrs.roundToDouble() ? hrs.toStringAsFixed(0) : hrs.toStringAsFixed(1);
 
   /// Human-readable breakdown of how [estimatedAmountInr] is computed, e.g.
-  /// `"₹140/hr × 5 hr + ₹100 travel"` (or `"× 2 TravAcsers"` when more than
-  /// one). Shown next to the amount so the User can see how it is derived.
+  /// `"1.5 hr · ₹149/hr × 1 + ₹100 travel × 1"`. Shown next to the amount so the
+  /// User can see how it is derived.
   String get estimateBreakdown {
-    final hrs = billableHours(expectedDurationMinutes);
-    final hrsLabel =
-        hrs == hrs.roundToDouble() ? hrs.toStringAsFixed(0) : hrs.toStringAsFixed(1);
-    final perCount = numTravAcsers == 1
-        ? ''
-        : ' × $numTravAcsers TravAcsers';
-    return '₹${AppConstants.hourlyRateInr}/hr × $hrsLabel hr$perCount'
-        ' + ₹${AppConstants.travelCostInr} travel';
+    final hrs = billedHours(expectedDurationMinutes);
+    final pair = pairServingCount(numTravellers, numTravAcsers);
+    final solo = numTravAcsers - pair;
+    final parts = <String>[];
+    if (solo > 0) parts.add('₹${AppConstants.rateSoloInr}/hr × $solo');
+    if (pair > 0) parts.add('₹${AppConstants.ratePairInr}/hr × $pair');
+    return '${_hoursLabel(hrs)} hr · ${parts.join(' + ')}'
+        ' + ₹${AppConstants.travelCostInr} travel × $numTravAcsers';
   }
 }

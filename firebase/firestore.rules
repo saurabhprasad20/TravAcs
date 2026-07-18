@@ -121,13 +121,14 @@ service cloud.firestore {
     }
 
     // Collection-group rule so a TravAcser can list THEIR OWN assignments via
-    // `collectionGroup('assignments')`. It must gate on a FIELD the query filters
-    // on (`volunteerId`) — during a list the path wildcard `vid` is null, so a
-    // doc-id check would error. A nested match alone can't authorize a
-    // collection-group query.
+    // `collectionGroup('assignments')`, and a requester can list the assignments
+    // across THEIR OWN requests (to detect unpaid dues). It must gate on FIELDS
+    // the query filters on (`volunteerId` / `requesterId`) — during a list the
+    // path wildcard `vid` is null, so a doc-id check would error.
     match /{path=**}/assignments/{vid} {
       allow read: if isSignedIn()
-        && resource.data.volunteerId == request.auth.uid;
+        && (resource.data.volunteerId == request.auth.uid
+            || resource.data.requesterId == request.auth.uid);
       allow write: if false;
     }
 

@@ -8,6 +8,7 @@ import '../../../domain/entities/assignment.dart';
 import '../../../domain/entities/enums.dart';
 import '../../../domain/entities/request.dart';
 import '../../providers/request_providers.dart';
+import '../menu/info_screens.dart';
 import '../shared/history_controls.dart';
 import '../shared/rating_sheet.dart';
 import '../shared/trip_payment.dart';
@@ -167,6 +168,14 @@ class _AssignmentRow extends ConsumerWidget {
             spacing: 8,
             runSpacing: 4,
             children: [
+              OutlinedButton.icon(
+                icon: const Icon(Icons.help_outline, semanticLabel: 'Get help'),
+                label: const Text('Get help'),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                      builder: (_) => const ContactUsScreen()),
+                ),
+              ),
               if (a.requesterPaidAt == null)
                 OutlinedButton.icon(
                   icon: const Icon(Icons.payments_outlined),
