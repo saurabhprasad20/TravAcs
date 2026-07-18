@@ -89,19 +89,11 @@ final requestAssignmentsProvider =
 });
 
 /// The requester's completed-but-unpaid trips ("pending dues"). A User must
-/// clear these before creating a new request. Uses the requester's own
-/// collection-group assignment stream, filtered to completed + not-yet-paid.
-final myPendingDuesProvider = Provider<List<Assignment>>((ref) {
-  final all = ref.watch(myRequesterAssignmentsProvider).value ?? const [];
+/// clear these before creating a new request. Payment is now per-trip, so this
+/// reads the requester's own requests (not per-assignment).
+final myPendingDuesProvider = Provider<List<Request>>((ref) {
+  final all = ref.watch(myRequestsProvider).value ?? const [];
   return all
-      .where((a) =>
-          a.tripStatus == TripStatus.completed && a.requesterPaidAt == null)
+      .where((r) => r.status == RequestStatus.completed && !r.isPaid)
       .toList();
-});
-
-/// Live stream of the requester's assignments across all their requests.
-final myRequesterAssignmentsProvider =
-    StreamProvider<List<Assignment>>((ref) {
-  ref.watch(authStateChangesProvider);
-  return ref.watch(requestRepositoryProvider).watchMyRequesterAssignments();
 });

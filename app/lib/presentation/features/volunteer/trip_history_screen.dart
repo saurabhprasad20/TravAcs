@@ -166,16 +166,17 @@ class _HistoryCard extends ConsumerWidget {
             ),
             if (!cancelled) ...[
               const SizedBox(height: 8),
+              // Payment status is informational: the User pays the app once for
+              // the whole trip; each TravAcser's share is transferred by the
+              // admin team afterwards (there is no in-app "mark received" step).
+              Text('Payment: ${a.paymentStatus.label}',
+                  style: Theme.of(context).textTheme.bodySmall),
+              const SizedBox(height: 8),
               Wrap(
                 alignment: WrapAlignment.end,
                 spacing: 8,
                 runSpacing: 4,
                 children: [
-                  if (a.travAcserReceivedAt == null)
-                    OutlinedButton(
-                      onPressed: busy ? null : () => _markReceived(context, ref),
-                      child: const Text('Mark received'),
-                    ),
                   if (a.ratedByVolunteer)
                     Text('You rated ${a.volunteerRatingStars}★')
                   else
@@ -191,14 +192,6 @@ class _HistoryCard extends ConsumerWidget {
         ),
       ),
     );
-  }
-
-  Future<void> _markReceived(BuildContext context, WidgetRef ref) async {
-    final ok = await ref
-        .read(requestControllerProvider.notifier)
-        .markReceived(a.requestId);
-    if (!context.mounted) return;
-    ok ? A11y.announce(context, 'Marked received.') : _error(context, ref);
   }
 
   Future<void> _rate(BuildContext context, WidgetRef ref) async {

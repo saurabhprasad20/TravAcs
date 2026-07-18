@@ -1,0 +1,143 @@
+TravAcs — Interactive Trip Scenarios to Validate (User + TravAcser together)
+============================================================================
+
+Purpose
+- 20 real-world trip flows to run with TWO people (or two phones) coordinating
+  live. Solo screen checks (sign-in, profile, single-screen UI, colours) are
+  assumed already done — this list simulates what actually happens when Users
+  and TravAcsers create, accept, start, reschedule, cancel and pay for trips.
+- Do each scenario end to end and confirm BOTH sides stay in sync at every step
+  (what one person does shows correctly on the other's phone).
+
+Setup
+- Two accounts: one "User" (asks for help) and one "TravAcser" (the helper).
+- The TravAcser must be approved by an admin, set to the SAME city as the User,
+  and marked "Available".
+- Test numbers (OTP 123456): +918979515501 and +918178796516.
+- Test phase note: the money actually collected at payment is Rs.1, but the app
+  shows the real computed amount everywhere else — that is expected.
+
+
+THE 20 SCENARIOS
+================
+
+1.  HAPPY PATH (single TravAcser, end to end)
+    User creates a trip -> TravAcser gets the notification and accepts -> both
+    see each other's contact -> User reads out the start code -> TravAcser types
+    it and the trip starts -> trip is ended -> User pays (Rs.1) -> TravAcser
+    marks "Received" -> both rate each other -> the trip shows correctly in both
+    histories with the real amount.
+
+2.  TRAVACSER STARTS THE TRIP EARLY
+    Schedule a trip a bit in the future, then meet early. TravAcser starts the
+    trip before the scheduled time using the correct code. Confirm it starts for
+    both, and later the bill is calculated from the actual start time.
+
+3.  WRONG START CODE, THEN CORRECT
+    TravAcser types a wrong code first (confirm a clear "code doesn't match"
+    message and the trip does NOT start), then the User re-reads it and the
+    TravAcser enters the correct code and the trip starts.
+
+4.  TRY TO END BEFORE THE SCHEDULED TIME
+    Start a trip early, then immediately try to end it before its scheduled
+    start time. Confirm the app blocks it with "can't be ended before its
+    scheduled start time" (NOT a confusing "trip hasn't started" message). Wait
+    until the scheduled time passes, then end it successfully.
+
+5.  USER ENDS THE TRIP (instead of the TravAcser)
+    Run a normal trip but have the USER end it from their side. Confirm both
+    sides see it completed with the correct amount, exactly as if the TravAcser
+    had ended it.
+
+6.  SHORT TRIP / MINIMUM 1 HOUR BILLING
+    Start and end a very short trip (a few minutes). Confirm the User is still
+    billed for the 1-hour minimum, and the amount shown to the User matches what
+    the TravAcser sees as earnings.
+
+7.  DURATION ROUNDING CHECK ON A REAL TRIP
+    Run a trip lasting about 1 hour 20 minutes. Confirm it is billed as 1.5
+    hours (15-40 extra minutes rounds to +30 min), and both sides show the same
+    amount.
+
+8.  TWO TRAVACSERS, BOTH SERVE THE TRIP
+    User creates a trip needing 2 TravAcsers (e.g. 2 travellers). First
+    TravAcser accepts (confirm it stays open for a second), second TravAcser
+    accepts (confirm it now closes). Both start their side with the User's code.
+
+9.  ONE TRAVACSER ENDS A 2-TRAVACSER TRIP -> ENDS FOR BOTH
+    Continue from #8: have only ONE TravAcser end the trip. Confirm the trip is
+    automatically concluded for BOTH TravAcsers (the second does NOT need to end
+    separately), and the User is shown a SINGLE total amount covering both
+    TravAcsers (not a separate bill per TravAcser).
+
+10. USER MAKES ONE TOTAL PAYMENT FOR THE WHOLE TRIP
+    Continue from #9: the User makes a SINGLE payment of the total (Rs.1 in test
+    phase) — one payment to the app's payment account, NOT a separate payment to
+    each TravAcser. (The admin team later transfers each TravAcser's share
+    manually; that payout happens outside the app.) Confirm the trip shows as
+    paid afterwards for the whole trip.
+
+11. SECOND TRAVACSER NEVER STARTED
+    Two TravAcsers accept, but only one actually starts and runs the trip; that
+    one TravAcser ends it. Confirm the TravAcser who never started shows
+    "Not started — no charge" (no fee, no payment button) for that person.
+
+12. PENDING DUES BLOCK A NEW TRIP
+    Finish a trip but do NOT pay. As the User, try to create a brand-new trip.
+    Confirm you are blocked with "you have pending dues, kindly clear them...".
+    Then pay the dues and confirm you can create a new trip again.
+
+13. RESCHEDULE, TRAVACSER CONTINUES
+    User reschedules an accepted (not started) trip to Today/Tomorrow/Day-after
+    with a new time. Confirm the TravAcser gets a Continue/Cancel notice, the
+    trip is NOT thrown back to other TravAcsers meanwhile, the TravAcser taps
+    "Continue", and the trip keeps the same TravAcser at the new time.
+
+14. RESCHEDULE CHANGES THE START CODE
+    Continue from #13 (after Continue): confirm the OLD start code no longer
+    works and the User's NEW code does. Start the trip with the new code.
+
+15. RESCHEDULE, TRAVACSER DECLINES
+    User reschedules; the TravAcser taps "Cancel" on the new time. Confirm the
+    TravAcser's slot is released, the request reopens to other TravAcsers, and
+    the User is told the TravAcser dropped off. A different TravAcser can then
+    accept it.
+
+16. RESCHEDULE, TRAVACSER IGNORES IT (auto-release)
+    User reschedules; the TravAcser does nothing within the response window.
+    Confirm the slot is automatically released, the request reopens for others,
+    and both sides are notified.
+
+17. TRAVACSER CANCELS AN ACCEPTED TRIP -> REOPENS
+    After accepting (before starting), the TravAcser cancels. Confirm the User
+    is notified, the request goes back to the Available list for other
+    TravAcsers, and the SAME TravAcser can cleanly accept it again later
+    (no false "you already accepted this" error).
+
+18. USER CANCELS AFTER ACCEPTANCE
+    User cancels a trip after a TravAcser has accepted but before it starts.
+    Confirm the TravAcser is notified and the trip ends for both sides.
+
+19. STARTED TRIP IS LOCKED (no cancel / no reschedule)
+    Once a trip is started, confirm NEITHER side can cancel or reschedule it —
+    only "End trip" is offered (Cancel/Reschedule options are gone on both the
+    User and TravAcser screens). End it normally afterwards.
+
+20. GENDER-MATCHED REQUEST OPENS UP NEAR THE TIME
+    User marks "Strictly same gender" and creates the trip. Confirm an
+    opposite-gender TravAcser does NOT see it at first while a same-gender
+    TravAcser does. Leave it unaccepted until close to the trip time and confirm
+    it then opens to all TravAcsers (opposite-gender can now see/accept) and the
+    User is informed it was widened.
+
+
+Also worth a quick run if time allows
+-------------------------------------
+- One-per-day: a TravAcser who already has a trip on a given day tries to accept
+  a second trip the same day and is stopped.
+- Race for the last slot: two TravAcsers accept the last open slot at nearly the
+  same moment; only one succeeds, the other sees "already taken".
+- No TravAcser found: a request left unaccepted until its scheduled time passes
+  is auto-cancelled and the User is told (after an earlier warning).
+- Estimate vs final bill: the price quoted when creating the trip equals the
+  amount charged for the same duration.

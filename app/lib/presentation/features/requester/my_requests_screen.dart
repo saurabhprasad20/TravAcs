@@ -218,14 +218,20 @@ class _DetailBody extends ConsumerWidget {
     final r = request;
     final date = DateFormat.yMMMEd().format(r.scheduledDate);
     final time = formatTime12h(r.startTime);
+    // Refresh on the clock so the "can end" gate advances with time.
+    ref.watch(clockProvider);
     // A trip that has started (a TravAcser validated the start code) can only be
     // ended — never cancelled or rescheduled. The request doc's own status does
     // not change on start, so we key off the assignments.
-    final anyStarted = ref
+    final started = ref
             .watch(requestAssignmentsProvider(r.id))
             .value
-            ?.any((a) => a.isActive && a.tripStatus == TripStatus.started) ??
-        false;
+            ?.where((a) => a.tripStatus == TripStatus.started)
+            .toList() ??
+        const <Assignment>[];
+    final anyStarted = started.isNotEmpty;
+    // A started trip can only be ended at/after its scheduled start time.
+    final canEnd = anyStarted && !DateTime.now().isBefore(r.scheduledStartAt);
     final canReschedule = !anyStarted && _rescheduleAllowed(r);
 
     return ListView(
@@ -260,15 +266,30 @@ class _DetailBody extends ConsumerWidget {
           _RequestAssignments(requestId: r.id),
         ],
         const SizedBox(height: 20),
-        if (anyStarted)
+        if (anyStarted) ...[
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Text(
-              'This trip has started — it can no longer be cancelled or '
-              'rescheduled. End it from your TravAcser above when you finish.',
+              canEnd
+                  ? 'This trip has started — it can only be ended now (not '
+                      'cancelled or rescheduled). One payment covers all your '
+                      'TravAcsers.'
+                  : 'This trip has started — it can only be ended once its '
+                      'scheduled start time ($time) arrives.',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
           ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton.icon(
+              icon: const Icon(Icons.payments_outlined),
+              label: const Text('End trip & pay'),
+              onPressed:
+                  canEnd ? () => _endTripAndPay(context, ref, r, started) : null,
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         Wrap(
           alignment: WrapAlignment.end,
           spacing: 8,
@@ -298,6 +319,24 @@ class _DetailBody extends ConsumerWidget {
         ),
       ],
     );
+  }
+
+  /// End the whole trip (any started assignment concludes it for all), then run
+  /// the single trip-level payment covering every TravAcser.
+  Future<void> _endTripAndPay(
+      BuildContext context, WidgetRef ref, Request r, List<Assignment> started) async {
+    if (started.isEmpty) return;
+    final ok = await ref
+        .read(requestControllerProvider.notifier)
+        .completeTrip(r.id, started.first.volunteerId);
+    if (!context.mounted) return;
+    if (!ok) {
+      _err(context, ref);
+      return;
+    }
+    A11y.announce(context, 'Trip ended. Continue to payment.');
+    await startTripPayment(context, ref,
+        requestId: r.id, contact: started.first.requesterPhone);
   }
 
   /// A single labelled detail line as its OWN semantic node, so a screen-reader
@@ -468,14 +507,11 @@ class _AssignmentTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final busy = ref.watch(requestControllerProvider).isLoading;
     // Refresh on the clock so "Ready to start"/"In progress" advance with time.
     ref.watch(clockProvider);
     final now = DateTime.now();
     final inProgress = a.isInProgress(now);
     final awaitingStart = a.awaitingStart(now);
-    // A started trip can only be ended at/after its scheduled start time.
-    final canEnd = inProgress && !now.isBefore(a.effectiveStartAt);
     final statusText = inProgress
         ? 'In progress'
         : awaitingStart
@@ -513,25 +549,9 @@ class _AssignmentTile extends ConsumerWidget {
               ),
             ),
             if (inProgress) ...[
-              const SizedBox(height: 8),
-              if (!canEnd)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(
-                    'The trip has started. You can end it once its scheduled '
-                    'start time (${DateFormat.jm().format(a.effectiveStartAt)}) '
-                    'arrives.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ),
-              Align(
-                alignment: Alignment.centerRight,
-                child: FilledButton.icon(
-                  icon: const Icon(Icons.payments_outlined),
-                  label: const Text('End trip & pay'),
-                  onPressed: (busy || !canEnd) ? null : () => _end(context, ref),
-                ),
-              ),
+              // The trip is in progress. Ending + paying is a single trip-level
+              // action (one payment covers all TravAcsers), handled below the
+              // TravAcser list — not per TravAcser here.
             ] else ...[
               // Accepted but not yet started: show the start code straight away
               // so the User has it ready to read to their TravAcser. (Before any
@@ -549,37 +569,6 @@ class _AssignmentTile extends ConsumerWidget {
         ),
       ),
     );
-  }
-
-  /// User-side start code: shown large and read digit-by-digit so the User can
-  /// tell it to their TravAcser, who enters it to begin the trip.
-
-  Future<void> _end(BuildContext context, WidgetRef ref) async {
-    final ok = await ref
-        .read(requestControllerProvider.notifier)
-        .completeTrip(requestId, a.volunteerId);
-    if (!context.mounted) return;
-    if (!ok) {
-      _err(context, ref);
-      return;
-    }
-    A11y.announce(context, 'Trip ended. Continue to payment.');
-    // Chain straight into the Razorpay payment for this trip.
-    await startTripPayment(
-      context,
-      ref,
-      requestId: requestId,
-      volunteerId: a.volunteerId,
-      contact: a.requesterPhone,
-    );
-  }
-
-  void _err(BuildContext context, WidgetRef ref) {
-    final msg = failureMessage(ref.read(requestControllerProvider).error);
-    A11y.announce(context, msg);
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(SnackBar(content: Text(msg)));
   }
 }
 
