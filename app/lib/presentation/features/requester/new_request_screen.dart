@@ -73,13 +73,13 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
       lastDate: now.add(const Duration(days: 60)),
       helpText: 'Select trip date',
     );
-    if (picked != null) setState(() => _date = DateUtils.dateOnly(picked));
+    if (picked != null && mounted) setState(() => _date = DateUtils.dateOnly(picked));
   }
 
   Future<void> _pickTime() async {
     final picked =
         await showTimePicker(context: context, initialTime: _time ?? TimeOfDay.now());
-    if (picked != null) setState(() => _time = picked);
+    if (picked != null && mounted) setState(() => _time = picked);
   }
 
   String? _validateSchedule() {
@@ -215,7 +215,7 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
       ..showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  String _emptyToNull(String s) => s.trim();
+  String? _emptyToNull(String s) => s.trim().isEmpty ? null : s.trim();
   String _durationLabel() => _durations.entries
       .firstWhere((e) => e.value == _durationMinutes,
           orElse: () => const MapEntry('', 60))
@@ -578,8 +578,9 @@ class _ReviewSheet extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(width: 120, child: Text(k)),
+            Expanded(flex: 2, child: Text(k)),
             Expanded(
+                flex: 3,
                 child: Text(v,
                     style: const TextStyle(fontWeight: FontWeight.w600))),
           ],

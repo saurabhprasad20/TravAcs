@@ -21,6 +21,11 @@ class MyTripsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.listen(myAssignmentsProvider, (prev, next) {
+      if (next.hasError && (prev == null || !prev.hasError)) {
+        A11y.announce(context, failureMessage(next.error));
+      }
+    });
     final assignments = ref.watch(myAssignmentsProvider);
 
     return Scaffold(
@@ -125,10 +130,8 @@ class _TripCard extends ConsumerWidget {
                   : canStart
                       ? 'Ask the User for their start code and enter it to begin '
                           'the trip. Scheduled for $time — you can start early if '
-                          'you meet sooner. Estimated earning: '
-                          '₹${a.amountInrEstimate} (${a.amountBreakdown}).'
-                      : 'Starts at $time. Estimated earning: '
-                          '₹${a.amountInrEstimate} (${a.amountBreakdown}).',
+                          'you meet sooner.'
+                      : 'Starts at $time.',
               style: Theme.of(context).textTheme.titleSmall,
             ),
             if (canStart) ...[

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/accessibility/announce.dart';
+
 /// Shows an accessible 1–5★ + optional feedback sheet. Returns `(stars, feedback)`
 /// or null if dismissed.
 Future<(int, String?)?> showRatingSheet(
@@ -59,7 +61,11 @@ class _RatingSheetState extends State<_RatingSheet> {
                       iconSize: 40,
                       icon: Icon(i <= _stars ? Icons.star : Icons.star_border),
                       color: Colors.amber[700],
-                      onPressed: () => setState(() => _stars = i),
+                      onPressed: () {
+                        setState(() => _stars = i);
+                        A11y.announce(
+                            context, '$i star${i == 1 ? '' : 's'} selected');
+                      },
                     ),
                   ),
               ],

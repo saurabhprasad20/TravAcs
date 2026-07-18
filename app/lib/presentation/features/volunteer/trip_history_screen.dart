@@ -13,8 +13,10 @@ import '../shared/history_controls.dart';
 import '../shared/rating_sheet.dart';
 
 /// The TravAcser's completed/closed/cancelled trips (Trip History tab). Shows
-/// total earnings and per-trip "Mark received" + "Rate the User" (M12). Ordered
-/// newest first, filterable, and capped at the most recent [kHistoryPageSize].
+/// each trip's date/destination/duration, payment status (informational — the
+/// User pays the app once per trip and the admin distributes shares), and a
+/// per-trip "Rate the User". No earnings figures are shown. Ordered newest
+/// first, filterable, and capped at the most recent [kHistoryPageSize].
 class TripHistoryScreen extends ConsumerStatefulWidget {
   const TripHistoryScreen({super.key});
 
@@ -28,6 +30,11 @@ class _TripHistoryScreenState extends ConsumerState<TripHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(myAssignmentsProvider, (prev, next) {
+      if (next.hasError && (prev == null || !prev.hasError)) {
+        A11y.announce(context, failureMessage(next.error));
+      }
+    });
     final assignments = ref.watch(myAssignmentsProvider);
 
     return Scaffold(
@@ -37,16 +44,6 @@ class _TripHistoryScreenState extends ConsumerState<TripHistoryScreen> {
         data: (all) {
           final terminal =
               all.where((a) => a.tripStatus.isTerminal).toList();
-          // Earnings summary is computed over ALL completed trips (independent
-          // of the current filter / 15-item view) so the total is accurate.
-          final completed = terminal
-              .where((a) => a.tripStatus != TripStatus.cancelled)
-              .toList();
-          final totalBilled =
-              completed.fold<int>(0, (sum, a) => sum + (a.amountInr ?? 0));
-          final totalReceived = completed
-              .where((a) => a.paymentStatus == PaymentStatus.confirmed)
-              .fold<int>(0, (sum, a) => sum + (a.amountInr ?? 0));
 
           var list =
               terminal.where((a) => _matchesFilter(a.tripStatus)).toList();
@@ -60,30 +57,11 @@ class _TripHistoryScreenState extends ConsumerState<TripHistoryScreen> {
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-                child: Column(
-                  children: [
-                    Card(
-                      color: Theme.of(context).colorScheme.primaryContainer,
-                      child: Semantics(
-                        label: 'Total billed ₹$totalBilled, of which '
-                            '₹$totalReceived confirmed received',
-                        excludeSemantics: true,
-                        child: ListTile(
-                          title: const Text('Total earned (billed)'),
-                          subtitle: Text('₹$totalReceived confirmed received'),
-                          trailing: Text('₹$totalBilled',
-                              style: Theme.of(context).textTheme.titleLarge),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    HistoryControls(
-                      filter: _filter,
-                      sort: _sort,
-                      onFilterChanged: (f) => setState(() => _filter = f),
-                      onSortChanged: (s) => setState(() => _sort = s),
-                    ),
-                  ],
+                child: HistoryControls(
+                  filter: _filter,
+                  sort: _sort,
+                  onFilterChanged: (f) => setState(() => _filter = f),
+                  onSortChanged: (s) => setState(() => _sort = s),
                 ),
               ),
               Expanded(
@@ -142,10 +120,11 @@ class _HistoryCard extends ConsumerWidget {
                   if (cancelled)
                     const Text('Cancelled')
                   else ...[
-                    Text('${a.durationMinutes ?? 0} min · '
-                        '₹${a.amountInr ?? 0} earned'),
-                    Text('Breakdown: ${a.amountBreakdown}',
+                    Text('${a.durationMinutes ?? 0} min',
                         style: Theme.of(context).textTheme.bodySmall),
+                    // Payment status is informational: the User pays the app once
+                    // for the whole trip; each TravAcser's share is transferred by
+                    // the admin team afterwards (no in-app "mark received" step).
                     Text('Payment: ${a.paymentStatus.label}',
                         style: Theme.of(context).textTheme.bodySmall),
                   ],
@@ -165,12 +144,6 @@ class _HistoryCard extends ConsumerWidget {
               ),
             ),
             if (!cancelled) ...[
-              const SizedBox(height: 8),
-              // Payment status is informational: the User pays the app once for
-              // the whole trip; each TravAcser's share is transferred by the
-              // admin team afterwards (there is no in-app "mark received" step).
-              Text('Payment: ${a.paymentStatus.label}',
-                  style: Theme.of(context).textTheme.bodySmall),
               const SizedBox(height: 8),
               Wrap(
                 alignment: WrapAlignment.end,

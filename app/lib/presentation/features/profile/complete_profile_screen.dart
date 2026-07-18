@@ -50,7 +50,7 @@ class _CompleteProfileScreenState
       lastDate: now,
       helpText: 'Select your date of birth',
     );
-    if (picked != null) setState(() => _dob = picked);
+    if (picked != null && mounted) setState(() => _dob = picked);
   }
 
   Future<void> _submit() async {

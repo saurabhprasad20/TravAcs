@@ -1,5 +1,5 @@
 import {onDocumentCreated} from "firebase-functions/v2/firestore";
-import {onCall, HttpsError} from "firebase-functions/v2/https";
+import {onCall, HttpsError, onRequest} from "firebase-functions/v2/https";
 import {onSchedule} from "firebase-functions/v2/scheduler";
 import {logger} from "firebase-functions/v2";
 import {defineSecret} from "firebase-functions/params";
@@ -16,6 +16,9 @@ const db = getFirestore();
 // id from createRazorpayOrder at runtime.
 const RAZORPAY_KEY_ID = defineSecret("RAZORPAY_KEY_ID");
 const RAZORPAY_KEY_SECRET = defineSecret("RAZORPAY_KEY_SECRET");
+// Razorpay Webhook secret (configured in the Razorpay dashboard) — used to
+// verify inbound webhook signatures for server-side payment reconciliation.
+const RAZORPAY_WEBHOOK_SECRET = defineSecret("RAZORPAY_WEBHOOK_SECRET");
 
 const REGION = "asia-south2";
 // Cloud Scheduler is not offered in asia-south2 (Delhi), so the two scheduled
@@ -158,9 +161,14 @@ export const onRequestCreated = onDocumentCreated(
       const createdMs = snap.createTime?.toMillis() ?? Date.now();
       const startMs = scheduledStart.toMillis();
       const widenAtMs = createdMs + Math.round(0.9 * (startMs - createdMs));
-      await snap.ref
-        .update({genderWidenAt: Timestamp.fromMillis(widenAtMs)})
-        .catch(() => {});
+      try {
+        await snap.ref.update({genderWidenAt: Timestamp.fromMillis(widenAtMs)});
+      } catch (e) {
+        // Not fatal for the fan-out, but log it — widenGenderRequests can still
+        // recover the widen time from createdAt + scheduledStartAt if this field
+        // is missing.
+        logger.warn(`Failed to stamp genderWidenAt for ${event.params.id}`, e);
+      }
     }
 
     // Approved, active TravAcsers in the same city.
@@ -277,8 +285,18 @@ export const acceptRequest = onCall({region: REGION}, async (req) => {
       // Only a still-live assignment (assigned/started/completed) counts as
       // "already accepted".
       const prevStatus = existing.data()?.tripStatus;
+      // Idempotent: a still-'assigned' assignment by THIS caller means they
+      // already accepted (e.g. a retry after a lost response) — report success
+      // without incrementing the slot count again.
+      if (prevStatus === "assigned") {
+        return {
+          requesterId: r.requesterId,
+          filled: (r.acceptedCount ?? 0),
+          need: (r.numTravAcsers ?? 1),
+          idempotent: true,
+        };
+      }
       const stillLive =
-        prevStatus === "assigned" ||
         prevStatus === "started" ||
         prevStatus === "completed" ||
         prevStatus === "closed";
@@ -351,15 +369,17 @@ export const acceptRequest = onCall({region: REGION}, async (req) => {
     return {requesterId: r.requesterId, filled: newCount, need};
   });
 
-  // Notify the requester (best-effort).
-  await pushToUser(
-    out.requesterId,
-    {
-      title: "A TravAcser accepted your request",
-      body: `${out.filled} of ${out.need} TravAcser(s) confirmed.`,
-    },
-    {type: "assignment", requestId, filled: String(out.filled)}
-  ).catch((e) => logger.warn("push failed", e));
+  // Notify the requester (best-effort). Skip on an idempotent retry.
+  if (!("idempotent" in out)) {
+    await pushToUser(
+      out.requesterId,
+      {
+        title: "A TravAcser accepted your request",
+        body: `${out.filled} of ${out.need} TravAcser(s) confirmed.`,
+      },
+      {type: "assignment", requestId, filled: String(out.filled)}
+    ).catch((e) => logger.warn("push failed", e));
+  }
 
   return {ok: true, code: "ACCEPTED", slotsRemaining: out.need - out.filled};
 });
@@ -385,6 +405,7 @@ export const startTrip = onCall({region: REGION}, async (req) => {
   const reqRef = db.collection("requests").doc(requestId);
   const assignRef = reqRef.collection("assignments").doc(volunteerId);
   let requesterId: string | undefined;
+  let alreadyStarted = false;
   await db.runTransaction(async (tx) => {
     const reqDoc = await tx.get(reqRef);
     const r = reqDoc.data();
@@ -395,17 +416,29 @@ export const startTrip = onCall({region: REGION}, async (req) => {
     if (a.volunteerId !== uid) {
       throw new HttpsError("permission-denied", "This is not your trip.");
     }
+    // Idempotent: if this trip is already started (e.g. a retry after a lost
+    // response), treat it as success rather than erroring.
+    if (a.tripStatus === "started") {
+      alreadyStarted = true;
+      return;
+    }
     if (a.tripStatus !== "assigned") {
       throw new HttpsError("failed-precondition", "This trip can no longer be started.", {code: "INVALID_STATE"});
     }
+    // Starting the trip implicitly resolves any pending reschedule confirmation
+    // (the TravAcser is clearly proceeding). Clear the pending fields so the
+    // expiry job / a late decline can never cancel a now-started trip.
     tx.update(assignRef, {
       tripStatus: "started",
       startedAt: FieldValue.serverTimestamp(),
       otpStartedAt: FieldValue.serverTimestamp(),
+      rescheduleStatus: FieldValue.delete(),
+      rescheduleDeadlineAt: FieldValue.delete(),
     });
   });
-  // Notify the User that their code was validated and the trip has started.
-  if (requesterId) {
+  // Notify the User that their code was validated and the trip has started
+  // (skip the push on an idempotent retry — they were already notified).
+  if (requesterId && !alreadyStarted) {
     await pushToUser(
       requesterId,
       {title: "Trip started", body: "Your TravAcser validated your start code — the trip is now in progress."},
@@ -444,6 +477,12 @@ export const completeTrip = onCall({region: REGION}, async (req) => {
     const assignsSnap = await tx.get(reqRef.collection("assignments"));
     const callerDoc = assignsSnap.docs.find((d) => d.id === volunteerId);
     if (!callerDoc) throw new HttpsError("not-found", "Assignment not found.");
+    // Idempotent: if the trip is already completed (e.g. a retry after a lost
+    // response, or the other party ended it first via conclude-all), report
+    // success instead of erroring with NOT_STARTED.
+    if (callerDoc.data().tripStatus === "completed" || r.status === "completed") {
+      return {requesterId: r.requesterId, notifyVolunteerIds: [] as string[], alreadyDone: true};
+    }
     if (callerDoc.data().tripStatus !== "started") {
       throw new HttpsError("failed-precondition", "This trip must be started before it can be ended.", {code: "NOT_STARTED"});
     }
@@ -512,9 +551,12 @@ export const completeTrip = onCall({region: REGION}, async (req) => {
   });
 
   // Notify the requester and every billed TravAcser that the trip ended. This
-  // is NOT a payment notification — amounts are only "pending" here.
+  // is NOT a payment notification — amounts are only "pending" here. On an
+  // idempotent no-op retry there is nobody new to notify.
   await Promise.all([
-    pushToUser(out.requesterId, {title: "Trip ended", body: "Your trip is complete. Please clear the payment to finish."}, {type: "trip_completed", requestId}).catch(() => {}),
+    ...(out.notifyVolunteerIds.length > 0
+      ? [pushToUser(out.requesterId, {title: "Trip ended", body: "Your trip is complete. Please clear the payment to finish."}, {type: "trip_completed", requestId}).catch(() => {})]
+      : []),
     ...out.notifyVolunteerIds.map((v) =>
       pushToUser(v, {title: "Trip ended", body: "The trip was ended — payment is pending from the User."}, {type: "trip_completed", requestId}).catch(() => {})
     ),
@@ -644,6 +686,7 @@ export const respondReschedule = onCall({region: REGION}, async (req) => {
   const reqRef = db.collection("requests").doc(requestId);
   const assignRef = reqRef.collection("assignments").doc(uid);
   let requesterId: string | undefined;
+  let declined = false;
   await db.runTransaction(async (tx) => {
     const reqDoc = await tx.get(reqRef);
     const r = reqDoc.data();
@@ -653,6 +696,16 @@ export const respondReschedule = onCall({region: REGION}, async (req) => {
     if (!a) throw new HttpsError("not-found", "You have no assignment here.");
     if (a.rescheduleStatus !== "pending") {
       throw new HttpsError("failed-precondition", "There is no reschedule to respond to.", {code: "NO_PENDING"});
+    }
+    // A trip that has already started (or is otherwise no longer 'assigned')
+    // must never be flipped to cancelled by a reschedule response — it can only
+    // be ended. Just clear the stale pending flag and stop.
+    if (a.tripStatus !== "assigned") {
+      tx.update(assignRef, {
+        rescheduleStatus: FieldValue.delete(),
+        rescheduleDeadlineAt: FieldValue.delete(),
+      });
+      return;
     }
     if (accept) {
       tx.update(assignRef, {
@@ -671,9 +724,10 @@ export const respondReschedule = onCall({region: REGION}, async (req) => {
         status: r.status === "assigned" ? "broadcast" : r.status,
         updatedAt: FieldValue.serverTimestamp(),
       });
+      declined = true;
     }
   });
-  if (!accept && requesterId) {
+  if (declined && requesterId) {
     await pushToUser(requesterId, {title: "A TravAcser declined the new time", body: "A TravAcser couldn't make the rescheduled trip, so we've reopened your request."}, {type: "trip_cancelled", requestId}).catch(() => {});
   }
   return {ok: true, code: accept ? "CONFIRMED" : "DECLINED"};
@@ -715,7 +769,13 @@ export const cancelTrip = onCall({region: REGION}, async (req) => {
       assigns.docs.forEach((d) => {
         const s = d.data().tripStatus;
         if (s === "assigned" || s === "started") {
-          tx.update(d.ref, {tripStatus: "cancelled"});
+          // Clear any pending reschedule so the expiry job can't later act on a
+          // now-cancelled assignment (which would double-decrement the count).
+          tx.update(d.ref, {
+            tripStatus: "cancelled",
+            rescheduleStatus: FieldValue.delete(),
+            rescheduleDeadlineAt: FieldValue.delete(),
+          });
           notify.push({uid: d.id, title: "Trip cancelled", body: "The User cancelled the trip."});
         }
       });
@@ -727,7 +787,11 @@ export const cancelTrip = onCall({region: REGION}, async (req) => {
       if (s !== "assigned") {
         throw new HttpsError("failed-precondition", "This trip can no longer be cancelled.", {code: "INVALID_STATE"});
       }
-      tx.update(myAssign!.ref, {tripStatus: "cancelled"});
+      tx.update(myAssign!.ref, {
+        tripStatus: "cancelled",
+        rescheduleStatus: FieldValue.delete(),
+        rescheduleDeadlineAt: FieldValue.delete(),
+      });
       const accepted: number = r.acceptedCount ?? 0;
       tx.update(reqRef, {
         acceptedCount: Math.max(0, accepted - 1),
@@ -747,68 +811,6 @@ export const cancelTrip = onCall({region: REGION}, async (req) => {
   return {ok: true, code: "CANCELLED"};
 });
 
-/** Recomputes paymentStatus from the two timestamps. */
-function paymentStatusOf(paid: unknown, received: unknown): string {
-  if (paid && received) return "confirmed";
-  if (paid || received) return "awaiting_other";
-  return "pending";
-}
-
-/** The User marks they have paid a TravAcser (external UPI). */
-export const markPaid = onCall({region: REGION}, async (req) => {
-  const uid = req.auth?.uid;
-  if (!uid) throw new HttpsError("unauthenticated", "Please sign in.");
-  const {requestId, volunteerId} = req.data ?? {};
-  if (!requestId || !volunteerId) {
-    throw new HttpsError("invalid-argument", "requestId and volunteerId required.");
-  }
-  const reqRef = db.collection("requests").doc(requestId);
-  const assignRef = reqRef.collection("assignments").doc(volunteerId);
-  await db.runTransaction(async (tx) => {
-    const reqDoc = await tx.get(reqRef);
-    if (reqDoc.data()?.requesterId !== uid) {
-      throw new HttpsError("permission-denied", "Only the User can mark Paid.");
-    }
-    const a = (await tx.get(assignRef)).data();
-    if (!a) throw new HttpsError("not-found", "Assignment not found.");
-    if (a.tripStatus !== "completed") {
-      throw new HttpsError("failed-precondition", "The trip is not completed yet.", {code: "INVALID_STATE"});
-    }
-    tx.update(assignRef, {
-      requesterPaidAt: a.requesterPaidAt ?? FieldValue.serverTimestamp(),
-      paymentStatus: paymentStatusOf(true, a.travAcserReceivedAt),
-    });
-  });
-  await pushToUser(volunteerId, {title: "Payment marked", body: "The User marked the payment as Paid."}, {type: "payment_marked", requestId}).catch(() => {});
-  return {ok: true, code: "PAID"};
-});
-
-/** The TravAcser marks they received payment. */
-export const markReceived = onCall({region: REGION}, async (req) => {
-  const uid = req.auth?.uid;
-  if (!uid) throw new HttpsError("unauthenticated", "Please sign in.");
-  const {requestId} = req.data ?? {};
-  if (!requestId) throw new HttpsError("invalid-argument", "requestId required.");
-  const reqRef = db.collection("requests").doc(requestId);
-  const assignRef = reqRef.collection("assignments").doc(uid);
-  let requesterId: string | undefined;
-  await db.runTransaction(async (tx) => {
-    const a = (await tx.get(assignRef)).data();
-    if (!a) throw new HttpsError("not-found", "You have no assignment here.");
-    if (a.tripStatus !== "completed") {
-      throw new HttpsError("failed-precondition", "The trip is not completed yet.", {code: "INVALID_STATE"});
-    }
-    requesterId = a.requesterId;
-    tx.update(assignRef, {
-      travAcserReceivedAt: a.travAcserReceivedAt ?? FieldValue.serverTimestamp(),
-      paymentStatus: paymentStatusOf(a.requesterPaidAt, true),
-    });
-  });
-  if (requesterId) {
-    await pushToUser(requesterId, {title: "Payment confirmed", body: "The TravAcser marked the payment as Received."}, {type: "payment_marked", requestId}).catch(() => {});
-  }
-  return {ok: true, code: "RECEIVED"};
-});
 
 /**
  * Creates a Razorpay order for the WHOLE trip's total (all TravAcsers) and
@@ -883,13 +885,34 @@ export const createRazorpayOrder = onCall(
       throw new HttpsError("internal", "Could not start the payment. Please try again.");
     }
     const order = (await resp.json()) as {id: string};
-    await reqRef.update({
-      razorpayOrderId: order.id,
-      razorpayKeyId: keyId,
-      razorpayAmountInr: billedInr,
+    // Store the new order id in a transaction so concurrent createRazorpayOrder
+    // calls can't clobber each other: if another call already stored a live
+    // order (same key + amount) for this still-unpaid trip, KEEP that one and
+    // abandon the order we just minted (it simply expires unpaid on Razorpay) —
+    // otherwise two stored ids would diverge and one payment would fail
+    // ORDER_MISMATCH. The first writer wins; everyone converges to one order.
+    const finalOrderId = await db.runTransaction(async (tx) => {
+      const cur = (await tx.get(reqRef)).data();
+      if (!cur) throw new HttpsError("not-found", "Trip not found.");
+      if (cur.requesterPaidAt) {
+        throw new HttpsError("failed-precondition", "This trip is already paid.", {code: "ALREADY_PAID"});
+      }
+      if (
+        cur.razorpayOrderId &&
+        cur.razorpayKeyId === keyId &&
+        cur.razorpayAmountInr === billedInr
+      ) {
+        return cur.razorpayOrderId as string; // another call won the race
+      }
+      tx.update(reqRef, {
+        razorpayOrderId: order.id,
+        razorpayKeyId: keyId,
+        razorpayAmountInr: billedInr,
+      });
+      return order.id;
     });
     return {
-      orderId: order.id,
+      orderId: finalOrderId,
       keyId,
       amountPaise: billedInr * 100,
       amountInr: billedInr,
@@ -966,6 +989,99 @@ export const verifyRazorpayPayment = onCall(
       )
     );
     return {ok: true, code: "PAID"};
+  }
+);
+
+/**
+ * Razorpay WEBHOOK — durable, server-side payment reconciliation. Razorpay POSTs
+ * a signed event here (configure the URL + secret in the Razorpay dashboard).
+ * This is the source of truth: even if the app/network dies before the client
+ * calls verifyRazorpayPayment, the webhook marks the trip paid. Idempotent —
+ * a request already paid is left unchanged. Signature is HMAC-SHA256 of the RAW
+ * body with the webhook secret.
+ */
+export const razorpayWebhook = onRequest(
+  {region: REGION, secrets: [RAZORPAY_WEBHOOK_SECRET]},
+  async (req, res) => {
+    const signature = req.header("x-razorpay-signature");
+    const raw = req.rawBody;
+    if (!signature || !raw) {
+      res.status(400).send("bad request");
+      return;
+    }
+    const expected = crypto
+      .createHmac("sha256", RAZORPAY_WEBHOOK_SECRET.value())
+      .update(raw)
+      .digest("hex");
+    const sigOk =
+      expected.length === signature.length &&
+      crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+    if (!sigOk) {
+      res.status(401).send("invalid signature");
+      return;
+    }
+    let event: any;
+    try {
+      event = JSON.parse(raw.toString("utf8"));
+    } catch (_) {
+      res.status(400).send("bad json");
+      return;
+    }
+    // Extract the order + payment ids from the events that mean "money captured".
+    let orderId: string | undefined;
+    let paymentId: string | undefined;
+    if (event.event === "payment.captured" || event.event === "order.paid") {
+      orderId = event.payload?.payment?.entity?.order_id ??
+        event.payload?.order?.entity?.id;
+      paymentId = event.payload?.payment?.entity?.id;
+    }
+    if (!orderId) {
+      res.status(200).send("ignored"); // not a paid-event we act on
+      return;
+    }
+    try {
+      const q = await db
+        .collection("requests")
+        .where("razorpayOrderId", "==", orderId)
+        .limit(1)
+        .get();
+      if (q.empty) {
+        res.status(200).send("no matching trip");
+        return;
+      }
+      const reqRef = q.docs[0].ref;
+      const notify: string[] = [];
+      await db.runTransaction(async (tx) => {
+        const r = (await tx.get(reqRef)).data();
+        if (!r || r.status !== "completed" || r.razorpayOrderId !== orderId) return;
+        if (r.requesterPaidAt) return; // already reconciled — idempotent
+        const assigns = await tx.get(reqRef.collection("assignments"));
+        tx.update(reqRef, {
+          razorpayPaymentId: paymentId ?? r.razorpayPaymentId ?? null,
+          requesterPaidAt: FieldValue.serverTimestamp(),
+          paymentStatus: "confirmed",
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+        assigns.docs.forEach((d) => {
+          if (d.data().tripStatus === "completed") {
+            notify.push(d.id);
+            tx.update(d.ref, {
+              requesterPaidAt: d.data().requesterPaidAt ?? FieldValue.serverTimestamp(),
+              paymentStatus: "confirmed",
+            });
+          }
+        });
+      });
+      await Promise.all(
+        notify.map((v) =>
+          pushToUser(v, {title: "Payment received", body: "The User paid for the trip. Your share will be transferred by the team."}, {type: "payment_marked", requestId: reqRef.id}).catch(() => {})
+        )
+      );
+      res.status(200).send("ok");
+    } catch (e) {
+      logger.error("razorpayWebhook reconcile failed", e);
+      res.status(500).send("error");
+    }
   }
 );
 
@@ -1184,7 +1300,12 @@ export const expireRescheduleConfirmations = onSchedule(
           if (!r) return false;
           requesterId = r.requesterId;
           const cur = (await tx.get(doc.ref)).data();
-          if (!cur || cur.rescheduleStatus !== "pending") return false; // changed meanwhile
+          // Only expire a still-pending assignment that is STILL 'assigned' — a
+          // trip that started (or was already cancelled/completed) meanwhile
+          // must not be flipped to cancelled or double-decrement the count.
+          if (!cur || cur.rescheduleStatus !== "pending" || cur.tripStatus !== "assigned") {
+            return false; // changed meanwhile
+          }
           tx.update(doc.ref, {
             tripStatus: "cancelled",
             rescheduleStatus: "expired",
@@ -1231,8 +1352,20 @@ export const widenGenderRequests = onSchedule(
       .get();
     for (const doc of snap.docs) {
       const r0 = doc.data();
-      const widenAtMs = (r0.genderWidenAt as Timestamp | undefined)?.toMillis();
-      // Not yet due, or the widen anchor hasn't been stamped yet.
+      // Prefer the stamped widen anchor; if it's missing (the onRequestCreated
+      // stamp failed), recover it from createTime + scheduledStartAt so the
+      // request can still widen instead of being stuck restricted forever.
+      let widenAtMs = (r0.genderWidenAt as Timestamp | undefined)?.toMillis();
+      if (widenAtMs == null) {
+        const createdMs =
+          (r0.createdAt as Timestamp | undefined)?.toMillis() ??
+          doc.createTime?.toMillis();
+        const startMs = (r0.scheduledStartAt as Timestamp | undefined)?.toMillis();
+        if (createdMs != null && startMs != null) {
+          widenAtMs = createdMs + Math.round(0.9 * (startMs - createdMs));
+        }
+      }
+      // Not yet due, or the widen anchor can't be determined.
       if (widenAtMs == null || now < widenAtMs) continue;
 
       let requesterId: string | undefined;

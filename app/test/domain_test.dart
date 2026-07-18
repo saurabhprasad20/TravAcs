@@ -48,6 +48,37 @@ void main() {
       expect(Request.pairServingCount(4, 2), 2);
     });
 
+    test('computeEstimate matches the server per-assignment formula (parity)', () {
+      // Replicate the server's billing (round each TravAcser's service charge,
+      // then sum, + Rs.100 travel per TravAcser) and assert the client agrees
+      // across a range of vectors including the rounding edges.
+      int serverTotal(int minutes, int travellers, int travAcsers) {
+        double billedHours(int m) {
+          if (m <= 60) return 1;
+          final whole = m ~/ 60;
+          final extra = m - whole * 60;
+          final add = extra <= 14 ? 0.0 : (extra <= 40 ? 0.5 : 1.0);
+          return whole + add;
+        }
+        final pair = (travellers - travAcsers).clamp(0, travAcsers);
+        final solo = travAcsers - pair;
+        final h = billedHours(minutes);
+        final service =
+            pair * (h * 210).round() + solo * (h * 149).round();
+        return service + 100 * travAcsers;
+      }
+
+      const vectors = [
+        [60, 1, 1], [61, 1, 1], [74, 1, 1], [75, 1, 1], [100, 1, 1], [101, 1, 1],
+        [60, 2, 1], [60, 2, 2], [75, 2, 2], [60, 3, 2], [298, 1, 1], [200, 4, 3],
+      ];
+      for (final v in vectors) {
+        expect(Request.computeEstimate(v[0], v[1], v[2]),
+            serverTotal(v[0], v[1], v[2]),
+            reason: 'mins=${v[0]} travellers=${v[1]} travAcsers=${v[2]}');
+      }
+    });
+
     test('suggestedTravAcsers: one TravAcser assists up to two travellers', () {
       expect(Request.suggestedTravAcsers(0), 1); // guard
       expect(Request.suggestedTravAcsers(1), 1);

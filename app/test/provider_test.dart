@@ -125,8 +125,15 @@ void main() {
   Future<List<Request>> readAvailable(ProviderContainer c) async {
     await c.read(myProfileProvider.future);
     await c.read(myAssignmentsProvider.future);
-    await Future<void>.delayed(Duration.zero);
-    return c.read(availableRequestsProvider.future);
+    // availableRequestsProvider is a derived Provider<AsyncValue<...>> over a raw
+    // Firestore stream; give the stream a few event-loop turns to emit, then
+    // read its filtered value.
+    for (var i = 0; i < 10; i++) {
+      await Future<void>.delayed(Duration.zero);
+      final v = c.read(availableRequestsProvider);
+      if (v.hasValue) return v.value!;
+    }
+    return c.read(availableRequestsProvider).value ?? const [];
   }
 
   group('availableRequestsProvider', () {
@@ -207,6 +214,65 @@ void main() {
         myAssignments: const [],
       );
       expect((await readAvailable(c)).map((r) => r.id).toSet(), {'FEM'});
+    });
+  });
+
+  group('myPendingDuesProvider', () {
+    Request completedReq(String id, {int? tripAmountInr, DateTime? paidAt}) =>
+        Request(
+          id: id,
+          requesterId: 'u1',
+          status: RequestStatus.completed,
+          serviceState: Region.delhiNcr,
+          serviceCity: city,
+          numTravellers: 1,
+          numTravAcsers: 1,
+          genderPreference: GenderPreference.anyGender,
+          scheduledDate: DateTime.now(),
+          startTime: '10:00',
+          scheduledStartAt: DateTime.now(),
+          expectedDurationMinutes: 60,
+          meetingPoint: 'A',
+          destination: 'B',
+          estimatedAmountInr: 249,
+          tripAmountInr: tripAmountInr,
+          requesterPaidAt: paidAt,
+        );
+
+    ProviderContainer duesContainer(List<Request> myRequests) {
+      final container = ProviderContainer(overrides: [
+        myRequestsProvider.overrideWith((ref) => Stream.value(myRequests)),
+      ]);
+      addTearDown(container.dispose);
+      container.listen(myRequestsProvider, (_, __) {}, fireImmediately: true);
+      container.listen(myPendingDuesProvider, (_, __) {}, fireImmediately: true);
+      return container;
+    }
+
+    Future<List<Request>> readDues(ProviderContainer c) async {
+      for (var i = 0; i < 10; i++) {
+        await Future<void>.delayed(Duration.zero);
+        final v = c.read(myPendingDuesProvider);
+        if (v.isNotEmpty || c.read(myRequestsProvider).hasValue) return v;
+      }
+      return c.read(myPendingDuesProvider);
+    }
+
+    test('an unpaid completed trip with a bill is a pending due', () async {
+      final c = duesContainer([completedReq('A', tripAmountInr: 498)]);
+      expect((await readDues(c)).map((r) => r.id), ['A']);
+    });
+
+    test('a paid completed trip is NOT a due', () async {
+      final c = duesContainer(
+          [completedReq('A', tripAmountInr: 498, paidAt: DateTime.now())]);
+      expect(await readDues(c), isEmpty);
+    });
+
+    test('a legacy completed trip without a trip total is NOT a due', () async {
+      // tripAmountInr == null (pre payment-refactor) must not soft-lock the User.
+      final c = duesContainer([completedReq('A')]);
+      expect(await readDues(c), isEmpty);
     });
   });
 

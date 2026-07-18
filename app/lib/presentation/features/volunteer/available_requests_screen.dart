@@ -37,6 +37,11 @@ class AvailableRequestsScreen extends ConsumerWidget {
   }
 
   Widget _list(BuildContext context, WidgetRef ref) {
+    ref.listen(availableRequestsProvider, (prev, next) {
+      if (next.hasError && (prev == null || !prev.hasError)) {
+        A11y.announce(context, failureMessage(next.error));
+      }
+    });
     final requests = ref.watch(availableRequestsProvider);
     return requests.when(
       loading: () => const Center(child: CircularProgressIndicator()),

@@ -25,6 +25,12 @@ class MyRequestsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Announce a stream error to screen-reader users when it first occurs.
+    ref.listen(myRequestsProvider, (prev, next) {
+      if (next.hasError && (prev == null || !prev.hasError)) {
+        A11y.announce(context, failureMessage(next.error));
+      }
+    });
     final requests = ref.watch(myRequestsProvider);
 
     return Scaffold(

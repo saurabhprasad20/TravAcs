@@ -105,10 +105,6 @@ class RequestController extends Notifier<AsyncValue<void>> {
   Future<bool> startTrip(String requestId, String volunteerId) =>
       _run(() => _repo.startTrip(requestId, volunteerId));
 
-  /// User marks a TravAcser's payment as Paid.
-  Future<bool> markPaid(String requestId, String volunteerId) =>
-      _run(() => _repo.markPaid(requestId, volunteerId));
-
   /// Creates a Razorpay order for the whole trip. Returns the order (with key
   /// id) on success, or null on failure (error in state).
   Future<RazorpayOrder?> createRazorpayOrder(String requestId) async {
@@ -139,10 +135,6 @@ class RequestController extends Notifier<AsyncValue<void>> {
             razorpayPaymentId: razorpayPaymentId,
             razorpaySignature: razorpaySignature,
           ));
-
-  /// TravAcser marks payment Received.
-  Future<bool> markReceived(String requestId) =>
-      _run(() => _repo.markReceived(requestId));
 
   /// Submit a rating for the counterpart.
   Future<bool> submitRating(

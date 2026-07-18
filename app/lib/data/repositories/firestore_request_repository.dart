@@ -192,10 +192,6 @@ class FirestoreRequestRepository implements RequestRepository {
       _call('startTrip', {'requestId': requestId, 'volunteerId': volunteerId});
 
   @override
-  FutureResult<Unit> markPaid(String requestId, String volunteerId) =>
-      _call('markPaid', {'requestId': requestId, 'volunteerId': volunteerId});
-
-  @override
   FutureResult<RazorpayOrder> createRazorpayOrder(String requestId) async {
     try {
       final res = await _functions.httpsCallable('createRazorpayOrder').call<dynamic>(
@@ -226,10 +222,6 @@ class FirestoreRequestRepository implements RequestRepository {
         'razorpayPaymentId': razorpayPaymentId,
         'razorpaySignature': razorpaySignature,
       });
-
-  @override
-  FutureResult<Unit> markReceived(String requestId) =>
-      _call('markReceived', {'requestId': requestId});
 
   @override
   FutureResult<Unit> submitRating(

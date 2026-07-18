@@ -175,13 +175,13 @@ request `r` unless **all** hold: `!acceptedIds.contains(r.id)` (only *active* ow
 - `profileControllerProvider`: `save(...)`, `setServiceArea(...)`, `setAvailability(...)` — each
   invalidates `myProfileProvider` on success (so the router advances).
 - `requestControllerProvider`: `create` (returns new id/null), `cancel`, `accept`, `reschedule`,
-  `cancelTrip`, `respondReschedule`, `completeTrip`, `startTrip`, `markPaid`, `createRazorpayOrder`,
-  `verifyRazorpayPayment`, `markReceived`, `submitRating`.
+  `cancelTrip`, `respondReschedule`, `completeTrip`, `startTrip`, `createRazorpayOrder`,
+  `verifyRazorpayPayment`, `submitRating`.
 - `adminControllerProvider`: `approve(uid)`, `reject(uid,reason)`, `logManualTrip(...)`.
 
 Repository→callable mapping (`FirestoreRequestRepository`): `acceptRequest`, `startTrip`,
-`completeTrip`, `rescheduleTrip`, `respondReschedule`, `cancelTrip`, `markPaid`, `markReceived`,
-`submitRating`, `createRazorpayOrder`, `verifyRazorpayPayment` are all Cloud Functions callables.
+`completeTrip`, `rescheduleTrip`, `respondReschedule`, `cancelTrip`, `submitRating`,
+`createRazorpayOrder`, `verifyRazorpayPayment` are all Cloud Functions callables.
 **`createRequest` and `cancelRequest` write Firestore directly** (guarded by Rules, §11).
 
 ---
@@ -275,8 +275,8 @@ Shared helpers: `billedHours`, `pairServingCount`, `istDateKey` (IST day, UTC+5:
 | **rescheduleTrip** | onCall (requester only) | New start must be `now+1min … now+3d` — beyond the day-after window rejects (`BAD_SCHEDULE`, "create a new trip"). Request must be `broadcast`/`assigned` (`INVALID_STATE`). Reject if accepted & original time passed, or any assignment `started` (`ALREADY_STARTED`). Updates request + each `assigned` assignment's schedule, sets each `rescheduleStatus:'pending'` + `rescheduleDeadlineAt = now + clamp(10%×remaining, 10min, remaining)` (min 10-min window so a short-notice reschedule isn't released almost instantly), clears `noTravAcserNotifiedAt`, recomputes gender widen window. Pushes each TravAcser (`trip_rescheduled`). |
 | **respondReschedule** | onCall (TravAcser) | Assignment `rescheduleStatus` must be `pending` (`NO_PENDING`). accept=true → `confirmed`; accept=false → `cancelled`+`declined`, decrement `acceptedCount`, reopen `assigned→broadcast`, push requester (`trip_cancelled`). |
 | **cancelTrip** | onCall (either party) | Request not `completed`/`cancelled` (`INVALID_STATE`). **Requester:** reject if any assignment `started` (`TRIP_STARTED`); else request→`cancelled`, all active assignments→`cancelled`, push each TravAcser. **TravAcser:** their assignment must not be `started` (`TRIP_STARTED`) and must be `assigned` (`INVALID_STATE`); →`cancelled`, decrement count, reopen, push requester. |
-| **markPaid** | onCall (requester only) | Assignment must be `completed` (`INVALID_STATE`). Sets `requesterPaidAt` (idempotent), recomputes `paymentStatus`. Push TravAcser (`payment_marked`). |
-| **markReceived** | onCall (TravAcser) | Sets `travAcserReceivedAt`, recomputes `paymentStatus`. |
+| **markPaid / markReceived** | REMOVED | The legacy two-sided per-assignment payment callables were deleted (payment is now one total per trip; see `createRazorpayOrder`/`verifyRazorpayPayment`/`razorpayWebhook`). |
+| **razorpayWebhook** | onRequest (asia-south2) | secret `RAZORPAY_WEBHOOK_SECRET`. Durable server-side payment reconciliation: Razorpay POSTs a signed event; HMAC-SHA256 of the RAW body is verified, then on `payment.captured`/`order.paid` the trip is looked up by `razorpayOrderId` and marked paid (idempotent — a paid trip is untouched). This is the source of truth even if the client never calls `verifyRazorpayPayment`. |
 | **submitRating** | onCall (either party) | Stars integer 1–5, feedback ≤1000 chars. Assignment `completed` (`INVALID_STATE`). Derives rater/ratee; blocks a second rating from the same side (`ALREADY_RATED`); writes rating onto the assignment and updates ratee `ratingAvg`/`ratingCount` (rolling, rounded to 0.1). |
 | **createRazorpayOrder** | onCall (requester only) | secrets `RAZORPAY_KEY_ID/SECRET`. **Trip-level** (keyed by `requestId`, not per TravAcser): request `completed`, not paid (`ALREADY_PAID`), real `tripAmountInr>0` (`NO_AMOUNT`). **TEST PHASE: charges/returns `TEST_BILL_INR`=₹1** (checkout shows ₹1; real `tripAmountInr` untouched). Reuses a stored order only if `razorpayKeyId==current keyId` AND `razorpayAmountInr==billed` (else mints fresh); stamps `razorpayOrderId`+`razorpayKeyId`+`razorpayAmountInr` on the **request**. Returns `{orderId, keyId, amountPaise, amountInr(=1), currency}`. |
 | **verifyRazorpayPayment** | onCall (requester only) | secret `RAZORPAY_KEY_SECRET`. **Trip-level** (keyed by `requestId`). HMAC-SHA256 verify `orderId|paymentId` (timing-safe) (`BAD_SIGNATURE`). Request `completed`, `razorpayOrderId` matches (`ORDER_MISMATCH`). Marks the **whole trip** paid: request `requesterPaidAt`+`paymentStatus:'confirmed'`, and stamps every `completed` assignment `requesterPaidAt`+`paymentStatus:'confirmed'`. Pushes each TravAcser. One payment covers all TravAcsers; the admin team distributes each share manually off-app. |
@@ -299,9 +299,11 @@ Helpers: `isSignedIn`, `isAdmin` (`token.admin==true`), `profileData(uid)`, `isA
   approved-volunteer + same city + gender backstop `genderRestricted==false || genderWidened==true ||
   requesterGender==my gender`). Create: `requesterId==uid`, `status∈{draft,broadcast}`,
   `volunteerId==null`, `serviceCity` string, `acceptedCount==0`, `numTravAcsers` int 1..10,
-  `numTravellers` int 1..10, `genderWidened==false`. Update: **only** requester, only while
-  `status∈{draft,broadcast}` and `acceptedCount==0`, and only to set `status=='cancelled'` (i.e.
-  cancel-before-any-accept). No delete.
+  `numTravellers` int 1..10, `genderWidened==false`, **and a field allowlist** — the create may only
+  carry the client-writable fields (blocks pre-seeding server-managed `tripAmountInr`, `paymentStatus`,
+  `requesterPaidAt`, `razorpay*`, etc.). Update: **only** requester, only while `status∈{draft,broadcast}`
+  and `acceptedCount==0`, only to set `status=='cancelled'`, **and `affectedKeys().hasOnly(['status',
+  'updatedAt'])`** (so the cancel can't also change ownership/amounts/payment fields). No delete.
 - **assignments (nested + collection-group):** direct read by that TravAcser, the requester, or admin;
   collection-group read gated on `resource.data.volunteerId==uid` **or** `resource.data.requesterId==uid`
   (fields, not doc id) — so a TravAcser lists their own trips and a requester lists their own trips'
@@ -443,8 +445,10 @@ Payment state lives on the **request** (`tripAmountInr`, `requesterPaidAt`, `pay
 - There is a **single** "End trip & pay" (active trip) / "Make payment" (Trip History) button per
   trip — NOT one per TravAcser. The TravAcser side has **no "Mark received"** step (their payout is a
   manual admin transfer); their history just shows the payment status.
-- The legacy per-assignment `markPaid`/`markReceived` callables still exist in the backend but are no
-  longer used by the client.
+- **Reconciliation:** a signed **`razorpayWebhook`** (onRequest) is the durable source of truth —
+  even if the client never calls `verifyRazorpayPayment`, Razorpay's webhook marks the trip paid
+  (idempotently). Client verification is an optimization. The legacy per-assignment
+  `markPaid`/`markReceived` callables were **removed**.
 
 ---
 
@@ -460,14 +464,14 @@ codes/`toString()`/stack live only in `debugDetail`. `mapErrorToFailure()` maps 
 ---
 
 ## 17. Regression safety net (tests)
-Run: `cd app; flutter analyze; flutter test` (**73 tests**) and, from `firebase/`, the emulator suites
+Run: `cd app; flutter analyze; flutter test` (**78 tests**) and, from `firebase/`, the emulator suites
 (`npx -y firebase-tools@13 emulators:exec --only firestore --project demo-travacs "npm --prefix
-functions test"` = **33 functions tests**; `… "npm --prefix rules-tests test"` = **32 rules tests**).
+functions test"` = **42 functions tests**; `… "npm --prefix rules-tests test"` = **34 rules tests**).
 
 | Suite | Guards |
 |---|---|
-| `app/test/domain_test.dart` | billing math (`billedHours` rounding, `computeEstimate` new signature incl. ₹149/₹210 + ₹100/TravAcser examples, `pairServingCount`), `suggestedTravAcsers`, constants (`rateSoloInr==149`, `ratePairInr==210`, `travelCostInr==100`), enum mapping |
-| `app/test/provider_test.dart` | `availableRequestsProvider` filtering incl. gender feed hiding |
+| `app/test/domain_test.dart` | billing math (`billedHours` rounding, `computeEstimate` incl. a **client↔server parity vector table**, `pairServingCount`), `suggestedTravAcsers`, constants |
+| `app/test/provider_test.dart` | `availableRequestsProvider` filtering incl. gender feed hiding; **`myPendingDuesProvider`** (unpaid-with-bill blocks, paid/legacy don't) |
 | `app/test/repository_test.dart` | create writes `estimatedAmountInr==520`, error→Failure mapping, callable wiring |
 | `app/test/accessibility_test.dart` | `meetsGuideline` (tap-target/labeled/contrast) + semantic labels — **`RequestCard` MergeSemantics is guarded here; do not remove it** |
 | `app/test/my_requests_flow_test.dart` | compact list → detail navigation |
@@ -475,8 +479,8 @@ functions test"` = **33 functions tests**; `… "npm --prefix rules-tests test"`
 | `app/test/error_mapper_test.dart` | no raw text leaks; code→Failure mapping |
 | `app/test/trip_otp_test.dart` | deterministic start-code |
 | `app/test/menu_test.dart`, `messaging_repository_test.dart`, `widget_test.dart` | drawer, FCM token register/unregister, smoke |
-| `firebase/functions/test/index.test.ts` (33) | accept FCFS + guards (gender, one-per-day), complete billing (split rate + ₹100/TravAcser) + **conclude-all** + pair rate, EARLY_END, cancel-started reject, reschedule guards + day-after bound, two-sided payment, ratings, razorpay verify, admin gates |
-| `firebase/rules-tests/test/firestore.test.js` (32) | default-deny, function-only writes, region + gender read-gating, **requester collection-group read**, cancel-before-accept |
+| `firebase/functions/test/index.test.ts` (42) | accept FCFS + guards (gender, one-per-day), complete billing (split rate + ₹100/TravAcser) + **conclude-all** (incl. mixed started/assigned) + pair rate, EARLY_END, cancel-started reject, reschedule guards + day-after bound, **reschedule-vs-started-lock** (respond/expiry), **idempotent start/complete**, **expireStaleRequests / expireRescheduleConfirmations**, **createRazorpayOrder (₹1 override + reuse + already-paid)**, razorpay verify (trip-level), ratings, admin gates |
+| `firebase/rules-tests/test/firestore.test.js` (34) | default-deny, function-only writes, region + gender read-gating, requester collection-group read, cancel-before-accept, **create field-allowlist (forged payment fields)**, **cancel affectedKeys (can't change ownership/amounts)** |
 
 ---
 
