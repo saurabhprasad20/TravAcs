@@ -107,12 +107,13 @@ class Assignment {
     final hrsLabel =
         hrs == hrs.roundToDouble() ? hrs.toStringAsFixed(0) : hrs.toStringAsFixed(1);
     final travel = travelCostInr ?? AppConstants.travelCostInr;
-    // Infer the per-head rate from the recorded charge when available, else
-    // assume the single-traveller rate.
-    final billedService = (amountInr != null && travelCostInr != null)
-        ? amountInr! - travelCostInr!
-        : null;
-    final rate = (billedService != null && hrs > 0)
+    // Infer the per-head rate from the actual amount (the billed total once
+    // completed, else the accept-time estimate) rather than assuming a fixed
+    // rate — a pair assignment bills at ₹210/hr, and hardcoding ₹149 would make
+    // the breakdown line contradict the shown total.
+    final total = amountInr ?? amountInrEstimate;
+    final billedService = total - travel;
+    final rate = (hrs > 0)
         ? (billedService / hrs).round()
         : AppConstants.rateSoloInr;
     return '$hrsLabel hr × ₹$rate/hr + ₹$travel travel';

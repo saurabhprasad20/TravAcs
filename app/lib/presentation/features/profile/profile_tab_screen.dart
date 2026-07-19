@@ -344,11 +344,20 @@ class _AvailabilityTile extends ConsumerWidget {
               final ok = await ref
                   .read(profileControllerProvider.notifier)
                   .setAvailability(value);
-              if (ok && context.mounted) {
+              if (!context.mounted) return;
+              if (ok) {
                 A11y.announce(
                   context,
                   value ? 'You are now available.' : 'You are now unavailable.',
                 );
+              } else {
+                // The switch silently snaps back on failure — a sighted user
+                // sees it, but a TalkBack user gets nothing unless we say so.
+                final msg =
+                    failureMessage(ref.read(profileControllerProvider).error);
+                A11y.announce(context, msg);
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(SnackBar(content: Text(msg)));
               }
             },
     );

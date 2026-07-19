@@ -798,3 +798,143 @@ describe("createRazorpayOrder (trip-level, Rs.1 test override)", () => {
     );
   });
 });
+
+describe("accept/start lifecycle guards (H2)", () => {
+  it("rejects accepting a request whose scheduled time has passed", async () => {
+    await approvedVolunteer("vol");
+    await broadcastRequest("r1", {
+      scheduledStartAt: Timestamp.fromMillis(Date.now() - HOUR),
+    });
+    await assert.rejects(
+      () => acceptRequest(call({requestId: "r1"}, "vol")),
+      /scheduled time has passed/i
+    );
+  });
+
+  it("freezes a partially-filled request once one TravAcser starts it", async () => {
+    await approvedVolunteer("vol");
+    await approvedVolunteer("vol2");
+    // Two slots, future start so accepts are allowed.
+    await broadcastRequest("r1", {numTravAcsers: 2});
+    await acceptRequest(call({requestId: "r1"}, "vol"));
+    let r = (await db.doc("requests/r1").get()).data()!;
+    assert.equal(r.status, "broadcast"); // still open (1 of 2)
+    assert.equal(r.acceptedCount, 1);
+
+    // The accepted TravAcser starts early -> the whole request freezes.
+    await startTrip(call({requestId: "r1", volunteerId: "vol"}, "vol"));
+    r = (await db.doc("requests/r1").get()).data()!;
+    assert.equal(r.status, "started");
+
+    // A second TravAcser can no longer grab the leftover slot.
+    await assert.rejects(
+      () => acceptRequest(call({requestId: "r1"}, "vol2")),
+      /no longer open/i
+    );
+  });
+});
+
+describe("widenGenderRequests scan is bounded (M6)", () => {
+  it("does not widen a request that is no longer broadcast", async () => {
+    // A restricted, not-yet-widened, but already-filled request that is past
+    // its widen anchor must be ignored (it's out of the broadcast scan).
+    await db.doc("requests/r1").set({
+      requesterId: "alice",
+      status: "assigned",
+      serviceCity: "delhi_ncr",
+      genderRestricted: true,
+      genderWidened: false,
+      requesterGender: "female",
+      genderWidenAt: Timestamp.fromMillis(Date.now() - HOUR),
+      scheduledStartAt: Timestamp.fromMillis(Date.now() + HOUR),
+    });
+    await widenGenderRequests({});
+    const r = (await db.doc("requests/r1").get()).data()!;
+    assert.equal(r.genderWidened, false); // untouched
+  });
+});
+
+describe("razorpayWebhook (durable payment reconciler, M4)", () => {
+  const SECRET = "whsec_test_123";
+  before(() => {
+    process.env.RAZORPAY_WEBHOOK_SECRET = SECRET;
+  });
+
+  function sign(body: string): string {
+    return crypto.createHmac("sha256", SECRET).update(body).digest("hex");
+  }
+  function mockRes(): any {
+    return {
+      statusCode: 0,
+      body: "",
+      status(n: number) { this.statusCode = n; return this; },
+      send(b: any) { this.body = b; return this; },
+    };
+  }
+  async function hit(body: string, sig?: string): Promise<any> {
+    const res = mockRes();
+    const req: any = {
+      header: (k: string) =>
+        (k.toLowerCase() === "x-razorpay-signature" ? sig : undefined),
+      rawBody: Buffer.from(body),
+    };
+    await (fns.razorpayWebhook as any)(req, res);
+    return res;
+  }
+
+  it("rejects a missing signature with 400", async () => {
+    const res = await hit(JSON.stringify({event: "payment.captured"}));
+    assert.equal(res.statusCode, 400);
+  });
+
+  it("rejects a bad signature with 401", async () => {
+    const body = JSON.stringify({event: "payment.captured"});
+    const res = await hit(body, "deadbeef");
+    assert.equal(res.statusCode, 401);
+  });
+
+  it("ignores an unrelated event with 200", async () => {
+    const body = JSON.stringify({event: "payment.failed"});
+    const res = await hit(body, sign(body));
+    assert.equal(res.statusCode, 200);
+    assert.match(String(res.body), /ignored/i);
+  });
+
+  it("marks the trip paid on payment.captured, then is idempotent", async () => {
+    await db.doc("requests/r1").set({
+      requesterId: "alice", status: "completed",
+      razorpayOrderId: "order_123", tripAmountInr: 5, paymentStatus: "pending",
+    });
+    await db.doc("requests/r1/assignments/vol").set({
+      volunteerId: "vol", requesterId: "alice", tripStatus: "completed",
+      paymentStatus: "pending",
+    });
+    const body = JSON.stringify({
+      event: "payment.captured",
+      payload: {payment: {entity: {id: "pay_1", order_id: "order_123"}}},
+    });
+    const res1 = await hit(body, sign(body));
+    assert.equal(res1.statusCode, 200);
+    const r1 = (await db.doc("requests/r1").get()).data()!;
+    assert.equal(r1.paymentStatus, "confirmed");
+    assert.equal(r1.razorpayPaymentId, "pay_1");
+    assert.ok(r1.requesterPaidAt);
+    const a1 = (await db.doc("requests/r1/assignments/vol").get()).data()!;
+    assert.equal(a1.paymentStatus, "confirmed");
+
+    const paidAt = r1.requesterPaidAt.toMillis();
+    const res2 = await hit(body, sign(body)); // repeat delivery
+    assert.equal(res2.statusCode, 200);
+    const r2 = (await db.doc("requests/r1").get()).data()!;
+    assert.equal(r2.requesterPaidAt.toMillis(), paidAt); // unchanged
+  });
+
+  it("returns 200 for a captured event with no matching trip", async () => {
+    const body = JSON.stringify({
+      event: "order.paid",
+      payload: {order: {entity: {id: "order_absent"}}},
+    });
+    const res = await hit(body, sign(body));
+    assert.equal(res.statusCode, 200);
+  });
+});

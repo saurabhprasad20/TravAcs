@@ -106,7 +106,8 @@ void main() {
     required List<Assignment> myAssignments,
   }) {
     final repo = _MockRequestRepo();
-    when(() => repo.watchAvailableRequests(any()))
+    when(() => repo.watchAvailableRequests(any(),
+            myGender: any(named: 'myGender')))
         .thenAnswer((_) => Stream.value(available));
 
     final container = ProviderContainer(overrides: [

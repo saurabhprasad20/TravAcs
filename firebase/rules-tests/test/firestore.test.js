@@ -23,9 +23,12 @@ const {
   setDoc,
   updateDoc,
   deleteDoc,
+  collection,
   collectionGroup,
   query,
   where,
+  or,
+  and,
   setLogLevel,
 } = require("firebase/firestore");
 
@@ -61,6 +64,7 @@ function request(requesterId, extra = {}) {
     numTravellers: 1,
     numTravAcsers: 1,
     scheduledDate: new Date(),
+    scheduledStartAt: new Date(Date.now() + 3600_000),
     startTime: "10:00",
     expectedDurationMinutes: 60,
     meetingPoint: "A",
@@ -150,6 +154,19 @@ describe("profiles", () => {
     await assertFails(updateDoc(doc(v, "profiles/v"), { role: "admin" }));
     await assertFails(updateDoc(doc(v, "profiles/v"), { verificationStatus: "approved" }));
     await assertFails(updateDoc(doc(v, "profiles/v"), { ratingAvg: 5 }));
+  });
+
+  it("a TravAcser cannot change their gender after creation (H4)", async () => {
+    // Gender is trusted for strict same-gender matching, so it must be
+    // immutable — otherwise a TravAcser could flip it to reach a request meant
+    // for the other gender.
+    await seed(async (db) => {
+      await setDoc(doc(db, "profiles/v"), profile("volunteer", { gender: "male" }));
+    });
+    const v = testEnv.authenticatedContext("v").firestore();
+    await assertFails(updateDoc(doc(v, "profiles/v"), { gender: "female" }));
+    // an unrelated editable field still works (gender unchanged)
+    await assertSucceeds(updateDoc(doc(v, "profiles/v"), { fullName: "Renamed" }));
   });
 
   it("profiles cannot be deleted", async () => {
@@ -270,6 +287,66 @@ describe("requests", () => {
     await assertFails(
       setDoc(doc(carol, "requests/rf3"), request("carol", { razorpayOrderId: "order_x" }))
     );
+  });
+
+  it("cannot create a request without a scheduledStartAt timestamp (H6)", async () => {
+    const carol = testEnv.authenticatedContext("carol").firestore();
+    const noAnchor = request("carol");
+    delete noAnchor.scheduledStartAt;
+    await assertFails(setDoc(doc(carol, "requests/rna"), noAnchor));
+    // a non-timestamp anchor is also rejected
+    await assertFails(
+      setDoc(doc(carol, "requests/rnb"), request("carol", { scheduledStartAt: "soon" }))
+    );
+  });
+
+  describe("available-requests listing is authorizable (H3)", () => {
+    beforeEach(async () => {
+      await seed(async (db) => {
+        await setDoc(doc(db, "requests/open1"),
+          request("alice", { genderRestricted: false }));
+        await setDoc(doc(db, "requests/strictF"), request("alice", {
+          genderPreference: "strict_same_gender", requesterGender: "female",
+          genderRestricted: true, genderWidened: false,
+        }));
+        await setDoc(doc(db, "profiles/maleVol"),
+          profile("volunteer", { verificationStatus: "approved", gender: "male" }));
+        await setDoc(doc(db, "profiles/femVol"),
+          profile("volunteer", { verificationStatus: "approved", gender: "female" }));
+      });
+    });
+
+    it("the gender-constrained listing (client's real query) succeeds for a male TravAcser", async () => {
+      const male = testEnv.authenticatedContext("maleVol").firestore();
+      const q = query(collection(male, "requests"),
+        and(
+          where("status", "==", "broadcast"),
+          where("serviceCity", "==", CITY),
+          or(
+            where("genderRestricted", "==", false),
+            where("genderWidened", "==", true),
+            where("requesterGender", "==", "male"),
+          )));
+      const snap = await assertSucceeds(getDocs(q));
+      const ids = snap.docs.map((d) => d.id).sort();
+      assert.deepEqual(ids, ["open1"]); // strictF (female-only) excluded
+    });
+
+    it("a female TravAcser's constrained listing includes the strict female request", async () => {
+      const fem = testEnv.authenticatedContext("femVol").firestore();
+      const q = query(collection(fem, "requests"),
+        and(
+          where("status", "==", "broadcast"),
+          where("serviceCity", "==", CITY),
+          or(
+            where("genderRestricted", "==", false),
+            where("genderWidened", "==", true),
+            where("requesterGender", "==", "female"),
+          )));
+      const snap = await assertSucceeds(getDocs(q));
+      const ids = snap.docs.map((d) => d.id).sort();
+      assert.deepEqual(ids, ["open1", "strictF"]);
+    });
   });
 
   it("the requester may cancel before anyone accepts", async () => {

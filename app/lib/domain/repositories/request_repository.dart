@@ -32,8 +32,12 @@ abstract interface class RequestRepository {
   Stream<List<Request>> watchMyRequests();
 
   /// Open (`broadcast`) requests in [city], newest first (live). For approved,
-  /// active TravAcsers; the query + rules enforce the region scope.
-  Stream<List<Request>> watchAvailableRequests(City city);
+  /// active TravAcsers; the query + rules enforce the region scope. [myGender]
+  /// is the TravAcser's own gender: the query is constrained to only the
+  /// requests the security rules permit (non-restricted, already-widened, or
+  /// strict same-gender that matches [myGender]) so a strict request in the city
+  /// can never make the whole listing fail with permission-denied.
+  Stream<List<Request>> watchAvailableRequests(City city, {Gender? myGender});
 
   /// All active (broadcast / assigned / started) requests across the platform,
   /// soonest first — for the admin monitoring dashboard. Rules restrict this to
