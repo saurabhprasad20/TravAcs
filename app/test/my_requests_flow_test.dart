@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:travacs/core/theme/app_theme.dart';
+import 'package:travacs/domain/entities/assignment.dart';
 import 'package:travacs/domain/entities/city.dart';
 import 'package:travacs/domain/entities/enums.dart';
 import 'package:travacs/domain/entities/request.dart';
@@ -81,6 +82,89 @@ void main() {
       // Actions live inside the detail.
       expect(find.text('Cancel trip'), findsOneWidget);
       expect(find.text('Reschedule'), findsOneWidget);
+    } finally {
+      handle.dispose();
+    }
+  });
+
+  testWidgets('each TravAcser\'s start code is labelled with their name',
+      (tester) async {
+    tester.view.physicalSize = const Size(1200, 3000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    // An active (assigned) 2-TravAcser trip with two accepted assignments.
+    final assigned = Request(
+      id: 'r1',
+      requesterId: 'u1',
+      status: RequestStatus.assigned,
+      serviceState: Region.delhiNcr,
+      serviceCity: City.fromWire('delhi_ncr')!,
+      numTravellers: 2,
+      numTravAcsers: 2,
+      genderPreference: GenderPreference.anyGender,
+      scheduledDate: DateTime(2026, 7, 1),
+      startTime: '10:00',
+      scheduledStartAt: DateTime(2026, 7, 1, 10, 0),
+      expectedDurationMinutes: 120,
+      meetingPoint: 'Connaught Place Metro Gate 2',
+      destination: 'AIIMS OPD',
+      estimatedAmountInr: 540,
+      acceptedCount: 2,
+    );
+    Assignment tra(String id, String name, String phone) => Assignment(
+          requestId: 'r1',
+          volunteerId: id,
+          volunteerName: name,
+          volunteerPhone: phone,
+          requesterId: 'u1',
+          requesterName: 'Asha',
+          requesterPhone: '+919000000000',
+          scheduledDate: DateTime(2026, 7, 1),
+          startTime: '10:00',
+          scheduledStartAt: DateTime(2026, 7, 1, 10, 0),
+          expectedDurationMinutes: 120,
+          meetingPoint: 'Connaught Place Metro Gate 2',
+          destination: 'AIIMS OPD',
+          numTravellers: 2,
+          amountInrEstimate: 398,
+          tripStatus: TripStatus.assigned,
+        );
+    final assignments = [
+      tra('v1', 'Ravi', '+919111111111'),
+      tra('v2', 'Priya', '+919222222222'),
+    ];
+
+    Widget app() => ProviderScope(
+          overrides: [
+            myRequestsProvider.overrideWith((ref) => Stream.value([assigned])),
+            requestAssignmentsProvider('r1')
+                .overrideWith((ref) => Stream.value(assignments)),
+            clockProvider.overrideWith(
+                (ref) => Stream.value(DateTime(2026, 7, 1, 9, 0))),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            home: const MyRequestsScreen(),
+          ),
+        );
+
+    final handle = tester.ensureSemantics();
+    try {
+      await tester.pumpWidget(app());
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(InkWell).first);
+      await tester.pumpAndSettle();
+
+      // Each code carries its TravAcser's name — visibly and for a screen
+      // reader — so with two TravAcsers a blind User knows whose code is whose.
+      expect(find.text('Start code for Ravi'), findsOneWidget);
+      expect(find.text('Start code for Priya'), findsOneWidget);
+      expect(find.bySemanticsLabel(RegExp('Start code for Ravi:.*')),
+          findsOneWidget);
+      expect(find.bySemanticsLabel(RegExp('Start code for Priya:.*')),
+          findsOneWidget);
     } finally {
       handle.dispose();
     }

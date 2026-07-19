@@ -27,7 +27,7 @@
 1. Skim this file top-to-bottom, then [`docx/design_travacs.md`](docx/design_travacs.md) §0–§14.
 2. Regenerate the gitignored Firebase config (see [First-time setup](#a-first-time-setup-on-a-fresh-clone)) —
    the app **will not build** without `app/lib/firebase_options.dart`.
-3. `cd app; flutter pub get; flutter analyze; flutter test` — expect **81 passing tests**, analyzer clean.
+3. `cd app; flutter pub get; flutter analyze; flutter test` — expect **82 passing tests**, analyzer clean.
 4. Build + install on the connected phone (see [Build & run](#b-build--run-on-the-phone)).
 5. Before changing anything, read the [Golden Rules](#golden-rules-do-not-regress-these).
 
@@ -95,7 +95,7 @@ TravAcs/
 │   │       └── features/          # one folder per feature: auth, profile, requester, volunteer,
 │   │                              #   admin, shell, startup, shared (+ *_controller.dart)
 │   ├── android/                   # Gradle (Kotlin DSL); local.properties (gitignored) holds SDK paths
-│   └── test/                      # 81 offline tests (domain, repository, provider, widget_flow,
+│   └── test/                      # 82 offline tests (domain, repository, provider, widget_flow,
 │                                  #   error_mapper, accessibility)
 │
 ├── firebase/                      # backend (run firebase CLI from HERE — no .firebaserc)
@@ -340,7 +340,7 @@ Useful: `flutter devices` (list connected devices), `& $adb devices` (raw adb li
 ```powershell
 cd C:\Users\sauprasad\travacs\TravAcs\app
 flutter analyze        # must be clean (no issues)
-flutter test           # 81 tests: domain, repository, provider, widget_flow, error_mapper, accessibility
+flutter test           # 82 tests: domain, repository, provider, widget_flow, error_mapper, accessibility
 flutter test test/domain_test.dart   # run a single file
 ```
 

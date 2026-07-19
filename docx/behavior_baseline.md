@@ -464,7 +464,7 @@ codes/`toString()`/stack live only in `debugDetail`. `mapErrorToFailure()` maps 
 ---
 
 ## 17. Regression safety net (tests)
-Run: `cd app; flutter analyze; flutter test` (**81 tests**) and, from `firebase/`, the emulator suites
+Run: `cd app; flutter analyze; flutter test` (**82 tests**) and, from `firebase/`, the emulator suites
 (`npx -y firebase-tools@13 emulators:exec --only firestore --project demo-travacs "npm --prefix
 functions test"` = **50 functions tests**; `… "npm --prefix rules-tests test"` = **38 rules tests**).
 
