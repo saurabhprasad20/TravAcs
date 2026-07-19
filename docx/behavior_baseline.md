@@ -159,7 +159,7 @@ Routes: `/splash`, `/auth/phone`, `/auth/otp?phone=…`, `/complete-profile`, `/
 | `availableRequestsProvider` | StreamProvider | open requests in city, filtered (see below) |
 | `requestAssignmentsProvider` | StreamProvider.family<_,requestId> | assignments of one request (requester view) |
 | `myPendingDuesProvider` | Provider | requester's completed trips with a trip-level bill (`tripAmountInr>0`) that are unpaid; blocks new request creation (legacy no-total trips excluded) |
-| `activeTripsProvider` | StreamProvider | admin: all broadcast/assigned/started, ordered by `scheduledStartAt` |
+| `activeTripsProvider` | Provider&lt;AsyncValue&gt; | admin: **active (`started`) + upcoming (future `scheduledStartAt`) only** — past-dated not-started trips are filtered out (clock-driven) so history/stale leftovers don't show |
 | `pendingVolunteersProvider` | StreamProvider | admin: volunteers awaiting verification |
 | `functionsProvider` | Provider | `FirebaseFunctions.instanceFor(region:'asia-south2')` |
 | `shellTabIndexProvider` | NotifierProvider<int> | selected shell tab; `requesterMyRequestsTabIndex=1` |
@@ -464,7 +464,7 @@ codes/`toString()`/stack live only in `debugDetail`. `mapErrorToFailure()` maps 
 ---
 
 ## 17. Regression safety net (tests)
-Run: `cd app; flutter analyze; flutter test` (**82 tests**) and, from `firebase/`, the emulator suites
+Run: `cd app; flutter analyze; flutter test` (**83 tests**) and, from `firebase/`, the emulator suites
 (`npx -y firebase-tools@13 emulators:exec --only firestore --project demo-travacs "npm --prefix
 functions test"` = **51 functions tests**; `… "npm --prefix rules-tests test"` = **38 rules tests**).
 
