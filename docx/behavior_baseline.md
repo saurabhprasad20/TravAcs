@@ -466,7 +466,7 @@ codes/`toString()`/stack live only in `debugDetail`. `mapErrorToFailure()` maps 
 ## 17. Regression safety net (tests)
 Run: `cd app; flutter analyze; flutter test` (**82 tests**) and, from `firebase/`, the emulator suites
 (`npx -y firebase-tools@13 emulators:exec --only firestore --project demo-travacs "npm --prefix
-functions test"` = **50 functions tests**; `… "npm --prefix rules-tests test"` = **38 rules tests**).
+functions test"` = **51 functions tests**; `… "npm --prefix rules-tests test"` = **38 rules tests**).
 
 | Suite | Guards |
 |---|---|
@@ -479,7 +479,7 @@ functions test"` = **50 functions tests**; `… "npm --prefix rules-tests test"`
 | `app/test/error_mapper_test.dart` | no raw text leaks; code→Failure mapping |
 | `app/test/trip_otp_test.dart` | deterministic start-code |
 | `app/test/menu_test.dart`, `messaging_repository_test.dart`, `widget_test.dart` | drawer, FCM token register/unregister, smoke |
-| `firebase/functions/test/index.test.ts` (50) | accept FCFS + guards (gender, one-per-day, **past-start reject**), **freeze-parent-on-start** (no accept after one TravAcser starts a partially-filled request), complete billing (split rate + ₹100/TravAcser) + **conclude-all** (incl. mixed started/assigned) + pair rate, EARLY_END, cancel-started reject, reschedule guards + day-after bound, **reschedule-vs-started-lock** (respond/expiry), **idempotent start/complete**, **expireStaleRequests / expireRescheduleConfirmations**, **widenGenderRequests bounded to broadcast**, **createRazorpayOrder (₹1 override + reuse + already-paid)**, **razorpayWebhook (bad/missing signature, ignored event, payment.captured marks-paid + idempotent)**, razorpay verify (trip-level), ratings, admin gates |
+| `firebase/functions/test/index.test.ts` (51) | accept FCFS + guards (gender, one-per-day, **past-start reject**), **freeze-parent-on-start** (no accept after one TravAcser starts a partially-filled request), complete billing (split rate + ₹100/TravAcser) + **conclude-all** (incl. mixed started/assigned) + pair rate, EARLY_END, cancel-started reject, reschedule guards + day-after bound, **reschedule-vs-started-lock** (respond/expiry), **idempotent start/complete**, **expireStaleRequests / expireRescheduleConfirmations**, **widenGenderRequests bounded to broadcast**, **createRazorpayOrder (₹1 override + reuse + already-paid)**, **razorpayWebhook (bad/missing signature, ignored event, payment.captured marks-paid + idempotent)**, razorpay verify (trip-level), ratings, admin gates |
 | `firebase/rules-tests/test/firestore.test.js` (38) | default-deny, function-only writes, region + gender read-gating, requester collection-group read, cancel-before-accept, **create field-allowlist (forged payment fields)**, **create requires a `scheduledStartAt` timestamp**, **cancel affectedKeys (can't change ownership/amounts)**, **gender is immutable on profile update**, **gender-constrained available-requests listing is authorizable (per-gender results)** |
 
 ---

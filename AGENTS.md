@@ -105,7 +105,7 @@ TravAcs/
 │   ├── TESTING.md                 # how to run the emulator test suites
 │   ├── functions/                 # Cloud Functions (TypeScript, Node 20, firebase-functions v5)
 │   │   ├── src/index.ts           # the 8 functions
-│   │   └── test/index.test.ts     # 50 functions tests (firebase-functions-test + emulator)
+│   │   └── test/index.test.ts     # 51 functions tests (firebase-functions-test + emulator)
 │   └── rules-tests/test/firestore.test.js  # 38 rules tests (@firebase/rules-unit-testing)
 │
 └── docx/                          # documentation
