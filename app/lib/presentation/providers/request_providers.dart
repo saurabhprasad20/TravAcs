@@ -47,7 +47,9 @@ final _availableRequestsRawProvider = StreamProvider<List<Request>>((ref) {
   final city = my?.profile.serviceCity;
   final approved = my?.volunteer?.isApproved ?? false;
   if (city == null || !approved) return Stream.value(const []);
-  return ref.watch(requestRepositoryProvider).watchAvailableRequests(city);
+  return ref
+      .watch(requestRepositoryProvider)
+      .watchAvailableRequests(city, myGender: my?.profile.gender);
 });
 
 /// Open requests in the TravAcser's city, EXCLUDING ones they already accepted,

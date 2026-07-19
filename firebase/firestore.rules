@@ -46,11 +46,16 @@ service cloud.firestore {
         && (request.resource.data.role != 'volunteer'
             || request.resource.data.verificationStatus == 'pending');
 
-      // Update your own profile but never the protected fields.
+      // Update your own profile but never the protected fields. `gender` is
+      // immutable after creation: request visibility AND acceptRequest trust it
+      // for strict same-gender matching, so a TravAcser must not be able to flip
+      // their gender to reach a request meant for the other gender.
       allow update: if isSignedIn() && request.auth.uid == uid
         && request.resource.data.role == resource.data.role
         && request.resource.data.ratingAvg == resource.data.ratingAvg
         && request.resource.data.ratingCount == resource.data.ratingCount
+        && request.resource.data.get('gender', '')
+             == resource.data.get('gender', '')
         && request.resource.data.get('verificationStatus', 'pending')
              == resource.data.get('verificationStatus', 'pending')
         && request.resource.data.get('rejectionReason', '')
@@ -93,6 +98,10 @@ service cloud.firestore {
         && request.resource.data.numTravellers is int
         && request.resource.data.numTravellers >= 1
         && request.resource.data.numTravellers <= 10
+        // The schedule/billing anchor is mandatory and must be a real timestamp.
+        // Server lifecycle jobs (one-trip-per-day guard, stale auto-cancel) key
+        // off it, so a request that omits it would silently evade them.
+        && request.resource.data.scheduledStartAt is timestamp
         // A client cannot pre-widen a gender-restricted request.
         && request.resource.data.get('genderWidened', false) == false
         // Field allowlist: a create may ONLY carry these client-writable fields.

@@ -177,7 +177,7 @@ class _Assignments extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final assignments = ref.watch(requestAssignmentsProvider(requestId));
-    return assignments.maybeWhen(
+    return assignments.when(
       data: (list) {
         final done = list
             .where((a) =>
@@ -193,7 +193,13 @@ class _Assignments extends ConsumerWidget {
           ],
         );
       },
-      orElse: () => const SizedBox.shrink(),
+      loading: () => const SizedBox.shrink(),
+      // Don't collapse an error into an invisible widget — that silently hides
+      // the per-TravAcser breakdown AND the rating buttons with no explanation.
+      error: (e, _) => Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Text(failureMessage(e)),
+      ),
     );
   }
 }

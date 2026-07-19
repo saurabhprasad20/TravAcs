@@ -103,10 +103,26 @@ class FirestoreRequestRepository implements RequestRepository {
   }
 
   @override
-  Stream<List<Request>> watchAvailableRequests(City city) {
+  Stream<List<Request>> watchAvailableRequests(City city, {Gender? myGender}) {
+    // Mirror the Firestore security-rule branches for reading a broadcast
+    // request (non-restricted OR already-widened OR strict same-gender that
+    // matches me) as query constraints. Rules are NOT filters: without these
+    // the listing would be rejected outright as soon as a strict same-gender
+    // request for the OTHER gender exists in the city.
+    final genderFilter = myGender == null
+        ? Filter.or(
+            Filter('genderRestricted', isEqualTo: false),
+            Filter('genderWidened', isEqualTo: true),
+          )
+        : Filter.or(
+            Filter('genderRestricted', isEqualTo: false),
+            Filter('genderWidened', isEqualTo: true),
+            Filter('requesterGender', isEqualTo: myGender.wireValue),
+          );
     return _requests
         .where('status', isEqualTo: RequestStatus.broadcast.wireValue)
         .where('serviceCity', isEqualTo: city.wireValue)
+        .where(genderFilter)
         .orderBy('createdAt', descending: true)
         .snapshots()
         .map(_mapDocs)
@@ -254,6 +270,7 @@ class FirestoreRequestRepository implements RequestRepository {
     return _db
         .collectionGroup('assignments')
         .where('volunteerId', isEqualTo: uid)
+        .orderBy('acceptedAt', descending: true)
         .snapshots()
         .map((snap) =>
             snap.docs.map(_toAssignment).whereType<Assignment>().toList())
@@ -267,6 +284,7 @@ class FirestoreRequestRepository implements RequestRepository {
     return _db
         .collectionGroup('assignments')
         .where('requesterId', isEqualTo: uid)
+        .orderBy('acceptedAt', descending: true)
         .snapshots()
         .map((snap) =>
             snap.docs.map(_toAssignment).whereType<Assignment>().toList())

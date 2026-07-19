@@ -332,16 +332,24 @@ class _DetailBody extends ConsumerWidget {
   Future<void> _endTripAndPay(
       BuildContext context, WidgetRef ref, Request r, List<Assignment> started) async {
     if (started.isEmpty) return;
+    // Completing the trip flips the request to 'completed', which can unmount
+    // THIS detail widget before the await resumes. Capture handles that survive
+    // that rebuild so the "& pay" half never gets silently skipped, leaving the
+    // User to hunt for payment in Trip History.
+    final rootContext = Navigator.of(context, rootNavigator: true).context;
+    final messenger = ScaffoldMessenger.of(context);
     final ok = await ref
         .read(requestControllerProvider.notifier)
         .completeTrip(r.id, started.first.volunteerId);
-    if (!context.mounted) return;
     if (!ok) {
-      _err(context, ref);
+      final msg = failureMessage(ref.read(requestControllerProvider).error);
+      messenger.showSnackBar(SnackBar(content: Text(msg)));
+      if (rootContext.mounted) A11y.announce(rootContext, msg);
       return;
     }
-    A11y.announce(context, 'Trip ended. Continue to payment.');
-    await startTripPayment(context, ref,
+    if (!rootContext.mounted) return;
+    A11y.announce(rootContext, 'Trip ended. Continue to payment.');
+    await startTripPayment(rootContext, ref,
         requestId: r.id, contact: started.first.requesterPhone);
   }
 

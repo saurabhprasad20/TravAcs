@@ -154,6 +154,15 @@ void main() {
           VerificationStatus.approved);
     });
 
+    test('unknown wire values fall back safely (no crash — M8)', () {
+      // A future backend value must NOT throw and break a whole stream; it
+      // degrades to a least-privilege / benign default instead.
+      expect(UserRole.fromWire('superadmin'), UserRole.requester);
+      expect(
+          VerificationStatus.fromWire('disputed'), VerificationStatus.pending);
+      expect(RequestStatus.fromWire('archived'), RequestStatus.closed);
+    });
+
     test('every enum wireValue round-trips through fromWire', () {
       for (final v in Region.values) {
         expect(Region.fromWire(v.wireValue), v);
@@ -235,6 +244,25 @@ void main() {
     });
   });
 
+  group('Assignment amountBreakdown (H7 — rate follows the amount)', () {
+    test('pre-completion infers the rate from the estimate (not hardcoded)', () {
+      // 1 hr solo estimate = ₹149 + ₹100 travel.
+      final a = _billAssignment(amountInrEstimate: 249);
+      expect(a.amountBreakdown, '1 hr × ₹149/hr + ₹100 travel');
+    });
+
+    test('a completed pair trip shows the ₹210 pair rate, matching its total', () {
+      // 1.5 hr pair = ₹210×1.5 + ₹100 travel = ₹415.
+      final a = _billAssignment(
+        amountInrEstimate: 249,
+        durationMinutes: 90,
+        amountInr: 415,
+        travelCostInr: 100,
+      );
+      expect(a.amountBreakdown, '1.5 hr × ₹210/hr + ₹100 travel');
+    });
+  });
+
   test('AppConstants sanity', () {
     expect(AppConstants.rateSoloInr, 149);
     expect(AppConstants.ratePairInr, 210);
@@ -283,4 +311,30 @@ Assignment _assignment({int? reqStars, int? volStars}) => Assignment(
       tripStatus: TripStatus.completed,
       requesterRatingStars: reqStars,
       volunteerRatingStars: volStars,
+    );
+
+Assignment _billAssignment({
+  required int amountInrEstimate,
+  int expectedDurationMinutes = 60,
+  int? durationMinutes,
+  int? amountInr,
+  int? travelCostInr,
+}) =>
+    Assignment(
+      requestId: 'r1',
+      volunteerId: 'v1',
+      volunteerName: 'V',
+      requesterId: 'u1',
+      requesterName: 'U',
+      scheduledDate: DateTime(2026, 7, 1),
+      startTime: '10:00',
+      expectedDurationMinutes: expectedDurationMinutes,
+      meetingPoint: 'A',
+      destination: 'B',
+      numTravellers: 1,
+      amountInrEstimate: amountInrEstimate,
+      durationMinutes: durationMinutes,
+      amountInr: amountInr,
+      travelCostInr: travelCostInr,
+      tripStatus: TripStatus.completed,
     );

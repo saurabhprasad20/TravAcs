@@ -10,7 +10,8 @@ enum UserRole {
   final String wireValue;
 
   static UserRole fromWire(String value) =>
-      UserRole.values.firstWhere((e) => e.wireValue == value);
+      UserRole.values.firstWhere((e) => e.wireValue == value,
+          orElse: () => UserRole.requester);
 
   /// User-facing display name. (Wire values stay 'requester'/'volunteer' so the
   /// database, rules and history are unaffected.)
@@ -68,7 +69,8 @@ enum VerificationStatus {
   final String wireValue;
 
   static VerificationStatus fromWire(String value) =>
-      VerificationStatus.values.firstWhere((e) => e.wireValue == value);
+      VerificationStatus.values.firstWhere((e) => e.wireValue == value,
+          orElse: () => VerificationStatus.pending);
 
   String get label => switch (this) {
         VerificationStatus.pending => 'Pending verification',
@@ -92,7 +94,8 @@ enum RequestStatus {
   final String label;
 
   static RequestStatus fromWire(String value) =>
-      RequestStatus.values.firstWhere((e) => e.wireValue == value);
+      RequestStatus.values.firstWhere((e) => e.wireValue == value,
+          orElse: () => RequestStatus.closed);
 
   bool get isOpen => this == RequestStatus.broadcast;
   bool get isCancellable =>

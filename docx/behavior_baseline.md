@@ -464,13 +464,13 @@ codes/`toString()`/stack live only in `debugDetail`. `mapErrorToFailure()` maps 
 ---
 
 ## 17. Regression safety net (tests)
-Run: `cd app; flutter analyze; flutter test` (**78 tests**) and, from `firebase/`, the emulator suites
+Run: `cd app; flutter analyze; flutter test` (**81 tests**) and, from `firebase/`, the emulator suites
 (`npx -y firebase-tools@13 emulators:exec --only firestore --project demo-travacs "npm --prefix
-functions test"` = **42 functions tests**; `… "npm --prefix rules-tests test"` = **34 rules tests**).
+functions test"` = **50 functions tests**; `… "npm --prefix rules-tests test"` = **38 rules tests**).
 
 | Suite | Guards |
 |---|---|
-| `app/test/domain_test.dart` | billing math (`billedHours` rounding, `computeEstimate` incl. a **client↔server parity vector table**, `pairServingCount`), `suggestedTravAcsers`, constants |
+| `app/test/domain_test.dart` | billing math (`billedHours` rounding, `computeEstimate` incl. a **client↔server parity vector table**, `pairServingCount`), `suggestedTravAcsers`, constants, **`Assignment.amountBreakdown` rate follows the amount (solo estimate vs ₹210 pair)**, **enum `fromWire` safe fallback on unknown values** |
 | `app/test/provider_test.dart` | `availableRequestsProvider` filtering incl. gender feed hiding; **`myPendingDuesProvider`** (unpaid-with-bill blocks, paid/legacy don't) |
 | `app/test/repository_test.dart` | create writes `estimatedAmountInr==520`, error→Failure mapping, callable wiring |
 | `app/test/accessibility_test.dart` | `meetsGuideline` (tap-target/labeled/contrast) + semantic labels — **`RequestCard` MergeSemantics is guarded here; do not remove it** |
@@ -479,8 +479,8 @@ functions test"` = **42 functions tests**; `… "npm --prefix rules-tests test"`
 | `app/test/error_mapper_test.dart` | no raw text leaks; code→Failure mapping |
 | `app/test/trip_otp_test.dart` | deterministic start-code |
 | `app/test/menu_test.dart`, `messaging_repository_test.dart`, `widget_test.dart` | drawer, FCM token register/unregister, smoke |
-| `firebase/functions/test/index.test.ts` (42) | accept FCFS + guards (gender, one-per-day), complete billing (split rate + ₹100/TravAcser) + **conclude-all** (incl. mixed started/assigned) + pair rate, EARLY_END, cancel-started reject, reschedule guards + day-after bound, **reschedule-vs-started-lock** (respond/expiry), **idempotent start/complete**, **expireStaleRequests / expireRescheduleConfirmations**, **createRazorpayOrder (₹1 override + reuse + already-paid)**, razorpay verify (trip-level), ratings, admin gates |
-| `firebase/rules-tests/test/firestore.test.js` (34) | default-deny, function-only writes, region + gender read-gating, requester collection-group read, cancel-before-accept, **create field-allowlist (forged payment fields)**, **cancel affectedKeys (can't change ownership/amounts)** |
+| `firebase/functions/test/index.test.ts` (50) | accept FCFS + guards (gender, one-per-day, **past-start reject**), **freeze-parent-on-start** (no accept after one TravAcser starts a partially-filled request), complete billing (split rate + ₹100/TravAcser) + **conclude-all** (incl. mixed started/assigned) + pair rate, EARLY_END, cancel-started reject, reschedule guards + day-after bound, **reschedule-vs-started-lock** (respond/expiry), **idempotent start/complete**, **expireStaleRequests / expireRescheduleConfirmations**, **widenGenderRequests bounded to broadcast**, **createRazorpayOrder (₹1 override + reuse + already-paid)**, **razorpayWebhook (bad/missing signature, ignored event, payment.captured marks-paid + idempotent)**, razorpay verify (trip-level), ratings, admin gates |
+| `firebase/rules-tests/test/firestore.test.js` (38) | default-deny, function-only writes, region + gender read-gating, requester collection-group read, cancel-before-accept, **create field-allowlist (forged payment fields)**, **create requires a `scheduledStartAt` timestamp**, **cancel affectedKeys (can't change ownership/amounts)**, **gender is immutable on profile update**, **gender-constrained available-requests listing is authorizable (per-gender results)** |
 
 ---
 
@@ -494,7 +494,10 @@ functions test"` = **42 functions tests**; `… "npm --prefix rules-tests test"`
    `volunteerId`, amounts, `tripStatus`; assignments/trips are function-only. Only two client Firestore
    writes exist: create request, and cancel-before-any-accept.
 4. **Started trip is locked** — no cancel/reschedule once an assignment is `started`; cannot end
-   before `scheduledStartAt`; may start early.
+   before `scheduledStartAt`; may start early. **Starting also freezes the parent request** (a
+   partially-filled `broadcast`/`assigned` request flips to `started`), and `acceptRequest` rejects a
+   request whose `scheduledStartAt` has passed — so no TravAcser can join a trip that is underway or
+   past its window.
 5. **Billing** — service charge ₹149/hr (serves 1) / ₹210/hr (serves 2) per TravAcser via even
    split; billed hours = min 1 h + per-hour rounding (≤14→0, 15–40→+30 m, 41–60→+1 h); travel ₹100
    **per TravAcser**. Client and server formulas must stay identical. **TEST PHASE: checkout collects
@@ -524,18 +527,22 @@ functions test"` = **42 functions tests**; `… "npm --prefix rules-tests test"`
   (no per-traveller attendance tracking); revisit if attendance is ever recorded.
 - **Accept-time earning estimate assumes the solo rate** (₹149/hr) even when the trip guarantees a
   pair; the final `completeTrip` bill (which may apply ₹210) is authoritative. Informational only.
+  (`Assignment.amountBreakdown` now derives its rate from the shown amount, so the per-TravAcser line
+  no longer contradicts the total — a pair trip reads ₹210/hr once billed.)
 - **Pending-dues block is client-side.** `NewRequestScreen` warms `myRequesterAssignmentsProvider`
   and blocks submit while it loads or when dues exist, but request creation is still a direct client
   Firestore write, so the block is not server-authoritative (a modified client or a cross-device race
   could bypass it). A robust fix is a server-side dues flag + a callable `createRequest` transaction.
-- **Gender-required is client-side** (`complete_profile_screen` validator); the Security Rules still
-  permit a missing/invalid `gender` on profile writes.
+- **Gender is immutable after profile creation** (rules block changing it — H4), and request
+  visibility/acceptance trust it. Residual gap: a profile can still be *created* with a missing/invalid
+  `gender`, and `strict_same_gender` enforcement is otherwise client-driven at request time.
 - One-trip-per-day has a theoretical millisecond race (robust fix = a deterministic
   `volunteerDailySlots/{uid_ISTdate}` guard doc).
 - Offline start-code has no true physical-presence guarantee (both sides can compute it) — intentional.
-- Partial multi-TravAcser lifecycle: a partially-filled request stays `broadcast`; starting one
-  assignment doesn't freeze remaining slots; some complete+cancel combos don't fully reconcile the
-  parent status.
+- Partial multi-TravAcser lifecycle: a partially-filled request now **freezes to `started`** when one
+  TravAcser starts (no further accepts), and accepts past `scheduledStartAt` are rejected — but the
+  remaining unfilled slots are simply abandoned, and some complete+cancel combinations still don't
+  fully reconcile the parent status.
 - Functions runtime Node 20 deprecated (decommission 2026-10-30) — bump to 22.
 - M11 store-release paused (debug signing key; `INTERNET`/`POST_NOTIFICATIONS` only in debug/profile
   manifests) — see `docx/m11-store-release-plan.md`.

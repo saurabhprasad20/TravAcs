@@ -278,6 +278,13 @@ export const acceptRequest = onCall({region: REGION}, async (req) => {
     if (genderRestricted && r.genderWidened !== true && vol.gender !== r.requesterGender) {
       throw new HttpsError("failed-precondition", "This request is currently limited to a specific gender.", {code: "GENDER_MISMATCH"});
     }
+    // The scheduled start has passed — the request can no longer be accepted
+    // (its trip window is over; expireStaleRequests will cancel it). Prevents a
+    // TravAcser joining a request whose time has already come and gone.
+    const schedMs = (r.scheduledStartAt as FirebaseFirestore.Timestamp | undefined)?.toMillis();
+    if (schedMs != null && Date.now() >= schedMs) {
+      throw new HttpsError("failed-precondition", "This request's scheduled time has passed.", {code: "PAST_START"});
+    }
     const existing = await tx.get(assignRef);
     if (existing.exists) {
       // A previously cancelled/declined/expired assignment leaves a doc behind;
@@ -435,6 +442,12 @@ export const startTrip = onCall({region: REGION}, async (req) => {
       rescheduleStatus: FieldValue.delete(),
       rescheduleDeadlineAt: FieldValue.delete(),
     });
+    // Freeze the parent request once the trip is underway so no further
+    // TravAcser can accept a leftover slot on a partially-filled request (which
+    // otherwise stays 'broadcast'). It also drops out of the available feed.
+    if (r.status === "broadcast" || r.status === "assigned") {
+      tx.update(reqRef, {status: "started", updatedAt: FieldValue.serverTimestamp()});
+    }
   });
   // Notify the User that their code was validated and the trip has started
   // (skip the push on an idempotent retry — they were already notified).
@@ -1347,6 +1360,7 @@ export const widenGenderRequests = onSchedule(
     const now = Date.now();
     const snap = await db
       .collection("requests")
+      .where("status", "==", "broadcast")
       .where("genderRestricted", "==", true)
       .where("genderWidened", "==", false)
       .get();

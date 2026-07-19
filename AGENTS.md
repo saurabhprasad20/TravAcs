@@ -27,7 +27,7 @@
 1. Skim this file top-to-bottom, then [`docx/design_travacs.md`](docx/design_travacs.md) §0–§14.
 2. Regenerate the gitignored Firebase config (see [First-time setup](#a-first-time-setup-on-a-fresh-clone)) —
    the app **will not build** without `app/lib/firebase_options.dart`.
-3. `cd app; flutter pub get; flutter analyze; flutter test` — expect **78 passing tests**, analyzer clean.
+3. `cd app; flutter pub get; flutter analyze; flutter test` — expect **81 passing tests**, analyzer clean.
 4. Build + install on the connected phone (see [Build & run](#b-build--run-on-the-phone)).
 5. Before changing anything, read the [Golden Rules](#golden-rules-do-not-regress-these).
 
@@ -95,7 +95,7 @@ TravAcs/
 │   │       └── features/          # one folder per feature: auth, profile, requester, volunteer,
 │   │                              #   admin, shell, startup, shared (+ *_controller.dart)
 │   ├── android/                   # Gradle (Kotlin DSL); local.properties (gitignored) holds SDK paths
-│   └── test/                      # 78 offline tests (domain, repository, provider, widget_flow,
+│   └── test/                      # 81 offline tests (domain, repository, provider, widget_flow,
 │                                  #   error_mapper, accessibility)
 │
 ├── firebase/                      # backend (run firebase CLI from HERE — no .firebaserc)
@@ -105,8 +105,8 @@ TravAcs/
 │   ├── TESTING.md                 # how to run the emulator test suites
 │   ├── functions/                 # Cloud Functions (TypeScript, Node 20, firebase-functions v5)
 │   │   ├── src/index.ts           # the 8 functions
-│   │   └── test/index.test.ts     # 42 functions tests (firebase-functions-test + emulator)
-│   └── rules-tests/test/firestore.test.js  # 34 rules tests (@firebase/rules-unit-testing)
+│   │   └── test/index.test.ts     # 50 functions tests (firebase-functions-test + emulator)
+│   └── rules-tests/test/firestore.test.js  # 38 rules tests (@firebase/rules-unit-testing)
 │
 └── docx/                          # documentation
     ├── design_travacs.md          # DEEP design source of truth (§0–§18)
@@ -340,7 +340,7 @@ Useful: `flutter devices` (list connected devices), `& $adb devices` (raw adb li
 ```powershell
 cd C:\Users\sauprasad\travacs\TravAcs\app
 flutter analyze        # must be clean (no issues)
-flutter test           # 78 tests: domain, repository, provider, widget_flow, error_mapper, accessibility
+flutter test           # 81 tests: domain, repository, provider, widget_flow, error_mapper, accessibility
 flutter test test/domain_test.dart   # run a single file
 ```
 
