@@ -577,7 +577,7 @@ class _AssignmentTile extends ConsumerWidget {
                       'Starts at ${DateFormat.jm().format(a.effectiveStartAt)}.',
                       style: Theme.of(context).textTheme.bodySmall),
                 ),
-              _StartCodeDisplay(otp: a.startOtp),
+              _StartCodeDisplay(otp: a.startOtp, travAcserName: a.volunteerName),
             ],
           ],
         ),
@@ -586,20 +586,24 @@ class _AssignmentTile extends ConsumerWidget {
   }
 }
 
-/// The User's start code, shown large. Read digit-by-digit for screen-reader
-/// users (golden rule) so the User can tell it to their TravAcser, who enters
-/// it on their device to begin the trip.
+/// The User's start code for ONE TravAcser, shown large. Each TravAcser has a
+/// distinct code, so the TravAcser's name is folded into both the visible
+/// heading and the semantic label — otherwise, with two+ TravAcsers, a
+/// screen-reader user landing on a code node couldn't tell whose it is.
+/// Read digit-by-digit for screen-reader users (golden rule).
 class _StartCodeDisplay extends StatelessWidget {
-  const _StartCodeDisplay({required this.otp});
+  const _StartCodeDisplay({required this.otp, required this.travAcserName});
   final String otp;
+  final String travAcserName;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final spaced = otp.split('').join(' '); // "1 2 3 4" reads digit-by-digit
+    final who = travAcserName.trim().isEmpty ? 'your TravAcser' : travAcserName;
     return Semantics(
-      label: 'Your start code: $spaced. '
-          'Read it to your TravAcser to begin the trip.',
+      label: 'Start code for $who: $spaced. '
+          'Read it to $who to begin the trip.',
       excludeSemantics: true,
       child: Container(
         width: double.infinity,
@@ -612,7 +616,7 @@ class _StartCodeDisplay extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Your start code',
+            Text('Start code for $who',
                 style: Theme.of(context)
                     .textTheme
                     .labelMedium
@@ -627,7 +631,7 @@ class _StartCodeDisplay extends StatelessWidget {
                   ),
             ),
             const SizedBox(height: 4),
-            Text('Read this code to your TravAcser to begin the trip.',
+            Text('Read this code to $who to begin the trip.',
                 style: Theme.of(context)
                     .textTheme
                     .bodySmall
