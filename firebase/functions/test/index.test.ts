@@ -938,3 +938,120 @@ describe("razorpayWebhook (durable payment reconciler, M4)", () => {
     assert.equal(res.statusCode, 200);
   });
 });
+
+// End-to-end walk of the interactive scenarios in docx/ft1.txt, driven entirely
+// against the Firestore emulator. This validates the SERVER state machine both
+// "sides" of a trip depend on (the request doc + each assignment); it does NOT
+// exercise the Flutter UI, TalkBack, real Razorpay checkout or FCM.
+describe("SCENARIO E2E (ft1.txt #8-#11): 2 TravAcsers, 1 serves, 1 no-show, 1 combined payment", () => {
+  const WHSECRET = "whsec_scn";
+  const origFetch = globalThis.fetch;
+  before(() => {
+    process.env.RAZORPAY_KEY_ID = "rzp_test_key";
+    process.env.RAZORPAY_KEY_SECRET = "test_secret";
+    process.env.RAZORPAY_WEBHOOK_SECRET = WHSECRET;
+    (globalThis as any).fetch = async () => ({
+      ok: true, json: async () => ({id: "order_scn_1"}), text: async () => "",
+    });
+  });
+  after(() => { (globalThis as any).fetch = origFetch; });
+
+  async function webhookHit(body: string): Promise<any> {
+    const sig = crypto.createHmac("sha256", WHSECRET).update(body).digest("hex");
+    const res: any = {
+      statusCode: 0, body: "",
+      status(n: number) { this.statusCode = n; return this; },
+      send(b: any) { this.body = b; return this; },
+    };
+    const req: any = {
+      header: (k: string) =>
+        (k.toLowerCase() === "x-razorpay-signature" ? sig : undefined),
+      rawBody: Buffer.from(body),
+    };
+    await (fns.razorpayWebhook as any)(req, res);
+    return res;
+  }
+
+  it("create → 2 accepts → 1 starts (freezes) → conclude-all → single payment → rate", async () => {
+    await approvedVolunteer("ravi");
+    await approvedVolunteer("priya");
+    // #8: the User creates a 2-TravAcser trip (a client write we seed directly),
+    // scheduled in the future so both TravAcsers can still accept.
+    await broadcastRequest("r1", {numTravAcsers: 2, numTravellers: 2});
+
+    // #8: first accept keeps the request OPEN (1 of 2).
+    await acceptRequest(call({requestId: "r1"}, "ravi"));
+    let r = (await db.doc("requests/r1").get()).data()!;
+    assert.equal(r.status, "broadcast");
+    assert.equal(r.acceptedCount, 1);
+
+    // #8: second accept fills it and it CLOSES to new TravAcsers.
+    await acceptRequest(call({requestId: "r1"}, "priya"));
+    r = (await db.doc("requests/r1").get()).data()!;
+    assert.equal(r.status, "assigned");
+    assert.equal(r.acceptedCount, 2);
+
+    // #11: only Ravi starts (Priya never does). Starting FREEZES the parent so
+    // no third TravAcser could join a trip already underway.
+    await startTrip(call({requestId: "r1", volunteerId: "ravi"}, "ravi"));
+    r = (await db.doc("requests/r1").get()).data()!;
+    assert.equal(r.status, "started");
+    assert.equal(
+      (await db.doc("requests/r1/assignments/priya").get()).data()!.tripStatus,
+      "assigned"); // Priya untouched
+
+    // Simulate time passing: scheduled time is now past and Ravi has walked with
+    // the User for ~90 min.
+    const past = Timestamp.fromMillis(Date.now() - 2 * HOUR);
+    await db.doc("requests/r1").update({scheduledStartAt: past});
+    await db.doc("requests/r1/assignments/ravi").update({
+      scheduledStartAt: past,
+      startedAt: Timestamp.fromMillis(Date.now() - 90 * 60000),
+    });
+    await db.doc("requests/r1/assignments/priya").update({scheduledStartAt: past});
+
+    // #9: Ravi ends the trip → concludes for EVERYONE in one transaction.
+    const done: any = await completeTrip(call({requestId: "r1", volunteerId: "ravi"}, "ravi"));
+    assert.equal(done.code, "COMPLETED");
+    const ravi = (await db.doc("requests/r1/assignments/ravi").get()).data()!;
+    const priya = (await db.doc("requests/r1/assignments/priya").get()).data()!;
+    // Ravi served both travellers → pair rate ₹210 × 1.5 h + ₹100 travel = ₹415.
+    assert.equal(ravi.tripStatus, "completed");
+    assert.equal(ravi.amountInr, 415);
+    // #11: Priya never started → closed, NO charge.
+    assert.equal(priya.tripStatus, "closed");
+    assert.equal(priya.amountInr, undefined);
+    r = (await db.doc("requests/r1").get()).data()!;
+    assert.equal(r.status, "completed");
+    // #10: ONE combined total for the whole trip (only Ravi's part here).
+    assert.equal(r.tripAmountInr, 415);
+    assert.equal(r.paymentStatus, "pending");
+
+    // #10: the User makes ONE payment (₹1 in test phase) covering the whole trip.
+    const order: any = await createRazorpayOrder(call({requestId: "r1"}, "alice"));
+    assert.equal(order.amountInr, 1);   // test-phase ₹1 actually collected
+    r = (await db.doc("requests/r1").get()).data()!;
+    assert.equal(r.tripAmountInr, 415); // real total untouched
+    assert.equal(r.razorpayOrderId, "order_scn_1");
+
+    // Razorpay captures the money; the webhook reconciles the trip as paid.
+    const res = await webhookHit(JSON.stringify({
+      event: "payment.captured",
+      payload: {payment: {entity: {id: "pay_scn", order_id: "order_scn_1"}}},
+    }));
+    assert.equal(res.statusCode, 200);
+    r = (await db.doc("requests/r1").get()).data()!;
+    assert.equal(r.paymentStatus, "confirmed");
+    assert.ok(r.requesterPaidAt);
+    assert.equal(
+      (await db.doc("requests/r1/assignments/ravi").get()).data()!.paymentStatus,
+      "confirmed");
+
+    // #1: both parties rate each other (only the TravAcser who actually served).
+    await submitRating(call({requestId: "r1", volunteerId: "ravi", stars: 5}, "alice"));
+    await submitRating(call({requestId: "r1", volunteerId: "ravi", stars: 4}, "ravi"));
+    const alice = (await db.doc("profiles/alice").get()).data()!;
+    assert.equal(alice.ratingAvg, 4); // Ravi's 4★ of the User
+    assert.equal(alice.ratingCount, 1);
+  });
+});
