@@ -10,7 +10,9 @@ import 'package:travacs/domain/entities/profile.dart';
 import 'package:travacs/domain/entities/request.dart';
 import 'package:travacs/domain/repositories/profile_repository.dart';
 import 'package:travacs/domain/repositories/request_repository.dart';
+import 'package:travacs/presentation/providers/admin_providers.dart';
 import 'package:travacs/presentation/providers/auth_providers.dart';
+import 'package:travacs/presentation/providers/core_providers.dart';
 import 'package:travacs/presentation/providers/profile_providers.dart';
 import 'package:travacs/presentation/providers/request_providers.dart';
 
@@ -215,6 +217,64 @@ void main() {
         myAssignments: const [],
       );
       expect((await readAvailable(c)).map((r) => r.id).toSet(), {'FEM'});
+    });
+  });
+
+  group('activeTripsProvider (admin: active + upcoming only)', () {
+    Request trip(String id, RequestStatus status, DateTime startAt) => Request(
+          id: id,
+          requesterId: 'u1',
+          status: status,
+          serviceState: Region.delhiNcr,
+          serviceCity: city,
+          numTravellers: 1,
+          numTravAcsers: 1,
+          genderPreference: GenderPreference.anyGender,
+          scheduledDate: startAt,
+          startTime: '10:00',
+          scheduledStartAt: startAt,
+          expectedDurationMinutes: 60,
+          meetingPoint: 'A',
+          destination: 'B',
+          estimatedAmountInr: 135,
+        );
+
+    test('keeps started + upcoming, hides past-dated not-started trips',
+        () async {
+      final now = DateTime.now();
+      final repo = _MockRequestRepo();
+      when(() => repo.watchActiveTrips()).thenAnswer((_) => Stream.value([
+            trip('up', RequestStatus.broadcast,
+                now.add(const Duration(hours: 3))),
+            trip('stale', RequestStatus.broadcast,
+                now.subtract(const Duration(days: 1))),
+            trip('running', RequestStatus.started,
+                now.subtract(const Duration(minutes: 30))),
+            trip('assignedUp', RequestStatus.assigned,
+                now.add(const Duration(hours: 1))),
+            trip('assignedPast', RequestStatus.assigned,
+                now.subtract(const Duration(hours: 2))),
+          ]));
+      final c = ProviderContainer(overrides: [
+        requestRepositoryProvider.overrideWithValue(repo),
+        authStateChangesProvider.overrideWith((ref) => Stream.value(null)),
+        clockProvider.overrideWith((ref) => Stream.value(now)),
+      ]);
+      addTearDown(c.dispose);
+      c.listen(activeTripsProvider, (_, __) {}, fireImmediately: true);
+
+      var list = const <Request>[];
+      for (var i = 0; i < 10; i++) {
+        await Future<void>.delayed(Duration.zero);
+        final v = c.read(activeTripsProvider);
+        if (v.hasValue) {
+          list = v.value!;
+          break;
+        }
+      }
+      // 'running' (started, even though past) stays; 'stale' + 'assignedPast'
+      // (past-dated, not started) are hidden; upcoming ones remain.
+      expect(list.map((r) => r.id).toSet(), {'up', 'running', 'assignedUp'});
     });
   });
 
