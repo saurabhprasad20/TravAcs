@@ -43,7 +43,7 @@ class _TripHistoryScreenState extends ConsumerState<TripHistoryScreen> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text(failureMessage(e))),
         data: (all) {
-          var list = all.where((r) => _isTerminal(r.status)).toList();
+          var list = all.where(_isTerminal).toList();
           list = list.where((r) => _matchesFilter(r.status)).toList();
           // Sort by creation time (fall back to scheduled date for legacy docs
           // without a createdAt).
@@ -92,10 +92,16 @@ class _TripHistoryScreenState extends ConsumerState<TripHistoryScreen> {
         HistoryFilter.cancelled => s == RequestStatus.cancelled,
       };
 
-  static bool _isTerminal(RequestStatus s) =>
-      s == RequestStatus.completed ||
-      s == RequestStatus.closed ||
-      s == RequestStatus.cancelled;
+  // A completed trip belongs in History only once its payment is settled — an
+  // unpaid completed trip stays on My Requests (item 9). A completed trip with
+  // no trip total (legacy) has nothing to pay, so it's terminal.
+  static bool _isTerminal(Request r) {
+    if (r.status == RequestStatus.completed) {
+      return r.isPaid || (r.tripAmountInr ?? 0) == 0;
+    }
+    return r.status == RequestStatus.closed ||
+        r.status == RequestStatus.cancelled;
+  }
 }
 
 class _HistoryCard extends ConsumerWidget {

@@ -15,7 +15,8 @@ import '../requester/request_controller.dart';
 
 /// The TravAcser's ACTIVE trips (scheduled or in progress), live. Completed
 /// trips move to the Trip History tab. A trip starts when the TravAcser
-/// validates the User's start code; either party can end a started trip.
+/// validates the User's start code, and only the TravAcser ends it (the User
+/// pays afterwards).
 class MyTripsScreen extends ConsumerWidget {
   const MyTripsScreen({super.key});
 

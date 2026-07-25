@@ -483,9 +483,11 @@ export const completeTrip = onCall({region: REGION}, async (req) => {
     const reqDoc = await tx.get(reqRef);
     if (!reqDoc.exists) throw new HttpsError("not-found", "Request not found.");
     const r = reqDoc.data() as FirebaseFirestore.DocumentData;
-    // Authorize: the TravAcser themselves or the requester.
-    if (uid !== volunteerId && uid !== r.requesterId) {
-      throw new HttpsError("permission-denied", "You cannot complete this trip.");
+    // Authorize: only the TravAcser can end a trip (the one who ran it). The
+    // User never ends the trip — they only pay afterwards. One TravAcser ending
+    // concludes the whole trip for everyone (conclude-all below).
+    if (uid !== volunteerId) {
+      throw new HttpsError("permission-denied", "Only the TravAcser can end the trip.");
     }
     const assignsSnap = await tx.get(reqRef.collection("assignments"));
     const callerDoc = assignsSnap.docs.find((d) => d.id === volunteerId);

@@ -346,6 +346,23 @@ describe("completeTrip (ends a started trip + bills from startedAt)", () => {
     );
   });
 
+  it("the User (requester) cannot end the trip — only the TravAcser (item 10)", async () => {
+    await db.doc("requests/r1").set({requesterId: "alice", status: "assigned"});
+    await db.doc("requests/r1/assignments/vol").set({
+      volunteerId: "vol", requesterId: "alice", tripStatus: "started",
+      startedAt: Timestamp.fromMillis(Date.now() - 90 * 60000),
+      scheduledStartAt: Timestamp.fromMillis(Date.now() - 2 * HOUR),
+    });
+    // The requester calling completeTrip is rejected...
+    await assert.rejects(
+      () => completeTrip(call({requestId: "r1", volunteerId: "vol"}, "alice")),
+      /only the travacser/i
+    );
+    // ...but the TravAcser succeeds.
+    const res: any = await completeTrip(call({requestId: "r1", volunteerId: "vol"}, "vol"));
+    assert.equal(res.code, "COMPLETED");
+  });
+
   it("cannot end a started trip before its scheduled start time", async () => {
     await db.doc("requests/r1").set({requesterId: "alice", status: "assigned"});
     await db.doc("requests/r1/assignments/vol").set({

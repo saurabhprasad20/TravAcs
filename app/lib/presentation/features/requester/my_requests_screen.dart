@@ -38,7 +38,7 @@ class MyRequestsScreen extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text(failureMessage(e))),
         data: (all) {
-          final list = all.where((r) => isActiveRequest(r.status)).toList();
+          final list = all.where(isActiveRequest).toList();
           if (list.isEmpty) {
             return const Center(
               child: Padding(
@@ -61,11 +61,55 @@ class MyRequestsScreen extends ConsumerWidget {
 }
 
 /// Whether a request is still "active" (shown on My Requests rather than
-/// Trip History).
-bool isActiveRequest(RequestStatus s) =>
-    s != RequestStatus.completed &&
-    s != RequestStatus.closed &&
-    s != RequestStatus.cancelled;
+/// Trip History). A completed trip whose payment is still pending stays active
+/// so the User can pay it here; it moves to History only once paid.
+bool isActiveRequest(Request r) {
+  if (r.status == RequestStatus.completed) {
+    return !r.isPaid && (r.tripAmountInr ?? 0) > 0;
+  }
+  return r.status != RequestStatus.closed &&
+      r.status != RequestStatus.cancelled;
+}
+
+/// Whether a request is completed but its single trip payment is still pending
+/// (the "Payment pending" state the User can clear from My Requests).
+bool isPaymentPending(Request r) =>
+    r.status == RequestStatus.completed &&
+    !r.isPaid &&
+    (r.tripAmountInr ?? 0) > 0;
+
+/// A distinct "Payment pending" status chip (text + icon, never colour-only)
+/// shown for a completed trip whose single payment the User hasn't cleared yet.
+class _PaymentPendingChip extends StatelessWidget {
+  const _PaymentPendingChip();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Semantics(
+      label: 'Status: Payment pending',
+      excludeSemantics: true,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+            color: scheme.errorContainer,
+            borderRadius: BorderRadius.circular(20)),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.payments_outlined,
+                size: 16, color: scheme.onErrorContainer),
+            const SizedBox(width: 4),
+            Text('Payment pending',
+                style: TextStyle(
+                    color: scheme.onErrorContainer,
+                    fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 /// Whether a request can still be rescheduled: it hasn't truly started (a trip
 /// only starts once a TravAcser accepted AND it was started), so an unaccepted
@@ -85,14 +129,18 @@ class _RequestSummaryTile extends ConsumerWidget {
     final r = request;
     final date = DateFormat.yMMMEd().format(r.scheduledDate);
     final time = formatTime12h(r.startTime);
+    final paymentPending = isPaymentPending(r);
 
-    // Derive a compact code/status line only when a TravAcser has accepted.
+    // Derive a compact code/status line only when a TravAcser has accepted and
+    // the trip isn't already awaiting payment.
     ({String visual, String semantic})? code;
-    if (r.acceptedCount > 0) {
+    if (r.acceptedCount > 0 && !paymentPending) {
       code = _codeSummary(ref);
     }
 
-    final semantic = 'Trip on $date at $time, status ${r.status.label}'
+    final statusLabel = paymentPending ? 'Payment pending' : r.status.label;
+    final semantic = 'Trip on $date at $time, status $statusLabel'
+        '${paymentPending ? ', tap to pay ₹${r.tripAmountInr}' : ''}'
         '${code != null ? ', ${code.semantic}' : ''}. '
         'Double tap to view details.';
 
@@ -119,8 +167,14 @@ class _RequestSummaryTile extends ConsumerWidget {
                       Text('$date · $time',
                           style: Theme.of(context).textTheme.titleMedium),
                       const SizedBox(height: 6),
-                      RequestStatusChip(status: r.status),
-                      if (code != null) ...[
+                      paymentPending
+                          ? const _PaymentPendingChip()
+                          : RequestStatusChip(status: r.status),
+                      if (paymentPending) ...[
+                        const SizedBox(height: 6),
+                        Text('Tap to pay ₹${r.tripAmountInr}',
+                            style: Theme.of(context).textTheme.bodyMedium),
+                      ] else if (code != null) ...[
                         const SizedBox(height: 6),
                         Text(code.visual,
                             style: Theme.of(context).textTheme.bodyMedium),
@@ -189,7 +243,7 @@ class RequestDetailScreen extends ConsumerWidget {
               break;
             }
           }
-          if (r == null || !isActiveRequest(r.status)) {
+          if (r == null || !isActiveRequest(r)) {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
@@ -236,8 +290,7 @@ class _DetailBody extends ConsumerWidget {
             .toList() ??
         const <Assignment>[];
     final anyStarted = started.isNotEmpty;
-    // A started trip can only be ended at/after its scheduled start time.
-    final canEnd = anyStarted && !DateTime.now().isBefore(r.scheduledStartAt);
+    final paymentPending = isPaymentPending(r);
     final canReschedule = !anyStarted && _rescheduleAllowed(r);
 
     return ListView(
@@ -245,7 +298,9 @@ class _DetailBody extends ConsumerWidget {
       children: [
         Align(
           alignment: Alignment.centerLeft,
-          child: RequestStatusChip(status: r.status),
+          child: paymentPending
+              ? const _PaymentPendingChip()
+              : RequestStatusChip(status: r.status),
         ),
         const SizedBox(height: 12),
         _detailRow(context, Icons.schedule, 'Trip time', '$date, $time'),
@@ -273,15 +328,23 @@ class _DetailBody extends ConsumerWidget {
         ],
         const SizedBox(height: 20),
         if (anyStarted) ...[
+          // The User never ends the trip — the TravAcser does. Here we just tell
+          // the User what's happening.
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Text(
-              canEnd
-                  ? 'This trip has started — it can only be ended now (not '
-                      'cancelled or rescheduled). One payment covers all your '
-                      'TravAcsers.'
-                  : 'This trip has started — it can only be ended once its '
-                      'scheduled start time ($time) arrives.',
+              'This trip is in progress. Your TravAcser will end it when the '
+              'trip finishes — then you can pay here.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
+        ],
+        if (paymentPending) ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              'Your trip is complete. Please pay ₹${r.tripAmountInr} to finish. '
+              'One payment covers all your TravAcsers.',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
           ),
@@ -289,9 +352,8 @@ class _DetailBody extends ConsumerWidget {
             alignment: Alignment.centerRight,
             child: FilledButton.icon(
               icon: const Icon(Icons.payments_outlined),
-              label: const Text('End trip & pay'),
-              onPressed:
-                  canEnd ? () => _endTripAndPay(context, ref, r, started) : null,
+              label: const Text('Pay now'),
+              onPressed: () => _pay(context, ref, r),
             ),
           ),
           const SizedBox(height: 12),
@@ -315,7 +377,7 @@ class _DetailBody extends ConsumerWidget {
                 label: const Text('Reschedule'),
                 onPressed: () => _reschedule(context, ref, r),
               ),
-            if (!anyStarted)
+            if (!anyStarted && !paymentPending)
               OutlinedButton.icon(
                 icon: const Icon(Icons.cancel_outlined),
                 label: const Text('Cancel trip'),
@@ -327,30 +389,14 @@ class _DetailBody extends ConsumerWidget {
     );
   }
 
-  /// End the whole trip (any started assignment concludes it for all), then run
-  /// the single trip-level payment covering every TravAcser.
-  Future<void> _endTripAndPay(
-      BuildContext context, WidgetRef ref, Request r, List<Assignment> started) async {
-    if (started.isEmpty) return;
-    // Completing the trip flips the request to 'completed', which can unmount
-    // THIS detail widget before the await resumes. Capture handles that survive
-    // that rebuild so the "& pay" half never gets silently skipped, leaving the
-    // User to hunt for payment in Trip History.
-    final rootContext = Navigator.of(context, rootNavigator: true).context;
-    final messenger = ScaffoldMessenger.of(context);
-    final ok = await ref
-        .read(requestControllerProvider.notifier)
-        .completeTrip(r.id, started.first.volunteerId);
-    if (!ok) {
-      final msg = failureMessage(ref.read(requestControllerProvider).error);
-      messenger.showSnackBar(SnackBar(content: Text(msg)));
-      if (rootContext.mounted) A11y.announce(rootContext, msg);
-      return;
-    }
-    if (!rootContext.mounted) return;
-    A11y.announce(rootContext, 'Trip ended. Continue to payment.');
-    await startTripPayment(rootContext, ref,
-        requestId: r.id, contact: started.first.requesterPhone);
+  /// Run the single trip-level payment covering every TravAcser (item 9/10 — the
+  /// User pays after the TravAcser has ended the trip).
+  Future<void> _pay(BuildContext context, WidgetRef ref, Request r) async {
+    final assignments =
+        ref.read(requestAssignmentsProvider(r.id)).value ?? const <Assignment>[];
+    final contact =
+        assignments.isEmpty ? null : assignments.first.requesterPhone;
+    await startTripPayment(context, ref, requestId: r.id, contact: contact);
   }
 
   /// A single labelled detail line as its OWN semantic node, so a screen-reader
