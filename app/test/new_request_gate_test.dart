@@ -87,5 +87,8 @@ void main() {
     expect(find.text('A trip is in progress'), findsNothing);
     expect(find.text('Payment pending'), findsNothing);
     expect(find.text('Meeting point with the TravAcser'), findsOneWidget);
+    // Item 8: expected duration is a slider (default 1 hour).
+    expect(find.byType(Slider), findsOneWidget);
+    expect(find.textContaining('Expected duration: 1 hour'), findsOneWidget);
   });
 }

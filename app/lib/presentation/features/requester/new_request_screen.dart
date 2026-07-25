@@ -38,16 +38,11 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
   TimeOfDay? _time;
   int _durationMinutes = 60;
 
-  // Duration options (label → minutes).
-  static const _durations = <String, int>{
-    '1 hour': 60,
-    '1.5 hours': 90,
-    '2 hours': 120,
-    '3 hours': 180,
-    '4 hours': 240,
-    '6 hours': 360,
-    '8 hours': 480,
-  };
+  // Expected-duration slider bounds (30-minute steps, matching the billing
+  // rounding). 1 hour minimum, 8 hours maximum.
+  static const int _minDurationMinutes = 60;
+  static const int _maxDurationMinutes = 480;
+  static const int _durationStepMinutes = 30;
 
   @override
   void dispose() {
@@ -227,10 +222,40 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
   }
 
   String? _emptyToNull(String s) => s.trim().isEmpty ? null : s.trim();
-  String _durationLabel() => _durations.entries
-      .firstWhere((e) => e.value == _durationMinutes,
-          orElse: () => const MapEntry('', 60))
-      .key;
+
+  /// Human-readable duration, e.g. "1 hour", "1 hour 30 min", "2 hours".
+  String _durationText(int minutes) {
+    final h = minutes ~/ 60;
+    final m = minutes % 60;
+    final hLabel = h == 1 ? '1 hour' : '$h hours';
+    return m == 0 ? hLabel : '$hLabel $m min';
+  }
+
+  String _durationLabel() => _durationText(_durationMinutes);
+
+  /// Expected-duration slider (30-minute steps). Replaces the old dropdown so
+  /// the User can dial in any duration; the value is announced to screen readers
+  /// via [Slider.semanticFormatterCallback].
+  Widget _durationSlider() {
+    const divisions =
+        (_maxDurationMinutes - _minDurationMinutes) ~/ _durationStepMinutes;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Expected duration: ${_durationText(_durationMinutes)}',
+            style: Theme.of(context).textTheme.labelLarge),
+        Slider(
+          value: _durationMinutes.toDouble(),
+          min: _minDurationMinutes.toDouble(),
+          max: _maxDurationMinutes.toDouble(),
+          divisions: divisions,
+          label: _durationText(_durationMinutes),
+          semanticFormatterCallback: (v) => _durationText(v.round()),
+          onChanged: (v) => setState(() => _durationMinutes = v.round()),
+        ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -306,17 +331,7 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
                           const SizedBox(height: 12),
                           _timePicker(),
                           const SizedBox(height: 12),
-                          DropdownButtonFormField<int>(
-                            value: _durationMinutes,
-                            decoration: const InputDecoration(
-                                labelText: 'Expected duration'),
-                            items: _durations.entries
-                                .map((e) => DropdownMenuItem(
-                                    value: e.value, child: Text(e.key)))
-                                .toList(),
-                            onChanged: (v) =>
-                                setState(() => _durationMinutes = v ?? 60),
-                          ),
+                          _durationSlider(),
                           const Divider(height: 24),
                           TextFormField(
                             controller: _meetingController,
