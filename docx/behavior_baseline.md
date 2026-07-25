@@ -434,7 +434,9 @@ requests: `status+createdAt↓`, `status+serviceCity+createdAt↓`, `requesterId
   liability; Privacy: what's collected, sharing only after accept, Razorpay handles card data, no
   Aadhaar/background location, diagnostics, retention/deletion). Real support details live in
   `AppConstants` (`support@travacs.in`, `+91 73109 33165`, `travacs.in`); `ContactUsScreen` rows are
-  copyable (Clipboard + announce).
+  **tappable actions** (call/email/open-website via `url_launcher`, external app; graceful
+  copy-to-clipboard fallback + announce if no handler). The four **Get help** buttons all route to
+  this same screen.
 
 ---
 
@@ -445,12 +447,18 @@ Payment state lives on the **request** (`tripAmountInr`, `requesterPaidAt`, `pay
 `razorpay*`), not per assignment — the per-assignment `amountInr` remains only as the payout breakdown.
 - **In-app Razorpay (LIVE)** — the TravAcser ends the trip (`completeTrip`, TravAcser-only), then the
   User pays: **"Pay now"** on the My Requests detail → `createRazorpayOrder(requestId)` →
-  `startTripPayment` (`shared/trip_payment.dart`: opens the Razorpay checkout via `razorpay_flutter`,
-  offers UPI/cards/GPay/wallets) → `verifyRazorpayPayment(requestId)` (server HMAC verify → marks the
-  **whole trip** paid + stamps every completed assignment). Never surfaces raw SDK text (golden rule
-  #1); cancels/errors are announced with curated messages (a cancel points the User back to **My
-  Requests**). Credentials live only in Secret Manager; the client receives `keyId` at runtime.
-  **TEST PHASE: only ₹1 is collected** (real `tripAmountInr` stays on the request + in history).
+  `startTripPayment` (`shared/trip_payment.dart`: opens the Razorpay checkout via `razorpay_flutter`)
+  → `verifyRazorpayPayment(requestId)` (server HMAC verify → marks the **whole trip** paid + stamps
+  every completed assignment). The checkout options (`buildCheckoutOptions`, unit-tested) put **UPI
+  first with the intent flow** (`config.display` — `sequence: ['block.upi']`, instrument
+  `flows: ['intent','collect']`, `show_default_blocks: true`) so a tap **opens Google Pay / PhonePe /
+  Paytm natively** instead of an in-page collect box, with cards/net-banking/wallets still below. This
+  needs the UPI `<queries>` (the `upi:` scheme + GPay/PhonePe/Paytm/BHIM packages) in
+  `AndroidManifest.xml` — without them, Android 11+ hides the installed UPI apps and Razorpay falls
+  back to a WebView collect flow (e.g. Amazon Pay UPI). Never surfaces raw SDK text (golden rule #1);
+  an upfront "Opening secure payment…" cue + all status changes are announced; a cancel points the
+  User back to **My Requests**. Credentials live only in Secret Manager; the client receives `keyId`
+  at runtime. **TEST PHASE: only ₹1 is collected** (real `tripAmountInr` stays on the request).
 - There is a **single** "Pay now" (My Requests, while payment pending) button per trip — NOT one per
   TravAcser, and **the User never ends the trip**. The TravAcser side has **no "Mark received"** step
   (their payout is a manual admin transfer); their history just shows the payment status.
@@ -473,7 +481,7 @@ codes/`toString()`/stack live only in `debugDetail`. `mapErrorToFailure()` maps 
 ---
 
 ## 17. Regression safety net (tests)
-Run: `cd app; flutter analyze; flutter test` (**101 tests**) and, from `firebase/`, the emulator suites
+Run: `cd app; flutter analyze; flutter test` (**107 tests**) and, from `firebase/`, the emulator suites
 (`npx -y firebase-tools@13 emulators:exec --only firestore --project demo-travacs "npm --prefix
 functions test"` = **54 functions tests**; `… "npm --prefix rules-tests test"` = **39 rules tests**).
 

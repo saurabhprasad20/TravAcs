@@ -54,5 +54,19 @@
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="https"/>
         </intent>
+        <!-- UPI intent flow: on Android 11+ an app can only see other installed
+             apps it declares here. Without this, Razorpay can't detect the
+             user's UPI apps and falls back to an in-page "collect" flow (e.g.
+             Amazon Pay UPI). This lets the checkout list & redirect to the
+             installed UPI apps (Google Pay, PhonePe, Paytm, BHIM, …). -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="upi"/>
+        </intent>
+        <package android:name="com.google.android.apps.nbu.paisa.user"/> <!-- Google Pay -->
+        <package android:name="com.phonepe.app"/> <!-- PhonePe -->
+        <package android:name="net.one97.paytm"/> <!-- Paytm -->
+        <package android:name="in.org.npci.upiapp"/> <!-- BHIM -->
+        <package android:name="in.amazon.mShop.android.shopping"/> <!-- Amazon Pay -->
     </queries>
 </manifest>

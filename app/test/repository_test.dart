@@ -16,6 +16,15 @@ class _MockCallable extends Mock implements HttpsCallable {}
 
 class _FakeCallableResult extends Fake implements HttpsCallableResult<dynamic> {}
 
+/// A callable result carrying a `data` payload (for callables the repo parses,
+/// e.g. createRazorpayOrder).
+class _DataCallableResult extends Fake implements HttpsCallableResult<dynamic> {
+  _DataCallableResult(this._data);
+  final dynamic _data;
+  @override
+  dynamic get data => _data;
+}
+
 /// Repository unit tests (M10a) using in-memory fakes — no network, no
 /// emulator. Locks down write shapes, query filters, and the
 /// failure-not-throw contract.
@@ -195,6 +204,52 @@ void main() {
 
       final r = await repo.acceptRequest('req1');
       r.fold((f) => expect(f, isA<Failure>()), (_) => fail('expected Left'));
+    });
+
+    test('createRazorpayOrder parses the order returned by the callable',
+        () async {
+      final callable = _MockCallable();
+      when(() => functions.httpsCallable('createRazorpayOrder'))
+          .thenReturn(callable);
+      when(() => callable.call<dynamic>(any())).thenAnswer(
+        (_) async => _DataCallableResult(<String, dynamic>{
+          'orderId': 'order_abc',
+          'keyId': 'rzp_test_key',
+          'amountPaise': 100,
+          'amountInr': 1,
+          'currency': 'INR',
+        }),
+      );
+
+      final r = await repo.createRazorpayOrder('req1');
+      final order = r.getOrElse((_) => throw 'expected order');
+      expect(order.orderId, 'order_abc');
+      expect(order.keyId, 'rzp_test_key');
+      expect(order.amountPaise, 100);
+      expect(order.amountInr, 1);
+      verify(() => callable.call<dynamic>({'requestId': 'req1'})).called(1);
+    });
+
+    test('verifyRazorpayPayment forwards the signed payment fields', () async {
+      final callable = _MockCallable();
+      when(() => functions.httpsCallable('verifyRazorpayPayment'))
+          .thenReturn(callable);
+      when(() => callable.call<dynamic>(any()))
+          .thenAnswer((_) async => _FakeCallableResult());
+
+      final r = await repo.verifyRazorpayPayment(
+        requestId: 'req1',
+        razorpayOrderId: 'order_abc',
+        razorpayPaymentId: 'pay_xyz',
+        razorpaySignature: 'sig_123',
+      );
+      expect(r.isRight(), isTrue);
+      verify(() => callable.call<dynamic>({
+            'requestId': 'req1',
+            'razorpayOrderId': 'order_abc',
+            'razorpayPaymentId': 'pay_xyz',
+            'razorpaySignature': 'sig_123',
+          })).called(1);
     });
   });
 
