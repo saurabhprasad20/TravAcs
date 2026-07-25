@@ -2,10 +2,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:travacs/domain/entities/razorpay_order.dart';
 import 'package:travacs/presentation/features/shared/trip_payment.dart';
 
-/// The Razorpay Standard Checkout options encode our payment UX policy: UPI is
-/// shown FIRST with the intent flow (so a tap opens Google Pay / PhonePe / Paytm
-/// natively instead of the in-page "collect" box), other methods stay available
-/// below, plus timeout / brand / contact prefill.
+/// The Razorpay Standard Checkout options are deliberately minimal so the
+/// checkout renders correctly: the amount + enabled methods come from the
+/// server `order_id` (no client `amount`, no custom method/display config that
+/// could hide UPI or corrupt the sheet). UPI intent redirect is enabled via the
+/// Android manifest `<queries>`, not via these options.
 void main() {
   const order = RazorpayOrder(
     orderId: 'order_test_1',
@@ -19,25 +20,18 @@ void main() {
     final o = buildCheckoutOptions(order);
     expect(o['key'], 'rzp_test_key');
     expect(o['order_id'], 'order_test_1');
-    expect(o['amount'], 100);
     expect(o['currency'], 'INR');
     expect(o['name'], 'TravAcs');
   });
 
-  test('UPI is first in the display sequence (intent + collect flows)', () {
+  test('does NOT send a client amount or a custom method/display config', () {
+    // With an order_id, Razorpay derives the amount + methods server-side.
+    // Passing a client amount caused a wrong-amount display; a custom
+    // config.display.blocks hid UPI — both must stay out.
     final o = buildCheckoutOptions(order);
-    final display = (o['config'] as Map)['display'] as Map;
-    // UPI block is the first shown.
-    expect(display['sequence'], ['block.upi']);
-    // Other methods are NOT hidden — default blocks remain shown below UPI.
-    expect((display['preferences'] as Map)['show_default_blocks'], isTrue);
-    final upi = (display['blocks'] as Map)['upi'] as Map;
-    final instrument = (upi['instruments'] as List).first as Map;
-    expect(instrument['method'], 'upi');
-    // Intent flow (redirect to the app) is offered, with a collect fallback,
-    // and intent is listed first.
-    expect(instrument['flows'], ['intent', 'collect']);
-    expect((instrument['flows'] as List).first, 'intent');
+    expect(o.containsKey('amount'), isFalse);
+    expect(o.containsKey('config'), isFalse);
+    expect(o.containsKey('method'), isFalse);
   });
 
   test('sets a checkout timeout and brand theme', () {

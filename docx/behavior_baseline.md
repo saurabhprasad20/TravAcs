@@ -447,18 +447,19 @@ Payment state lives on the **request** (`tripAmountInr`, `requesterPaidAt`, `pay
 `razorpay*`), not per assignment — the per-assignment `amountInr` remains only as the payout breakdown.
 - **In-app Razorpay (LIVE)** — the TravAcser ends the trip (`completeTrip`, TravAcser-only), then the
   User pays: **"Pay now"** on the My Requests detail → `createRazorpayOrder(requestId)` →
-  `startTripPayment` (`shared/trip_payment.dart`: opens the Razorpay checkout via `razorpay_flutter`)
-  → `verifyRazorpayPayment(requestId)` (server HMAC verify → marks the **whole trip** paid + stamps
-  every completed assignment). The checkout options (`buildCheckoutOptions`, unit-tested) put **UPI
-  first with the intent flow** (`config.display` — `sequence: ['block.upi']`, instrument
-  `flows: ['intent','collect']`, `show_default_blocks: true`) so a tap **opens Google Pay / PhonePe /
-  Paytm natively** instead of an in-page collect box, with cards/net-banking/wallets still below. This
-  needs the UPI `<queries>` (the `upi:` scheme + GPay/PhonePe/Paytm/BHIM packages) in
-  `AndroidManifest.xml` — without them, Android 11+ hides the installed UPI apps and Razorpay falls
-  back to a WebView collect flow (e.g. Amazon Pay UPI). Never surfaces raw SDK text (golden rule #1);
-  an upfront "Opening secure payment…" cue + all status changes are announced; a cancel points the
-  User back to **My Requests**. Credentials live only in Secret Manager; the client receives `keyId`
-  at runtime. **TEST PHASE: only ₹1 is collected** (real `tripAmountInr` stays on the request).
+  `startTripPayment` (`shared/trip_payment.dart`) → `verifyRazorpayPayment(requestId)` (server HMAC
+  verify → marks the **whole trip** paid + stamps every completed assignment). The checkout options
+  (`buildCheckoutOptions`, unit-tested) are deliberately **minimal**: with an `order_id` the amount +
+  enabled methods come from the server order, so **no client `amount`** (passing one showed a wrong
+  amount) and **no custom `config`/`method`** (a `config.display.blocks`/`method` filter hid UPI and
+  corrupted the sheet). UPI shows by default and — because the app declares the UPI apps + `upi:`
+  scheme in `AndroidManifest.xml` `<queries>` — choosing UPI uses the **intent flow** that **opens
+  Google Pay / PhonePe / Paytm natively** (without the queries, Android 11+ hides the UPI apps and
+  Razorpay falls back to a WebView collect flow, e.g. Amazon Pay UPI). Never surfaces raw SDK text
+  (golden rule #1); an upfront "Opening secure payment…" cue + all status changes are announced; a
+  cancel points the User back to **My Requests**. Credentials live only in Secret Manager; the client
+  receives `keyId` at runtime. **TEST PHASE: only ₹1 is collected** (real `tripAmountInr` stays on the
+  request).
 - There is a **single** "Pay now" (My Requests, while payment pending) button per trip — NOT one per
   TravAcser, and **the User never ends the trip**. The TravAcser side has **no "Mark received"** step
   (their payout is a manual admin transfer); their history just shows the payment status.
