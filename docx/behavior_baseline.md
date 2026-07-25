@@ -427,9 +427,14 @@ requests: `status+createdAt↓`, `status+serviceCity+createdAt↓`, `requesterId
   point, destination, live estimate — **plus a required "TravAcser names (one or more)" field**; the
   server validates/normalizes the structured fields). Drawer = `AppMenuDrawer`.
 - **AppMenuDrawer:** header (icon, name+version, Close), items: Contact us → `ContactUsScreen`; About
-  → `showAboutDialog`; Rate us → "not on Play Store yet" dialog; Terms → `TermsScreen`; Privacy →
-  `PrivacyPolicyScreen`; Sign out → confirm → announce + `unregisterToken()` + `signOut()`. Info
-  screens are placeholder text; `ContactUsScreen` rows are copyable (Clipboard + announce).
+  → `showAboutDialog`; Rate us → "not on Play Store yet, email feedback" dialog; Terms → `TermsScreen`;
+  Privacy → `PrivacyPolicyScreen`; Sign out → confirm → announce + `unregisterToken()` + `signOut()`.
+  The info screens carry **finalised content** grounded in the app (Terms: eligibility, how a trip
+  works, pricing ₹149/₹210 + ₹100 travel, one-total payment, reschedule/cancel, conduct, ratings,
+  liability; Privacy: what's collected, sharing only after accept, Razorpay handles card data, no
+  Aadhaar/background location, diagnostics, retention/deletion). Real support details live in
+  `AppConstants` (`support@travacs.in`, `+91 73109 33165`, `travacs.in`); `ContactUsScreen` rows are
+  copyable (Clipboard + announce).
 
 ---
 
@@ -468,7 +473,7 @@ codes/`toString()`/stack live only in `debugDetail`. `mapErrorToFailure()` maps 
 ---
 
 ## 17. Regression safety net (tests)
-Run: `cd app; flutter analyze; flutter test` (**98 tests**) and, from `firebase/`, the emulator suites
+Run: `cd app; flutter analyze; flutter test` (**101 tests**) and, from `firebase/`, the emulator suites
 (`npx -y firebase-tools@13 emulators:exec --only firestore --project demo-travacs "npm --prefix
 functions test"` = **54 functions tests**; `… "npm --prefix rules-tests test"` = **39 rules tests**).
 

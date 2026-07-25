@@ -143,8 +143,19 @@ class AppMenuDrawer extends ConsumerWidget {
         SizedBox(height: 8),
         Text(
           'TravAcs connects visually-impaired Users with verified TravAcsers '
-          'for paid, in-person travel assistance.',
+          'for paid, in-person travel assistance — for example getting from '
+          'home to a metro station, a hospital or an office.',
         ),
+        SizedBox(height: 12),
+        Text(
+          'Built accessibility-first: every screen is designed to work with a '
+          'screen reader. Users request help, nearby verified TravAcsers accept, '
+          'they meet and complete the trip, and the User pays a single fair '
+          'amount for the whole trip.',
+        ),
+        SizedBox(height: 12),
+        Text('Made in India, for travellers across India. Visit '
+            '${AppConstants.website}.'),
       ],
     );
   }
@@ -157,8 +168,10 @@ class AppMenuDrawer extends ConsumerWidget {
       builder: (ctx) => AlertDialog(
         title: const Text('Rate us'),
         content: const Text(
-            'We’re not on the Play Store yet — you’ll be able to rate us once '
-            'we launch. Thanks for your support!'),
+            'We’re not on the Play Store yet — you’ll be able to rate us there '
+            'once we launch. In the meantime we’d love your feedback: email us '
+            'at ${AppConstants.supportEmail} and tell us what’s working and '
+            'what we can improve. Thank you for your support!'),
         actions: [
           FilledButton(
               onPressed: () => Navigator.of(ctx).pop(),

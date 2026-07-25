@@ -9,10 +9,10 @@ class AppConstants {
   /// `version:` in pubspec.yaml.
   static const String appVersion = '1.0.0';
 
-  /// Placeholder support contacts shown on the Contact-us screen (replace with
-  /// real values before store release).
-  static const String supportEmail = 'support@travacs.example';
-  static const String supportPhone = '+91 00000 00000';
+  /// Support contacts shown on the Contact-us screen.
+  static const String supportEmail = 'support@travacs.in';
+  static const String supportPhone = '+91 73109 33165';
+  static const String website = 'travacs.in';
 
   /// Per-hour service charge for a TravAcser serving a SINGLE traveller.
   /// Mirrored from the server (the billing source of truth); kept here only for
