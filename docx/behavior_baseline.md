@@ -281,7 +281,7 @@ Shared helpers: `billedHours`, `pairServingCount`, `istDateKey` (IST day, UTC+5:
 | **createRazorpayOrder** | onCall (requester only) | secrets `RAZORPAY_KEY_ID/SECRET`. **Trip-level** (keyed by `requestId`, not per TravAcser): request `completed`, not paid (`ALREADY_PAID`), real `tripAmountInr>0` (`NO_AMOUNT`). **TEST PHASE: charges/returns `TEST_BILL_INR`=₹1** (checkout shows ₹1; real `tripAmountInr` untouched). Reuses a stored order only if `razorpayKeyId==current keyId` AND `razorpayAmountInr==billed` (else mints fresh); stamps `razorpayOrderId`+`razorpayKeyId`+`razorpayAmountInr` on the **request**. Returns `{orderId, keyId, amountPaise, amountInr(=1), currency}`. |
 | **verifyRazorpayPayment** | onCall (requester only) | secret `RAZORPAY_KEY_SECRET`. **Trip-level** (keyed by `requestId`). HMAC-SHA256 verify `orderId|paymentId` (timing-safe) (`BAD_SIGNATURE`). Request `completed`, `razorpayOrderId` matches (`ORDER_MISMATCH`). Marks the **whole trip** paid: request `requesterPaidAt`+`paymentStatus:'confirmed'`, and stamps every `completed` assignment `requesterPaidAt`+`paymentStatus:'confirmed'`. Pushes each TravAcser. One payment covers all TravAcsers; the admin team distributes each share manually off-app. |
 | **setVerification** | onCall (admin claim only) | Target profile role `volunteer`. Sets `verificationStatus` approved/rejected + `verifiedBy/At` + `rejectionReason`. Push volunteer (`verification_result`). |
-| **logManualTrip** | onCall (admin claim only) | Requires `userDetails`, `travAcserDetails`, `tripDateMs`. Adds a `tripLogs` doc. |
+| **logManualTrip** | onCall (admin claim only) | Requires `userDetails`, `travAcserNames` (legacy `travAcserDetails` accepted), `tripDateMs`. Also persists the request-form fields (startTime, numTravellers/numTravAcsers, genderPreference, expectedDurationMinutes, meetingPoint, destination, estimatedAmountInr, note) — strictly validated/normalized (in-range ints, string-only, allowed gender) so a bad payload can't corrupt a `tripLogs` doc. |
 | **expireStaleRequests** | scheduled every 5 min | For `broadcast` requests with `scheduledStartAt<=now+30m`, re-checked in a txn: at/after start & still unaccepted → `cancelled` (`cancelReason:'no_travacser'`, push `no_travacser_cancelled`); before start & not yet warned & live >10 min → set `noTravAcserNotifiedAt`, push `no_travacser_warning`. |
 | **expireRescheduleConfirmations** | scheduled every 2 min | For assignments `rescheduleStatus=='pending'` past `rescheduleDeadlineAt`: cancel the slot (`expired`), decrement count, reopen; push both (`reschedule_expired`). |
 | **widenGenderRequests** | scheduled every 2 min | For `genderRestricted==true && genderWidened==false` past `genderWidenAt`: set `genderWidened:true`, fan out to different-gender TravAcsers in the city (`new_request`), push requester (`gender_widened`). |
@@ -411,13 +411,21 @@ requests: `status+createdAt↓`, `status+serviceCity+createdAt↓`, `requesterId
 
 ### 14.5 Shell, Admin, Menu
 - **AppShell:** in `initState` (post-frame) registers FCM token, subscribes to token-refresh and
-  foreground messages (announce + snackbar of `body ?? title`). Role tabs: requester {Request, My
-  Requests, History, Profile}; volunteer {Available, My Trips, History, Profile}. `IndexedStack` +
-  `NavigationBar`; tab change unfocuses + `shellTabIndexProvider.set` + announce. AppBar +
-  `AppMenuDrawer`.
+  foreground messages (announce + snackbar of `body ?? title`), and handles a **notification TAP**
+  (`onMessageOpenedApp` + `getInitialMessage`) via `_handleNotificationTap` → `notificationTargetTab
+  (data['type'], isVolunteer)` (`core/util/notification_routing.dart`) deep-links to the relevant tab
+  (e.g. a TravAcser's `trip_rescheduled` → My Trips; the User's trip-lifecycle types → My Requests;
+  `new_request`/`gender_widened` → Available; `verification_result` → Profile) and announces. Role
+  tabs: requester {Request, My Requests, History, Profile}; volunteer {Available, My Trips, History,
+  Profile}. `IndexedStack` + `NavigationBar`; tab change unfocuses + `shellTabIndexProvider.set` +
+  announce. AppBar + `AppMenuDrawer`.
 - **AdminScreen:** `TabController(3)` — Verifications (`pendingVolunteersProvider`, `_PendingCard`
-  Approve/Reject; Reject opens optional-reason dialog), Active trips (`activeTripsProvider` rows), Manual
-  entry (`logManualTrip`; requires date). Drawer = `AppMenuDrawer`.
+  Approve/Reject; Reject opens optional-reason dialog), **Active trips** (`activeTripsProvider`:
+  started + upcoming + ≤2 h-overdue; each row is **tappable → a scrollable `_AdminTripDetailScreen`**
+  with the trip fields + assigned TravAcsers), **Manual entry** (`logManualTrip`; mirrors the request
+  form — travellers, TravAcsers, gender pref, date picker, time picker, duration slider, meeting
+  point, destination, live estimate — **plus a required "TravAcser names (one or more)" field**; the
+  server validates/normalizes the structured fields). Drawer = `AppMenuDrawer`.
 - **AppMenuDrawer:** header (icon, name+version, Close), items: Contact us → `ContactUsScreen`; About
   → `showAboutDialog`; Rate us → "not on Play Store yet" dialog; Terms → `TermsScreen`; Privacy →
   `PrivacyPolicyScreen`; Sign out → confirm → announce + `unregisterToken()` + `signOut()`. Info
@@ -430,16 +438,17 @@ requests: `status+createdAt↓`, `status+serviceCity+createdAt↓`, `requesterId
 the app's Razorpay account; the **admin team distributes each TravAcser's share manually, off-app**.
 Payment state lives on the **request** (`tripAmountInr`, `requesterPaidAt`, `paymentStatus`,
 `razorpay*`), not per assignment — the per-assignment `amountInr` remains only as the payout breakdown.
-- **In-app Razorpay (LIVE)** — end trip → `createRazorpayOrder(requestId)` → `startTripPayment`
-  (`shared/trip_payment.dart`: opens the Razorpay checkout via `razorpay_flutter`, offers
-  UPI/cards/GPay/wallets) → `verifyRazorpayPayment(requestId)` (server HMAC verify → marks the **whole
-  trip** paid + stamps every completed assignment). Never surfaces raw SDK text (golden rule #1);
-  cancels/errors are announced with curated messages. Credentials live only in Secret Manager; the
-  client receives `keyId` at runtime. **TEST PHASE: only ₹1 is collected** (real `tripAmountInr` stays
-  on the request + in history).
-- There is a **single** "End trip & pay" (active trip) / "Make payment" (Trip History) button per
-  trip — NOT one per TravAcser. The TravAcser side has **no "Mark received"** step (their payout is a
-  manual admin transfer); their history just shows the payment status.
+- **In-app Razorpay (LIVE)** — the TravAcser ends the trip (`completeTrip`, TravAcser-only), then the
+  User pays: **"Pay now"** on the My Requests detail → `createRazorpayOrder(requestId)` →
+  `startTripPayment` (`shared/trip_payment.dart`: opens the Razorpay checkout via `razorpay_flutter`,
+  offers UPI/cards/GPay/wallets) → `verifyRazorpayPayment(requestId)` (server HMAC verify → marks the
+  **whole trip** paid + stamps every completed assignment). Never surfaces raw SDK text (golden rule
+  #1); cancels/errors are announced with curated messages (a cancel points the User back to **My
+  Requests**). Credentials live only in Secret Manager; the client receives `keyId` at runtime.
+  **TEST PHASE: only ₹1 is collected** (real `tripAmountInr` stays on the request + in history).
+- There is a **single** "Pay now" (My Requests, while payment pending) button per trip — NOT one per
+  TravAcser, and **the User never ends the trip**. The TravAcser side has **no "Mark received"** step
+  (their payout is a manual admin transfer); their history just shows the payment status.
 - **Reconciliation:** a signed **`razorpayWebhook`** (onRequest) is the durable source of truth —
   even if the client never calls `verifyRazorpayPayment`, Razorpay's webhook marks the trip paid
   (idempotently). Client verification is an optimization. The legacy per-assignment
@@ -469,13 +478,16 @@ functions test"` = **54 functions tests**; `… "npm --prefix rules-tests test"`
 | `app/test/provider_test.dart` | `availableRequestsProvider` filtering incl. gender feed hiding; **`myPendingDuesProvider`** (unpaid-with-bill blocks, paid/legacy don't) |
 | `app/test/repository_test.dart` | create writes `estimatedAmountInr==520`, error→Failure mapping, callable wiring |
 | `app/test/accessibility_test.dart` | `meetsGuideline` (tap-target/labeled/contrast) + semantic labels — **`RequestCard` MergeSemantics is guarded here; do not remove it** |
-| `app/test/my_requests_flow_test.dart` | compact list → detail navigation |
+| `app/test/my_requests_flow_test.dart` | compact list → detail navigation; per-TravAcser start-code labels |
+| `app/test/new_request_gate_test.dart` | New Request wizard blocked while a trip is in progress / payment pending; loader while requests load; duration slider present |
+| `app/test/request_lifecycle_test.dart` | `isActiveRequest` / `Request.isPaymentPending` (completed-unpaid stays active, paid/legacy don't) |
+| `app/test/notification_routing_test.dart` | `notificationTargetTab` per type + role (reschedule → My Trips, etc.) |
 | `app/test/widget_flow_test.dart` | rating sheet gating, OTP entry short-code rejection, resend cooldown |
 | `app/test/error_mapper_test.dart` | no raw text leaks; code→Failure mapping |
 | `app/test/trip_otp_test.dart` | deterministic start-code |
 | `app/test/menu_test.dart`, `messaging_repository_test.dart`, `widget_test.dart` | drawer, FCM token register/unregister, smoke |
-| `firebase/functions/test/index.test.ts` (51) | accept FCFS + guards (gender, one-per-day, **past-start reject**), **freeze-parent-on-start** (no accept after one TravAcser starts a partially-filled request), complete billing (split rate + ₹100/TravAcser) + **conclude-all** (incl. mixed started/assigned) + pair rate, EARLY_END, cancel-started reject, reschedule guards + day-after bound, **reschedule-vs-started-lock** (respond/expiry), **idempotent start/complete**, **expireStaleRequests / expireRescheduleConfirmations**, **widenGenderRequests bounded to broadcast**, **createRazorpayOrder (₹1 override + reuse + already-paid)**, **razorpayWebhook (bad/missing signature, ignored event, payment.captured marks-paid + idempotent)**, razorpay verify (trip-level), ratings, admin gates |
-| `firebase/rules-tests/test/firestore.test.js` (38) | default-deny, function-only writes, region + gender read-gating, requester collection-group read, cancel-before-accept, **create field-allowlist (forged payment fields)**, **create requires a `scheduledStartAt` timestamp**, **cancel affectedKeys (can't change ownership/amounts)**, **gender is immutable on profile update**, **gender-constrained available-requests listing is authorizable (per-gender results)** |
+| `firebase/functions/test/index.test.ts` (54) | accept FCFS + guards (gender, one-per-day, **past-start reject**), **freeze-parent-on-start**, complete billing + **conclude-all** + pair rate, EARLY_END, **completeTrip TravAcser-only (requester rejected)**, cancel-started reject, reschedule guards + day-after bound, **reschedule-vs-started-lock**, **idempotent start/complete**, **expireStaleRequests / expireRescheduleConfirmations**, **widenGenderRequests bounded to broadcast**, **createRazorpayOrder (₹1 override + reuse + already-paid)**, **razorpayWebhook (bad/missing signature, ignored event, payment.captured marks-paid + idempotent)**, **logManualTrip (all structured fields + legacy payload + invalid-dropped)**, razorpay verify, ratings, admin gates, **E2E scenario walk (ft1 #8-#11)** |
+| `firebase/rules-tests/test/firestore.test.js` (39) | default-deny, function-only writes, region + gender read-gating, requester collection-group read, cancel-before-accept, **create field-allowlist (forged payment fields)**, **create requires a future `scheduledStartAt` timestamp (past rejected)**, **cancel affectedKeys**, **gender immutable on profile update**, **gender-constrained available-requests listing authorizable** |
 
 ---
 
@@ -497,12 +509,18 @@ functions test"` = **54 functions tests**; `… "npm --prefix rules-tests test"`
    split; billed hours = min 1 h + per-hour rounding (≤14→0, 15–40→+30 m, 41–60→+1 h); travel ₹100
    **per TravAcser**. Client and server formulas must stay identical. **TEST PHASE: checkout collects
    ₹1** while the stored `amountInr` stays real.
-6. **One party ends → concluded for all** — `completeTrip` bills every `started` assignment and
-   completes the request in one transaction; TravAcsers don't each end their own slice.
-7. **One total payment per trip** — the User pays a single amount (all TravAcsers' shares) to the
-   app's Razorpay account; payment state lives on the request (`tripAmountInr`/`requesterPaidAt`);
-   admin distributes each share manually off-app. No per-TravAcser payment or "Mark received".
-   **TEST PHASE: checkout collects ₹1** while the stored amounts stay real.
+6. **Only the TravAcser ends a trip → concluded for all** — `completeTrip` is TravAcser-only (the User
+   can NOT end); it bills every `started` assignment and completes the request in one transaction;
+   TravAcsers don't each end their own slice.
+7. **One total payment per trip, User pays after the trip ends** — once the TravAcser ends the trip it
+   becomes completed + payment-pending and **stays on the User's My Requests** (not History) with a
+   "Pay now" action until paid; the User pays a single amount (all TravAcsers' shares) to the app's
+   Razorpay account; payment state lives on the request (`tripAmountInr`/`requesterPaidAt`); admin
+   distributes each share manually off-app. No per-TravAcser payment or "Mark received". **TEST PHASE:
+   checkout collects ₹1** while the stored amounts stay real.
+8. **A new request can't be created in the past, nor while blocked** — the client requires a start
+   ≥ now+2min (rules reject `scheduledStartAt ≤ request.time`); the New Request wizard is blocked at
+   entry while the User has a trip in progress or a payment pending.
 8. **Reschedule window** — Today/Tomorrow/Day-after only (server bound ≤ now+3d); the reschedule
    hold gives the TravAcser a yes/no window (≥10 min) before the slot reopens.
 9. **Gender restriction** — only `strict_same_gender` + known requester gender restricts, until the
