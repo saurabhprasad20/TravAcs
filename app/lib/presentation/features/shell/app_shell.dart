@@ -1,9 +1,11 @@
 import 'dart:async';
 
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/accessibility/announce.dart';
+import '../../../core/util/notification_routing.dart';
 import '../menu/app_menu_drawer.dart';
 import '../profile/profile_tab_screen.dart';
 import '../requester/my_requests_screen.dart';
@@ -51,7 +53,29 @@ class _AppShellState extends ConsumerState<AppShell> {
             ..showSnackBar(SnackBar(content: Text(text)));
         }
       }, onError: (_) {}));
+      // Deep-link a notification TAP to the relevant tab (item 6). Covers both
+      // the app-in-background tap and the terminated-launch tap.
+      _subs.add(messaging.onMessageOpenedApp
+          .listen(_handleNotificationTap, onError: (_) {}));
+      unawaited(messaging.getInitialMessage().then((m) {
+        if (m != null) _handleNotificationTap(m);
+      }));
     });
+  }
+
+  /// Routes a tapped notification to the relevant tab based on its `type` and
+  /// the user's role (e.g. a TravAcser's "Trip rescheduled" → My Trips).
+  void _handleNotificationTap(RemoteMessage message) {
+    if (!mounted) return;
+    final my = ref.read(myProfileProvider).value;
+    if (my == null) return;
+    final target = notificationTargetTab(
+      message.data['type'] as String?,
+      isVolunteer: my.profile.isVolunteer,
+    );
+    if (target == null) return;
+    ref.read(shellTabIndexProvider.notifier).set(target);
+    A11y.announce(context, 'Opened from your notification.');
   }
 
   @override

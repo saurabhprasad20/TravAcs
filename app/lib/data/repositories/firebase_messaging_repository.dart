@@ -28,6 +28,22 @@ class FirebaseMessagingRepository {
   Stream<RemoteMessage> get onForegroundMessage => FirebaseMessaging.onMessage;
   Stream<String> get onTokenRefresh => _messaging.onTokenRefresh;
 
+  /// Fired when the user taps a notification that opens the app from the
+  /// background (item 6 — used to deep-link to the relevant page).
+  Stream<RemoteMessage> get onMessageOpenedApp =>
+      FirebaseMessaging.onMessageOpenedApp;
+
+  /// The notification that launched the app from a terminated state, if any
+  /// (tapped while the app wasn't running). Null otherwise. Never throws.
+  Future<RemoteMessage?> getInitialMessage() async {
+    try {
+      return await _messaging.getInitialMessage();
+    } catch (e, stack) {
+      mapFirebaseError(e, stack);
+      return null;
+    }
+  }
+
   /// Requests notification permission and stores the current token for the
   /// signed-in user. Safe to call repeatedly; never throws.
   Future<void> registerToken() async {
