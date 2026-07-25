@@ -625,13 +625,22 @@ describe("logManualTrip (admin gate)", () => {
     );
 
     const res: any = await logManualTrip(call({
-      userDetails: "Bob 999", travAcserDetails: "Vic 888",
-      tripDateMs: Date.now(), note: "phone booking",
+      userDetails: "Bob 999", travAcserNames: "Vic, Sam",
+      tripDateMs: Date.now(), startTime: "10:00",
+      numTravellers: 2, numTravAcsers: 2,
+      genderPreference: "any_gender", durationMinutes: 120,
+      meetingPoint: "CP Gate 2", destination: "AIIMS",
+      estimatedAmountInr: 598, note: "phone booking",
     }, "root", {admin: true}));
     assert.equal(res.code, "LOGGED");
     const log = (await db.doc(`tripLogs/${res.id}`).get()).data()!;
     assert.equal(log.source, "manual");
     assert.equal(log.userDetails, "Bob 999");
+    assert.equal(log.travAcserNames, "Vic, Sam");
+    assert.equal(log.numTravellers, 2);
+    assert.equal(log.numTravAcsers, 2);
+    assert.equal(log.meetingPoint, "CP Gate 2");
+    assert.equal(log.estimatedAmountInr, 598);
     assert.equal(log.createdBy, "root");
   });
 });

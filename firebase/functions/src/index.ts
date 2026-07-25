@@ -1168,16 +1168,32 @@ export const logManualTrip = onCall({region: REGION}, async (req) => {
   if (req.auth?.token?.admin !== true) {
     throw new HttpsError("permission-denied", "Admin only.");
   }
-  const {userDetails, travAcserDetails, tripDateMs, note} = req.data ?? {};
-  if (!userDetails || !travAcserDetails || typeof tripDateMs !== "number") {
-    throw new HttpsError("invalid-argument", "userDetails, travAcserDetails and tripDate are required.");
+  const d = req.data ?? {};
+  // `travAcserNames` (item 12) is the new required field; older callers may
+  // still send `travAcserDetails` — accept either.
+  const travAcsers = d.travAcserNames ?? d.travAcserDetails;
+  if (!d.userDetails || !travAcsers || typeof d.tripDateMs !== "number") {
+    throw new HttpsError("invalid-argument", "userDetails, travAcserNames and tripDate are required.");
   }
+  const num = (v: unknown): number | null =>
+    typeof v === "number" ? v : null;
+  const str = (v: unknown): string | null =>
+    v == null || v === "" ? null : String(v);
   const ref = await db.collection("tripLogs").add({
     source: "manual",
-    userDetails: String(userDetails),
-    travAcserDetails: String(travAcserDetails),
-    tripDate: Timestamp.fromMillis(tripDateMs),
-    note: note ? String(note) : null,
+    userDetails: String(d.userDetails),
+    travAcserNames: String(travAcsers),
+    tripDate: Timestamp.fromMillis(d.tripDateMs),
+    // Structured trip details mirroring the request form (all optional).
+    startTime: str(d.startTime),
+    numTravellers: num(d.numTravellers),
+    numTravAcsers: num(d.numTravAcsers),
+    genderPreference: str(d.genderPreference),
+    expectedDurationMinutes: num(d.durationMinutes),
+    meetingPoint: str(d.meetingPoint),
+    destination: str(d.destination),
+    estimatedAmountInr: num(d.estimatedAmountInr),
+    note: str(d.note),
     createdBy: req.auth!.uid,
     createdAt: FieldValue.serverTimestamp(),
   });

@@ -45,15 +45,31 @@ class FirestoreAdminRepository implements AdminRepository {
   @override
   FutureResult<Unit> logManualTrip({
     required String userDetails,
-    required String travAcserDetails,
+    required String travAcserNames,
     required DateTime tripDate,
+    required String startTime,
+    required int numTravellers,
+    required int numTravAcsers,
+    required GenderPreference genderPreference,
+    required int durationMinutes,
+    required String meetingPoint,
+    required String destination,
+    required int estimatedAmountInr,
     String? note,
   }) async {
     try {
       await _functions.httpsCallable('logManualTrip').call<dynamic>({
         'userDetails': userDetails,
-        'travAcserDetails': travAcserDetails,
+        'travAcserNames': travAcserNames,
         'tripDateMs': tripDate.millisecondsSinceEpoch,
+        'startTime': startTime,
+        'numTravellers': numTravellers,
+        'numTravAcsers': numTravAcsers,
+        'genderPreference': genderPreference.wireValue,
+        'durationMinutes': durationMinutes,
+        'meetingPoint': meetingPoint,
+        'destination': destination,
+        'estimatedAmountInr': estimatedAmountInr,
         'note': note,
       });
       return success(unit);
