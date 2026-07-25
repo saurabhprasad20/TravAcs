@@ -54,5 +54,21 @@
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="https"/>
         </intent>
+        <!-- UPI Intent flow for the Razorpay checkout. UPI Collect is being
+             deprecated (NPCI, Feb 2026), so UPI now relies on the Intent flow,
+             which needs the app to SEE the installed UPI apps. On Android 11+ an
+             app can only see other apps it declares here — without these, the
+             checkout can't detect any UPI app and hides UPI entirely. This only
+             grants visibility (so the checkout can list & launch them); it does
+             not change what our code sends to Razorpay. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="upi"/>
+        </intent>
+        <package android:name="com.google.android.apps.nbu.paisa.user"/> <!-- Google Pay -->
+        <package android:name="com.phonepe.app"/> <!-- PhonePe -->
+        <package android:name="net.one97.paytm"/> <!-- Paytm -->
+        <package android:name="in.org.npci.upiapp"/> <!-- BHIM -->
+        <package android:name="in.amazon.mShop.android.shopping"/> <!-- Amazon Pay -->
     </queries>
 </manifest>
