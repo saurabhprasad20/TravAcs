@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../core/accessibility/announce.dart';
 import '../../../core/config/constants.dart';
 import '../../../core/error/failure.dart';
+import '../../../core/util/scheduled_time.dart';
 import '../../../domain/entities/enums.dart';
 import '../../../domain/entities/profile.dart';
 import '../../../domain/entities/request.dart';
@@ -85,8 +86,20 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
   String? _validateSchedule() {
     if (_date == null) return 'Please choose a trip date.';
     if (_time == null) return 'Please choose a start time.';
+    // The start must be at least a short window in the future — a trip can't be
+    // scheduled in the past (or for "right now").
+    final startAt = combineDateAndTime(_date!, _startTimeString());
+    if (startAt.isBefore(
+        DateTime.now().add(AppConstants.minScheduleLeadTime))) {
+      return "It's soon! Please choose a start time a little further ahead.";
+    }
     return null;
   }
+
+  /// The chosen start time as a 24-hour `HH:mm` string.
+  String _startTimeString() =>
+      '${_time!.hour.toString().padLeft(2, '0')}:'
+      '${_time!.minute.toString().padLeft(2, '0')}';
 
   Future<void> _review(MyProfile my) async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
@@ -153,9 +166,7 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
   }
 
   Future<void> _submit(MyProfile my) async {
-    final time = _time!;
-    final startTime =
-        '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    final startTime = _startTimeString();
 
     final id = await ref.read(requestControllerProvider.notifier).create(
           serviceState: my.profile.serviceArea!,
@@ -228,14 +239,27 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
     // Warm the requester's own requests stream so the pending-dues check has
     // data ready by the time the user taps submit (otherwise its first read
     // returns an empty/loading value and the dues block is silently bypassed).
-    ref.watch(myRequestsProvider);
+    final requests = ref.watch(myRequestsProvider).value ?? const <Request>[];
+    // A User may not open the creation wizard at all while they have a trip in
+    // progress, or a completed trip whose payment is still pending — stop them
+    // at the entrance rather than after filling the form.
+    final inProgress =
+        requests.any((r) => r.status == RequestStatus.started);
+    final paymentPending = requests.any((r) =>
+        r.status == RequestStatus.completed &&
+        !r.isPaid &&
+        (r.tripAmountInr ?? 0) > 0);
 
     return Scaffold(
       body: my == null
           ? const Center(child: CircularProgressIndicator())
           : !my.profile.hasServiceArea
               ? _NeedsServiceArea()
-              : SafeArea(
+              : inProgress
+                  ? const _CreationBlocked(kind: _BlockKind.inProgress)
+                  : paymentPending
+                      ? const _CreationBlocked(kind: _BlockKind.paymentPending)
+                      : SafeArea(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.all(16),
                     child: Form(
@@ -479,6 +503,69 @@ class _NeedsServiceArea extends StatelessWidget {
           'a request.',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodyLarge,
+        ),
+      ),
+    );
+  }
+}
+
+/// Why the creation wizard is blocked.
+enum _BlockKind { inProgress, paymentPending }
+
+/// Replaces the whole request form when the User can't create a new request
+/// right now — either a trip is in progress, or a completed trip is awaiting
+/// payment. Shows a clear explanation and a shortcut to My Requests (where they
+/// can follow the trip / pay) instead of letting them fill a form that would be
+/// rejected.
+class _CreationBlocked extends ConsumerWidget {
+  const _CreationBlocked({required this.kind});
+  final _BlockKind kind;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final (icon, title, message) = switch (kind) {
+      _BlockKind.inProgress => (
+          Icons.directions_walk,
+          'A trip is in progress',
+          "You can't create a new request while a trip is in progress. You can "
+              'create a new one once your current trip is completed.',
+        ),
+      _BlockKind.paymentPending => (
+          Icons.payments_outlined,
+          'Payment pending',
+          'You have a completed trip awaiting payment. Please clear it before '
+              'creating a new request.',
+        ),
+    };
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 48, semanticLabel: title),
+            const SizedBox(height: 16),
+            Semantics(
+              header: true,
+              child: Text(title,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleMedium),
+            ),
+            const SizedBox(height: 8),
+            Text(message,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyLarge),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              icon: const Icon(Icons.list_alt),
+              label: Text(kind == _BlockKind.paymentPending
+                  ? 'Go to My Requests to pay'
+                  : 'Go to My Requests'),
+              onPressed: () => ref
+                  .read(shellTabIndexProvider.notifier)
+                  .set(requesterMyRequestsTabIndex),
+            ),
+          ],
         ),
       ),
     );

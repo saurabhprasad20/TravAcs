@@ -300,6 +300,19 @@ describe("requests", () => {
     );
   });
 
+  it("cannot create a request whose scheduledStartAt is in the past (item 1)", async () => {
+    const carol = testEnv.authenticatedContext("carol").firestore();
+    await assertFails(
+      setDoc(doc(carol, "requests/rpast"),
+        request("carol", { scheduledStartAt: new Date(Date.now() - 3600_000) }))
+    );
+    // a future start still succeeds
+    await assertSucceeds(
+      setDoc(doc(carol, "requests/rfuture"),
+        request("carol", { scheduledStartAt: new Date(Date.now() + 3600_000) }))
+    );
+  });
+
   describe("available-requests listing is authorizable (H3)", () => {
     beforeEach(async () => {
       await seed(async (db) => {

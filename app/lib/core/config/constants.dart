@@ -43,4 +43,9 @@ class AppConstants {
 
   /// Resend cooldown for the login OTP, in seconds.
   static const int otpResendCooldownSeconds = 30;
+
+  /// Minimum lead time between "now" and a new trip's scheduled start — a trip
+  /// can't be created in the past or for the immediate moment. Mirrored on the
+  /// server (the Firestore create rule additionally rejects a past start).
+  static const Duration minScheduleLeadTime = Duration(minutes: 2);
 }

@@ -100,8 +100,10 @@ service cloud.firestore {
         && request.resource.data.numTravellers <= 10
         // The schedule/billing anchor is mandatory and must be a real timestamp.
         // Server lifecycle jobs (one-trip-per-day guard, stale auto-cancel) key
-        // off it, so a request that omits it would silently evade them.
+        // off it, so a request that omits it would silently evade them. It must
+        // also be in the future — a trip can't be created in the past.
         && request.resource.data.scheduledStartAt is timestamp
+        && request.resource.data.scheduledStartAt > request.time
         // A client cannot pre-widen a gender-restricted request.
         && request.resource.data.get('genderWidened', false) == false
         // Field allowlist: a create may ONLY carry these client-writable fields.

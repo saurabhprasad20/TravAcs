@@ -436,7 +436,14 @@ class _DetailBody extends ConsumerWidget {
         .read(requestControllerProvider.notifier)
         .reschedule(r.id, DateUtils.dateOnly(date), startTime);
     if (!context.mounted) return;
-    ok ? A11y.announce(context, 'Trip rescheduled.') : _err(context, ref);
+    if (ok) {
+      A11y.announce(context, 'Trip rescheduled.');
+      // Close the detail view — the reschedule is done, and its stale fields
+      // would otherwise linger until the stream refreshes.
+      Navigator.of(context).maybePop();
+    } else {
+      _err(context, ref);
+    }
   }
 
   Future<void> _cancel(BuildContext context, WidgetRef ref, Request r) async {
