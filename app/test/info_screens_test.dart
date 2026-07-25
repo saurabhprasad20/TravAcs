@@ -20,6 +20,16 @@ void main() {
     expect(find.text(AppConstants.supportPhone), findsOneWidget);
     expect(find.text(AppConstants.website), findsOneWidget);
     expect(find.textContaining('placeholder'), findsNothing);
+    // Rows are actionable (call / email / open website) — not copy buttons.
+    expect(
+        find.bySemanticsLabel('Call Phone, ${AppConstants.supportPhone}'),
+        findsOneWidget);
+    expect(
+        find.bySemanticsLabel('Email Email, ${AppConstants.supportEmail}'),
+        findsOneWidget);
+    expect(find.bySemanticsLabel('Open Website, ${AppConstants.website}'),
+        findsOneWidget);
+    expect(find.byIcon(Icons.copy_outlined), findsNothing);
   });
 
   testWidgets('Terms shows real sections and no draft banner', (tester) async {
