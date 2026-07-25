@@ -34,8 +34,9 @@ class ProfileTabScreen extends ConsumerWidget {
                 _InfoTile(label: 'Role', value: my.profile.role.label),
                 if (my.profile.phone != null)
                   _InfoTile(label: 'Phone', value: my.profile.phone!),
-                if (my.profile.gender != null)
-                  _InfoTile(label: 'Gender', value: my.profile.gender!.label),
+                _InfoTile(
+                    label: 'Gender',
+                    value: my.profile.gender?.label ?? 'Not set'),
                 _RegionTile(
                   state: my.profile.serviceArea,
                   city: my.profile.serviceCity,
@@ -145,6 +146,7 @@ class _RegionTile extends ConsumerWidget {
     final busy = ref.watch(profileControllerProvider).isLoading;
     return Semantics(
       button: true,
+      excludeSemantics: true,
       label: 'Your city / location: $value. Double tap to change.',
       child: ListTile(
         contentPadding: EdgeInsets.zero,
