@@ -16,12 +16,9 @@ import '../requester/request_controller.dart';
 /// (server) → mark the whole trip paid. Returns true only if the payment
 /// completed and was verified.
 ///
-/// The Razorpay checkout shows all methods enabled on the account (UPI, cards,
-/// net-banking, wallets). Because the app declares the UPI apps in its manifest
-/// `<queries>`, choosing UPI uses the **intent flow** — tapping a UPI app
-/// (Google Pay / PhonePe / Paytm) hands off to that app natively, which is far
-/// more accessible than typing a UPI ID inside the checkout WebView. Payment
-/// status changes are announced for screen-reader users.
+/// The Razorpay checkout itself offers UPI, cards, GPay, PhonePe, Paytm and
+/// wallets; we don't build those buttons ourselves. Payment status changes are
+/// announced for screen-reader users.
 ///
 /// IMPORTANT: verification must NOT depend on a live widget context. Ending the
 /// trip commits server-side immediately, which can rebuild/remove the calling
@@ -53,10 +50,6 @@ Future<bool> startTripPayment(
     return false;
   }
 
-  // Cue screen-reader users before the (Razorpay-owned) checkout takes over.
-  announce('Opening secure payment for \u20b9${order.amountInr}. '
-      'Choose a UPI app such as Google Pay or PhonePe, or pay by card.');
-
   final result = await _RazorpayCheckout(order, contact: contact).open();
 
   switch (result.kind) {
@@ -87,31 +80,6 @@ Future<bool> startTripPayment(
       announce('Payment could not be completed. Please try again.');
       return false;
   }
-}
-
-/// Builds the Razorpay Standard Checkout options for [order]. Pure + exposed for
-/// testing.
-///
-/// Deliberately minimal: with an `order_id` Razorpay takes the amount and the
-/// enabled methods from the server order, so we must NOT pass a client `amount`
-/// (it causes a display discrepancy) and must NOT add a custom method/display
-/// config (a `config.display.blocks`/`method` filter can hide UPI or corrupt the
-/// sheet). UPI shows prominently by default, and — because the app now declares
-/// the UPI apps in its manifest `<queries>` — selecting UPI uses the **intent
-/// flow** that opens Google Pay / PhonePe / Paytm natively. We only set brand
-/// info, a timeout and an optional contact prefill.
-Map<String, dynamic> buildCheckoutOptions(RazorpayOrder order, {String? contact}) {
-  return <String, dynamic>{
-    'key': order.keyId,
-    'order_id': order.orderId,
-    'currency': order.currency,
-    'name': AppConstants.appName,
-    'description': 'TravAcs travel-assistance payment',
-    // Give up if the user leaves the sheet idle for 5 minutes.
-    'timeout': 300,
-    'theme': {'color': '#00658F'},
-    if (contact != null && contact.isNotEmpty) 'prefill': {'contact': contact},
-  };
 }
 
 enum _RzKind { success, cancelled, error }
@@ -154,7 +122,16 @@ class _RazorpayCheckout {
     _rz.on(Razorpay.EVENT_PAYMENT_ERROR, _onError);
     _rz.on(Razorpay.EVENT_EXTERNAL_WALLET, _onWallet);
     try {
-      _rz.open(buildCheckoutOptions(order, contact: contact));
+      _rz.open(<String, dynamic>{
+        'key': order.keyId,
+        'order_id': order.orderId,
+        'amount': order.amountPaise,
+        'currency': order.currency,
+        'name': AppConstants.appName,
+        'description': 'TravAcs travel-assistance payment',
+        if (contact != null && contact!.isNotEmpty)
+          'prefill': {'contact': contact},
+      });
     } catch (_) {
       if (!_completer.isCompleted) {
         _completer.complete(

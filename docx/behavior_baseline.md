@@ -447,19 +447,14 @@ Payment state lives on the **request** (`tripAmountInr`, `requesterPaidAt`, `pay
 `razorpay*`), not per assignment — the per-assignment `amountInr` remains only as the payout breakdown.
 - **In-app Razorpay (LIVE)** — the TravAcser ends the trip (`completeTrip`, TravAcser-only), then the
   User pays: **"Pay now"** on the My Requests detail → `createRazorpayOrder(requestId)` →
-  `startTripPayment` (`shared/trip_payment.dart`) → `verifyRazorpayPayment(requestId)` (server HMAC
-  verify → marks the **whole trip** paid + stamps every completed assignment). The checkout options
-  (`buildCheckoutOptions`, unit-tested) are deliberately **minimal**: with an `order_id` the amount +
-  enabled methods come from the server order, so **no client `amount`** (passing one showed a wrong
-  amount) and **no custom `config`/`method`** (a `config.display.blocks`/`method` filter hid UPI and
-  corrupted the sheet). UPI shows by default and — because the app declares the UPI apps + `upi:`
-  scheme in `AndroidManifest.xml` `<queries>` — choosing UPI uses the **intent flow** that **opens
-  Google Pay / PhonePe / Paytm natively** (without the queries, Android 11+ hides the UPI apps and
-  Razorpay falls back to a WebView collect flow, e.g. Amazon Pay UPI). Never surfaces raw SDK text
-  (golden rule #1); an upfront "Opening secure payment…" cue + all status changes are announced; a
-  cancel points the User back to **My Requests**. Credentials live only in Secret Manager; the client
-  receives `keyId` at runtime. **TEST PHASE: only ₹1 is collected** (real `tripAmountInr` stays on the
-  request).
+  `startTripPayment` (`shared/trip_payment.dart`: opens the Razorpay Standard Checkout via
+  `razorpay_flutter`) → `verifyRazorpayPayment(requestId)` (server HMAC verify → marks the **whole
+  trip** paid + stamps every completed assignment). The checkout shows whatever payment methods are
+  enabled on the Razorpay account (UPI/cards/net-banking/wallets) — method availability is an account
+  (test-vs-live) setting, not a client option. Never surfaces raw SDK text (golden rule #1);
+  cancels/errors are announced with curated messages (a cancel points the User back to **My
+  Requests**). Credentials live only in Secret Manager; the client receives `keyId` at runtime.
+  **TEST PHASE: only ₹1 is collected** (real `tripAmountInr` stays on the request).
 - There is a **single** "Pay now" (My Requests, while payment pending) button per trip — NOT one per
   TravAcser, and **the User never ends the trip**. The TravAcser side has **no "Mark received"** step
   (their payout is a manual admin transfer); their history just shows the payment status.
@@ -482,7 +477,7 @@ codes/`toString()`/stack live only in `debugDetail`. `mapErrorToFailure()` maps 
 ---
 
 ## 17. Regression safety net (tests)
-Run: `cd app; flutter analyze; flutter test` (**107 tests**) and, from `firebase/`, the emulator suites
+Run: `cd app; flutter analyze; flutter test` (**103 tests**) and, from `firebase/`, the emulator suites
 (`npx -y firebase-tools@13 emulators:exec --only firestore --project demo-travacs "npm --prefix
 functions test"` = **54 functions tests**; `… "npm --prefix rules-tests test"` = **39 rules tests**).
 
