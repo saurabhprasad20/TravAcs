@@ -104,6 +104,11 @@ class Request {
   /// True once the whole trip has been paid for.
   bool get isPaid => requesterPaidAt != null;
 
+  /// Completed but the single trip payment is still pending — the trip stays on
+  /// the User's My Requests (not History) until this clears (item 9).
+  bool get isPaymentPending =>
+      status == RequestStatus.completed && !isPaid && (tripAmountInr ?? 0) > 0;
+
   double get durationHours => expectedDurationMinutes / 60.0;
 
   /// Minimum TravAcsers for [travellers] (one TravAcser assists up to 2 users).

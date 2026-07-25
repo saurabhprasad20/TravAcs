@@ -271,7 +271,7 @@ Shared helpers: `billedHours`, `pairServingCount`, `istDateKey` (IST day, UTC+5:
 | **onRequestCreated** | onCreate `requests/{id}` | Only if `status=='broadcast'` and `serviceCity` set. If `genderRestricted && requesterGender`: stamp `genderWidenAt = createTime + 0.9×(scheduledStartAt−createTime)` and filter the volunteer query to same gender. Fan-out FCM (`new_request`) to approved+active TravAcsers in the same city, chunked, dead-token pruned. |
 | **acceptRequest** | onCall (TravAcser) | Caller must be approved+active volunteer (`NOT_APPROVED`). Transaction: request must be `broadcast` (`ALREADY_TAKEN`), same city (`WRONG_CITY`), gender gate (`GENDER_MISMATCH` if strict + known requester gender + not widened + different gender), not already live-accepted (`ALREADY_ACCEPTED` — a *cancelled* prior assignment does NOT block re-accept), slots left (`ALREADY_TAKEN`), one-per-IST-day (`ONE_PER_DAY`). Writes the assignment (denormalized, `amountInrEstimate = billedHours(dur)×149 + 100`, `tripStatus:'assigned'`), increments `acceptedCount`, flips request to `assigned` when full. Pushes requester (`assignment`). |
 | **startTrip** | onCall (TravAcser only) | `uid==volunteerId`. Assignment must be `assigned` (`INVALID_STATE`). Sets `tripStatus:'started'`, `startedAt`, `otpStartedAt`. Pushes User (`trip_started`). (Code validation is client-side.) |
-| **completeTrip** | onCall (TravAcser or requester) | Caller's assignment must be `started` (`NOT_STARTED`); reject if `now < scheduledStartAt` (`EARLY_END`). **Concludes for ALL:** bills every `started` assignment (each `serviceInr = round(billedHours(minutes) × rate)` with the ₹210/₹149 split, `travelCostInr=100`, `amountInr`, `paymentStatus:'pending'`), closes any still-`assigned` ones, and stamps the **whole-trip total** on the request (`tripAmountInr = Σ amountInr`, `paymentStatus:'pending'`), marking it `completed`. Pushes requester + each billed TravAcser (`trip_completed`). Returns `{ok, code}`. |
+| **completeTrip** | onCall (TravAcser only) | `uid==volunteerId` — the User can NOT end a trip (only the TravAcser; one TravAcser ending concludes it for all). Caller's assignment must be `started` (`NOT_STARTED`); reject if `now < scheduledStartAt` (`EARLY_END`). **Concludes for ALL:** bills every `started` assignment (each `serviceInr = round(billedHours(minutes) × rate)` with the ₹210/₹149 split, `travelCostInr=100`, `amountInr`, `paymentStatus:'pending'`), closes any still-`assigned` ones, and stamps the **whole-trip total** on the request (`tripAmountInr = Σ amountInr`, `paymentStatus:'pending'`), marking it `completed`. Pushes requester + each billed TravAcser (`trip_completed`). Returns `{ok, code}`. |
 | **rescheduleTrip** | onCall (requester only) | New start must be `now+1min … now+3d` — beyond the day-after window rejects (`BAD_SCHEDULE`, "create a new trip"). Request must be `broadcast`/`assigned` (`INVALID_STATE`). Reject if accepted & original time passed, or any assignment `started` (`ALREADY_STARTED`). Updates request + each `assigned` assignment's schedule, sets each `rescheduleStatus:'pending'` + `rescheduleDeadlineAt = now + clamp(10%×remaining, 10min, remaining)` (min 10-min window so a short-notice reschedule isn't released almost instantly), clears `noTravAcserNotifiedAt`, recomputes gender widen window. Pushes each TravAcser (`trip_rescheduled`). |
 | **respondReschedule** | onCall (TravAcser) | Assignment `rescheduleStatus` must be `pending` (`NO_PENDING`). accept=true → `confirmed`; accept=false → `cancelled`+`declined`, decrement `acceptedCount`, reopen `assigned→broadcast`, push requester (`trip_cancelled`). |
 | **cancelTrip** | onCall (either party) | Request not `completed`/`cancelled` (`INVALID_STATE`). **Requester:** reject if any assignment `started` (`TRIP_STARTED`); else request→`cancelled`, all active assignments→`cancelled`, push each TravAcser. **TravAcser:** their assignment must not be `started` (`TRIP_STARTED`) and must be `assigned` (`INVALID_STATE`); →`cancelled`, decrement count, reopen, push requester. |
@@ -350,46 +350,41 @@ requests: `status+createdAt↓`, `status+serviceCity+createdAt↓`, `requesterId
   vs "Hidden"). Sign out: `messagingRepository.unregisterToken()` then `authController.signOut()`.
 
 ### 14.3 Requester side
-- **NewRequestScreen:** shown only if `my.profile.hasServiceArea` (else `_NeedsServiceArea`).
-  Traveller dropdown 1..6 (default 1); changing it auto-sets `_numTravAcsers =
+- **NewRequestScreen:** shown only if `my.profile.hasServiceArea` (else `_NeedsServiceArea`). The
+  wizard is **blocked at entry** (a `_CreationBlocked` notice replaces the whole form, with a shortcut
+  to My Requests) when the User has a request with status `started` (**"A trip is in progress"**) or a
+  completed-but-unpaid request (**"Payment pending"**) — computed from `myRequestsProvider`.
+  Otherwise the form: traveller dropdown 1..6 (default 1); changing it auto-sets `_numTravAcsers =
   suggestedTravAcsers(travellers)`. TravAcser dropdown range `min..numTravellers`
   (min=`suggestedTravAcsers`). Gender-preference dropdown (default `any_gender`); helper paragraph
-  shown only for `strictSameGender`. Date chips (Today/Tomorrow/Day after) + custom picker (firstDate
-  today, lastDate +60d); time picker. Duration dropdown {60,90,120,180,240,360,480} default 60.
-  Required text: meeting point, destination, purpose; optional special note. Live estimate =
-  `computeEstimate`. "Review & submit" validates form + schedule (both date & time), opens
-  `_ReviewSheet`; on confirm → `create(...)` (passes `requesterGender = my.profile.gender`). Success:
-  announce, reset, switch to My Requests tab (`shellTabIndexProvider.set(1)`), snackbar.
-- **MyRequestsScreen (list→detail):** lists **active** requests (`status ∉
-  {completed,closed,cancelled}`) as compact tiles: date·time, `RequestStatusChip`, a code/status line
-  when `acceptedCount>0` (via `requestAssignmentsProvider`: "TravAcser assigned" / "In progress" /
-  "Start code: NNNN" / "Start codes ready — open to view"), chevron. Tile is one Semantics button
-  ("… Double tap to view details."). Tap → `RequestDetailScreen` (full-screen, scrollable, live).
-  Detail shows status chip + labeled rows (trip time, pick-up, destination, users, TravAcsers filled,
-  preference, purpose?, note?, estimated amount) + `Your TravAcser(s)` (`_RequestAssignments`, active
-  only) + a "started — can't cancel/reschedule" note when started. Actions (`Wrap`): **Reschedule** if
-  `canReschedule = !anyStarted && (acceptedCount==0 || now.isBefore(scheduledStartAt))`; **Cancel** if
-  `!anyStarted`. `anyStarted = any active assignment tripStatus==started`. Cancel confirm →
-  `notifier.cancel(id)` if `acceptedCount==0 && status.isCancellable` else `cancelTrip(id)`. Reschedule
-  → **Today/Tomorrow/Day-after chip dialog** (no custom date beyond day-after; advises "create a new
-  trip") + time picker → `reschedule(...)`. A **Get help** button (→ `ContactUsScreen`) also sits in
-  the actions `Wrap`. Per-assignment tile shows contact + status + the start-code box
-  (`_StartCodeDisplay`, "Read this code to your TravAcser") until in progress. When any assignment is
-  in progress, a **single trip-level "End trip & pay"** button (not per TravAcser) is shown, enabled
-  only when `canEnd = now >= scheduledStartAt` → `completeTrip(...)` (concludes all) then chains the
-  single `startTripPayment(requestId)`.
-- **NewRequestScreen (dues guard):** warms `myRequestsProvider` in build; on Submit, if it's still
-  loading it asks to retry, and if `myPendingDuesProvider` (completed-but-unpaid trips) is non-empty →
-  alert dialog "Alert, you have pending dues, kindly clear them before creating new ones." and the
-  request is NOT created. Otherwise proceeds to the review sheet.
-- **Requester TripHistoryScreen:** `myRequestsProvider`, terminal statuses only
-  (completed/closed/cancelled), `HistoryControls` (filter all/completed/cancelled; sort newest/oldest;
-  page size 15). Card: `when · destination`, "Cancelled"/"Completed", then for a completed trip a
-  **single trip total + payment status** (`Trip total: ₹tripAmountInr · Paid/Payment pending`), a
-  per-TravAcser **breakdown** (`volunteerName · ₹amountInr` + breakdown, or "Not started — no charge"
-  for a `closed` slice) with a per-TravAcser **Rate TravAcser** button, and card-level **Get help** +
-  a **single "Make payment"** button (`startTripPayment(requestId)`, collects ₹1 in test phase) shown
-  only while `!isPaid`.
+  shown only for `strictSameGender`. Date chips (Today/Tomorrow/Day after) + custom **date picker**
+  (firstDate today, lastDate +60d); time picker. **Expected-duration `Slider`** (30-min steps, 1–8 h,
+  default 1 h; spoken via `semanticFormatterCallback`). Required text: meeting point, destination,
+  purpose; optional special note. Live estimate = `computeEstimate`. "Review & submit" validates form
+  + schedule; **the start must be ≥ now + `minScheduleLeadTime` (2 min)** or it prompts "It's soon!
+  Please choose a start time a little further ahead." (server rules also reject `scheduledStartAt ≤
+  request.time`). Opens `_ReviewSheet`; on confirm → `create(...)`. Success: announce, reset, switch
+  to My Requests tab, snackbar.
+- **MyRequestsScreen (list→detail):** lists **active** requests (`isActiveRequest`: not
+  closed/cancelled, and a `completed` request only while its payment is still pending —
+  `!isPaid && tripAmountInr>0`) as compact tiles: date·time, `RequestStatusChip` (or a
+  **`_PaymentPendingChip`** + "Tap to pay ₹amount" for a completed-unpaid trip), a code/status line
+  when `acceptedCount>0`, chevron. Tap → `RequestDetailScreen` (full-screen, scrollable, live).
+  Detail shows the status chip + labeled rows + `Your TravAcser(s)`. **The User can NOT end a trip.**
+  When any assignment is in progress the detail shows an informational note ("This trip is in
+  progress. Your TravAcser will end it… then you can pay here."). Once the TravAcser has ended the
+  trip (`completed` + unpaid) a **"Pay now"** button runs the single trip-level
+  `startTripPayment(requestId)` (₹1 test phase). Actions (`Wrap`): **Reschedule** if `canReschedule`;
+  **Cancel** if `!anyStarted && !paymentPending`; **Get help**. Reschedule → Today/Tomorrow/Day-after
+  dialog + time picker → `reschedule(...)`; **on success the detail is popped** (returns to the list).
+- **NewRequestScreen (dues guard):** in addition to the entry block above, the review-sheet path still
+  guards `myPendingDuesProvider` (completed-but-unpaid) as defense-in-depth.
+- **Requester TripHistoryScreen:** `myRequestsProvider`, terminal only — a `completed` trip appears
+  **only once paid** (`isPaid`, or a legacy trip with no `tripAmountInr`); plus `closed`/`cancelled`.
+  (An unpaid completed trip stays on My Requests, not here.) `HistoryControls` (filter/sort; page 15).
+  Card: `when · destination`, status, then for a completed trip the **single trip total + payment
+  status**, a per-TravAcser **breakdown** (or "Not started — no charge" for a `closed` slice) with a
+  per-TravAcser **Rate TravAcser** button, and card-level **Get help**.
 
 ### 14.4 TravAcser side
 - **AvailableRequestsScreen:** `!approved` → pending-verification message (support email/phone);
@@ -464,9 +459,9 @@ codes/`toString()`/stack live only in `debugDetail`. `mapErrorToFailure()` maps 
 ---
 
 ## 17. Regression safety net (tests)
-Run: `cd app; flutter analyze; flutter test` (**83 tests**) and, from `firebase/`, the emulator suites
+Run: `cd app; flutter analyze; flutter test` (**98 tests**) and, from `firebase/`, the emulator suites
 (`npx -y firebase-tools@13 emulators:exec --only firestore --project demo-travacs "npm --prefix
-functions test"` = **51 functions tests**; `… "npm --prefix rules-tests test"` = **38 rules tests**).
+functions test"` = **54 functions tests**; `… "npm --prefix rules-tests test"` = **39 rules tests**).
 
 | Suite | Guards |
 |---|---|
@@ -543,6 +538,11 @@ functions test"` = **51 functions tests**; `… "npm --prefix rules-tests test"`
   TravAcser starts (no further accepts), and accepts past `scheduledStartAt` are rejected — but the
   remaining unfilled slots are simply abandoned, and some complete+cancel combinations still don't
   fully reconcile the parent status.
+- **A `started` trip that is never ended has no recovery path.** Only the TravAcser can `completeTrip`
+  (the User can't end, and a started trip can't be cancelled/rescheduled), so if every started
+  TravAcser abandons the trip, the request stays `started` forever — the User can't pay and the
+  creation gate keeps blocking them. Accepted for now (the normal flow is the TravAcser ends); a
+  future admin-assisted transition or a stuck-trip timeout/dispute flow would close this.
 - Functions runtime Node 20 deprecated (decommission 2026-10-30) — bump to 22.
 - M11 store-release paused (debug signing key; `INTERNET`/`POST_NOTIFICATIONS` only in debug/profile
   manifests) — see `docx/m11-store-release-plan.md`.

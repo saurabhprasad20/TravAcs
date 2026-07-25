@@ -69,7 +69,7 @@ Future<bool> startTripPayment(
       );
       return ok;
     case _RzKind.cancelled:
-      announce('Payment cancelled. You can pay later from Trip History.');
+      announce('Payment cancelled. You can pay later from My Requests.');
       return false;
     case _RzKind.error:
       // Never surface the raw SDK text to the user (golden rule #1): log it as

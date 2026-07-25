@@ -1172,27 +1172,33 @@ export const logManualTrip = onCall({region: REGION}, async (req) => {
   // `travAcserNames` (item 12) is the new required field; older callers may
   // still send `travAcserDetails` — accept either.
   const travAcsers = d.travAcserNames ?? d.travAcserDetails;
-  if (!d.userDetails || !travAcsers || typeof d.tripDateMs !== "number") {
+  if (typeof d.userDetails !== "string" || !d.userDetails.trim() ||
+      typeof travAcsers !== "string" || !travAcsers.trim() ||
+      typeof d.tripDateMs !== "number") {
     throw new HttpsError("invalid-argument", "userDetails, travAcserNames and tripDate are required.");
   }
-  const num = (v: unknown): number | null =>
-    typeof v === "number" ? v : null;
+  // Only persist well-typed, in-range values so a crafted payload can't write a
+  // corrupted trip log (e.g. negative counts or "[object Object]").
+  const intIn = (v: unknown, lo: number, hi: number): number | null =>
+    typeof v === "number" && Number.isInteger(v) && v >= lo && v <= hi ? v : null;
   const str = (v: unknown): string | null =>
-    v == null || v === "" ? null : String(v);
+    typeof v === "string" && v.trim() ? v.trim() : null;
+  const GENDER_PREFS = ["any_gender", "prefer_same_gender", "strict_same_gender"];
   const ref = await db.collection("tripLogs").add({
     source: "manual",
-    userDetails: String(d.userDetails),
-    travAcserNames: String(travAcsers),
+    userDetails: d.userDetails.trim(),
+    travAcserNames: travAcsers.trim(),
     tripDate: Timestamp.fromMillis(d.tripDateMs),
     // Structured trip details mirroring the request form (all optional).
     startTime: str(d.startTime),
-    numTravellers: num(d.numTravellers),
-    numTravAcsers: num(d.numTravAcsers),
-    genderPreference: str(d.genderPreference),
-    expectedDurationMinutes: num(d.durationMinutes),
+    numTravellers: intIn(d.numTravellers, 1, 10),
+    numTravAcsers: intIn(d.numTravAcsers, 1, 10),
+    genderPreference:
+      GENDER_PREFS.includes(d.genderPreference) ? d.genderPreference : null,
+    expectedDurationMinutes: intIn(d.durationMinutes, 0, 100000),
     meetingPoint: str(d.meetingPoint),
     destination: str(d.destination),
-    estimatedAmountInr: num(d.estimatedAmountInr),
+    estimatedAmountInr: intIn(d.estimatedAmountInr, 0, 100000000),
     note: str(d.note),
     createdBy: req.auth!.uid,
     createdAt: FieldValue.serverTimestamp(),

@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/repositories/firestore_request_repository.dart';
 import '../../domain/entities/assignment.dart';
-import '../../domain/entities/enums.dart';
 import '../../domain/entities/request.dart';
 import '../../domain/repositories/request_repository.dart';
 import 'auth_providers.dart';
@@ -109,10 +108,5 @@ final requestAssignmentsProvider =
 /// in-app, so it must not soft-lock the User out of creating new requests.
 final myPendingDuesProvider = Provider<List<Request>>((ref) {
   final all = ref.watch(myRequestsProvider).value ?? const [];
-  return all
-      .where((r) =>
-          r.status == RequestStatus.completed &&
-          (r.tripAmountInr ?? 0) > 0 &&
-          !r.isPaid)
-      .toList();
+  return all.where((r) => r.isPaymentPending).toList();
 });

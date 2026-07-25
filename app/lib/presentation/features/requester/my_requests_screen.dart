@@ -65,18 +65,11 @@ class MyRequestsScreen extends ConsumerWidget {
 /// so the User can pay it here; it moves to History only once paid.
 bool isActiveRequest(Request r) {
   if (r.status == RequestStatus.completed) {
-    return !r.isPaid && (r.tripAmountInr ?? 0) > 0;
+    return r.isPaymentPending;
   }
   return r.status != RequestStatus.closed &&
       r.status != RequestStatus.cancelled;
 }
-
-/// Whether a request is completed but its single trip payment is still pending
-/// (the "Payment pending" state the User can clear from My Requests).
-bool isPaymentPending(Request r) =>
-    r.status == RequestStatus.completed &&
-    !r.isPaid &&
-    (r.tripAmountInr ?? 0) > 0;
 
 /// A distinct "Payment pending" status chip (text + icon, never colour-only)
 /// shown for a completed trip whose single payment the User hasn't cleared yet.
@@ -129,7 +122,7 @@ class _RequestSummaryTile extends ConsumerWidget {
     final r = request;
     final date = DateFormat.yMMMEd().format(r.scheduledDate);
     final time = formatTime12h(r.startTime);
-    final paymentPending = isPaymentPending(r);
+    final paymentPending = r.isPaymentPending;
 
     // Derive a compact code/status line only when a TravAcser has accepted and
     // the trip isn't already awaiting payment.
@@ -290,7 +283,7 @@ class _DetailBody extends ConsumerWidget {
             .toList() ??
         const <Assignment>[];
     final anyStarted = started.isNotEmpty;
-    final paymentPending = isPaymentPending(r);
+    final paymentPending = r.isPaymentPending;
     final canReschedule = !anyStarted && _rescheduleAllowed(r);
 
     return ListView(

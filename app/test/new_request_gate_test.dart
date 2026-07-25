@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -90,5 +92,28 @@ void main() {
     // Item 8: expected duration is a slider (default 1 hour).
     expect(find.byType(Slider), findsOneWidget);
     expect(find.textContaining('Expected duration: 1 hour'), findsOneWidget);
+  });
+
+  testWidgets('shows a loader (not the form) while requests are still loading',
+      (tester) async {
+    // A stream that never emits keeps myRequestsProvider in the loading state.
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          myProfileProvider.overrideWith((ref) async => myProfile()),
+          myRequestsProvider.overrideWith(
+              (ref) => Stream<List<Request>>.fromFuture(
+                  Completer<List<Request>>().future)),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const NewRequestScreen(),
+        ),
+      ),
+    );
+    await tester.pump(); // let the profile future resolve
+    // The form must NOT render until we know the trip state.
+    expect(find.text('Meeting point with the TravAcser'), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsWidgets);
   });
 }

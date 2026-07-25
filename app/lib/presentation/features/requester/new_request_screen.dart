@@ -104,13 +104,22 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
       return;
     }
 
-    // Block creating a new trip while the User has unpaid completed trips. Read
-    // the underlying stream's state so we don't fall through while it's still
-    // loading (its `.value` would be null and the dues would look empty).
+    // Block creating a new trip while the User has a trip in progress or unpaid
+    // completed trips. Read the underlying stream's state so we don't fall
+    // through while it's still loading (its `.value` would be null).
     final duesAsync = ref.read(myRequestsProvider);
     if (duesAsync.isLoading) {
       if (!mounted) return;
       _announceError('Checking your account… please tap submit again in a moment.');
+      return;
+    }
+    // Re-check the in-progress gate at submit time — the trip status may have
+    // changed (e.g. a TravAcser started the trip) while the form was open.
+    final active = duesAsync.value ?? const <Request>[];
+    if (active.any((r) => r.status == RequestStatus.started)) {
+      if (!mounted) return;
+      _announceError(
+          "You can't create a new request while a trip is in progress.");
       return;
     }
     if (ref.read(myPendingDuesProvider).isNotEmpty) {
@@ -261,30 +270,31 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
   Widget build(BuildContext context) {
     final my = ref.watch(myProfileProvider).value;
     final busy = ref.watch(requestControllerProvider).isLoading;
-    // Warm the requester's own requests stream so the pending-dues check has
-    // data ready by the time the user taps submit (otherwise its first read
-    // returns an empty/loading value and the dues block is silently bypassed).
-    final requests = ref.watch(myRequestsProvider).value ?? const <Request>[];
+    // The gate below depends on the requester's own requests; until that stream
+    // has delivered at least once we must NOT render the form, or a User with an
+    // in-progress / unpaid trip could slip through during the loading window.
+    final requestsAsync = ref.watch(myRequestsProvider);
+    final requests = requestsAsync.value ?? const <Request>[];
     // A User may not open the creation wizard at all while they have a trip in
     // progress, or a completed trip whose payment is still pending — stop them
     // at the entrance rather than after filling the form.
     final inProgress =
         requests.any((r) => r.status == RequestStatus.started);
-    final paymentPending = requests.any((r) =>
-        r.status == RequestStatus.completed &&
-        !r.isPaid &&
-        (r.tripAmountInr ?? 0) > 0);
+    final paymentPending = requests.any((r) => r.isPaymentPending);
 
     return Scaffold(
       body: my == null
           ? const Center(child: CircularProgressIndicator())
           : !my.profile.hasServiceArea
               ? _NeedsServiceArea()
-              : inProgress
-                  ? const _CreationBlocked(kind: _BlockKind.inProgress)
-                  : paymentPending
-                      ? const _CreationBlocked(kind: _BlockKind.paymentPending)
-                      : SafeArea(
+              : (requestsAsync.isLoading && !requestsAsync.hasValue)
+                  ? const Center(child: CircularProgressIndicator())
+                  : inProgress
+                      ? const _CreationBlocked(kind: _BlockKind.inProgress)
+                      : paymentPending
+                          ? const _CreationBlocked(
+                              kind: _BlockKind.paymentPending)
+                          : SafeArea(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.all(16),
                     child: Form(
@@ -491,6 +501,7 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
   Widget _timePicker() {
     return Semantics(
       button: true,
+      excludeSemantics: true,
       label: 'Start time, ${_time?.format(context) ?? 'not set'}',
       child: ListTile(
         contentPadding: EdgeInsets.zero,

@@ -33,26 +33,26 @@ void main() {
   group('isActiveRequest / isPaymentPending (item 9)', () {
     test('an in-progress (started) trip is active', () {
       expect(isActiveRequest(req(RequestStatus.started)), isTrue);
-      expect(isPaymentPending(req(RequestStatus.started)), isFalse);
+      expect(req(RequestStatus.started).isPaymentPending, isFalse);
     });
 
     test('a completed-but-unpaid trip is active AND payment pending', () {
       final r = req(RequestStatus.completed, tripAmountInr: 415);
       expect(isActiveRequest(r), isTrue);
-      expect(isPaymentPending(r), isTrue);
+      expect(r.isPaymentPending, isTrue);
     });
 
     test('a completed-and-paid trip is NOT active (moves to history)', () {
       final r = req(RequestStatus.completed,
           tripAmountInr: 415, paidAt: DateTime(2026, 7, 1, 12));
       expect(isActiveRequest(r), isFalse);
-      expect(isPaymentPending(r), isFalse);
+      expect(r.isPaymentPending, isFalse);
     });
 
     test('a completed legacy trip with no total is NOT active', () {
       final r = req(RequestStatus.completed); // tripAmountInr null
       expect(isActiveRequest(r), isFalse);
-      expect(isPaymentPending(r), isFalse);
+      expect(r.isPaymentPending, isFalse);
     });
 
     test('a cancelled trip is not active', () {

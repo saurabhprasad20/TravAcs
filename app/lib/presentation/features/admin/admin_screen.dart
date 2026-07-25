@@ -425,8 +425,7 @@ class _ManualEntryTabState extends ConsumerState<_ManualEntryTab> {
   @override
   Widget build(BuildContext context) {
     final busy = ref.watch(adminControllerProvider).isLoading;
-    final maxTravAcsers = _numTravellers.clamp(1, 10);
-    if (_numTravAcsers < _minTravAcsers) _numTravAcsers = _minTravAcsers;
+    final maxTravAcsers = _numTravellers;
     return SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -468,11 +467,16 @@ class _ManualEntryTabState extends ConsumerState<_ManualEntryTab> {
                   for (var i = 1; i <= _maxTravellers; i++)
                     DropdownMenuItem(value: i, child: Text('$i')),
                 ],
-                onChanged: (v) => setState(() => _numTravellers = v ?? 1),
+                onChanged: (v) => setState(() {
+                  _numTravellers = v ?? 1;
+                  // Reset to the suggested count so the TravAcser value always
+                  // stays within the (min..travellers) dropdown range.
+                  _numTravAcsers = Request.suggestedTravAcsers(_numTravellers);
+                }),
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<int>(
-                value: _numTravAcsers.clamp(_minTravAcsers, maxTravAcsers),
+                value: _numTravAcsers,
                 decoration:
                     const InputDecoration(labelText: 'Number of TravAcsers'),
                 items: [
@@ -498,6 +502,7 @@ class _ManualEntryTabState extends ConsumerState<_ManualEntryTab> {
               const Divider(height: 24),
               Semantics(
                 button: true,
+                excludeSemantics: true,
                 label:
                     'Trip date, ${_date == null ? 'not set' : DateFormat.yMMMEd().format(_date!)}',
                 child: ListTile(
@@ -512,6 +517,7 @@ class _ManualEntryTabState extends ConsumerState<_ManualEntryTab> {
               ),
               Semantics(
                 button: true,
+                excludeSemantics: true,
                 label: 'Start time, ${_time?.format(context) ?? 'not set'}',
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,

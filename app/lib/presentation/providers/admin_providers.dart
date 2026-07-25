@@ -31,15 +31,18 @@ final _activeTripsRawProvider = StreamProvider<List<Request>>((ref) {
 
 /// Active + upcoming trips for the admin monitoring dashboard. A trip that is
 /// in progress (`started`) is always shown; a not-yet-started trip is shown
-/// only while it is still upcoming (its scheduled start is in the future).
-/// Past-dated trips that were never started (stale/overdue leftovers) are hidden
-/// so the admin sees only live and upcoming work — not history. Re-filters on
-/// the clock so a trip drops off once its start time passes.
+/// while it is still upcoming OR only recently overdue (within a grace window),
+/// so the admin can still see a trip whose TravAcser is running a little late.
+/// Long-overdue never-started trips (stale/leftover data) are hidden. Re-filters
+/// on the clock so a trip drops off once it ages past the window.
 final activeTripsProvider = Provider<AsyncValue<List<Request>>>((ref) {
   ref.watch(clockProvider);
-  final now = DateTime.now();
+  // Keep an overdue-but-unstarted trip visible for a couple of hours so the
+  // admin can intervene; only older leftovers fall off.
+  final cutoff = DateTime.now().subtract(const Duration(hours: 2));
   return ref.watch(_activeTripsRawProvider).whenData((list) => list
       .where((r) =>
-          r.status == RequestStatus.started || r.scheduledStartAt.isAfter(now))
+          r.status == RequestStatus.started ||
+          r.scheduledStartAt.isAfter(cutoff))
       .toList());
 });

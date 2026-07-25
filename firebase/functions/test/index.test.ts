@@ -637,11 +637,42 @@ describe("logManualTrip (admin gate)", () => {
     assert.equal(log.source, "manual");
     assert.equal(log.userDetails, "Bob 999");
     assert.equal(log.travAcserNames, "Vic, Sam");
+    assert.equal(log.startTime, "10:00");
     assert.equal(log.numTravellers, 2);
     assert.equal(log.numTravAcsers, 2);
+    assert.equal(log.genderPreference, "any_gender");
+    assert.equal(log.expectedDurationMinutes, 120);
     assert.equal(log.meetingPoint, "CP Gate 2");
+    assert.equal(log.destination, "AIIMS");
     assert.equal(log.estimatedAmountInr, 598);
+    assert.equal(log.note, "phone booking");
     assert.equal(log.createdBy, "root");
+  });
+
+  it("accepts a legacy travAcserDetails-only payload", async () => {
+    const res: any = await logManualTrip(call({
+      userDetails: "Bob 999", travAcserDetails: "Vic 888",
+      tripDateMs: Date.now(),
+    }, "root", {admin: true}));
+    assert.equal(res.code, "LOGGED");
+    const log = (await db.doc(`tripLogs/${res.id}`).get()).data()!;
+    assert.equal(log.travAcserNames, "Vic 888");
+  });
+
+  it("drops out-of-range / wrong-typed structured fields (no corruption)", async () => {
+    const res: any = await logManualTrip(call({
+      userDetails: "Bob", travAcserNames: "Vic",
+      tripDateMs: Date.now(),
+      numTravellers: -5, numTravAcsers: 99,
+      genderPreference: "hacker", meetingPoint: {a: 1},
+      estimatedAmountInr: -100,
+    }, "root", {admin: true}));
+    const log = (await db.doc(`tripLogs/${res.id}`).get()).data()!;
+    assert.equal(log.numTravellers, null); // negative rejected
+    assert.equal(log.numTravAcsers, null); // out of range rejected
+    assert.equal(log.genderPreference, null); // not an allowed value
+    assert.equal(log.meetingPoint, null); // non-string rejected
+    assert.equal(log.estimatedAmountInr, null); // negative rejected
   });
 });
 

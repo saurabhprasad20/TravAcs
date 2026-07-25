@@ -203,6 +203,7 @@ class _CompleteProfileScreenState
                 const SizedBox(height: 16),
                 Semantics(
                   button: true,
+                  excludeSemantics: true,
                   label: 'Date of birth, $dobLabel',
                   child: ListTile(
                     contentPadding: EdgeInsets.zero,

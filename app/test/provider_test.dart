@@ -239,7 +239,7 @@ void main() {
           estimatedAmountInr: 135,
         );
 
-    test('keeps started + upcoming, hides past-dated not-started trips',
+    test('keeps started + upcoming + recently-overdue, hides stale trips',
         () async {
       final now = DateTime.now();
       final repo = _MockRequestRepo();
@@ -252,8 +252,9 @@ void main() {
                 now.subtract(const Duration(minutes: 30))),
             trip('assignedUp', RequestStatus.assigned,
                 now.add(const Duration(hours: 1))),
-            trip('assignedPast', RequestStatus.assigned,
-                now.subtract(const Duration(hours: 2))),
+            // 30 min overdue but not started -> still shown (grace window).
+            trip('recentOverdue', RequestStatus.assigned,
+                now.subtract(const Duration(minutes: 30))),
           ]));
       final c = ProviderContainer(overrides: [
         requestRepositoryProvider.overrideWithValue(repo),
@@ -272,9 +273,10 @@ void main() {
           break;
         }
       }
-      // 'running' (started, even though past) stays; 'stale' + 'assignedPast'
-      // (past-dated, not started) are hidden; upcoming ones remain.
-      expect(list.map((r) => r.id).toSet(), {'up', 'running', 'assignedUp'});
+      // 'running' (started) + upcoming + recently-overdue stay; only the
+      // day-old 'stale' unstarted trip is hidden.
+      expect(list.map((r) => r.id).toSet(),
+          {'up', 'running', 'assignedUp', 'recentOverdue'});
     });
   });
 
