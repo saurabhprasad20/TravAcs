@@ -74,6 +74,8 @@ void main() {
       req('r1', RequestStatus.completed, tripAmountInr: 415),
     ]));
     await tester.pumpAndSettle();
+    // The title must appear exactly ONCE (the icon must not duplicate it for
+    // screen readers).
     expect(find.text('Payment pending'), findsOneWidget);
     expect(find.text('Meeting point with the TravAcser'), findsNothing);
   });

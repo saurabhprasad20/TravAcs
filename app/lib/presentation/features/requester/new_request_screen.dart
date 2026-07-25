@@ -569,7 +569,9 @@ class _CreationBlocked extends ConsumerWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 48, semanticLabel: title),
+            // Decorative icon — the heading below already announces the title,
+            // so labelling the icon too made TalkBack read it twice.
+            Icon(icon, size: 48),
             const SizedBox(height: 16),
             Semantics(
               header: true,
