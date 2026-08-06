@@ -89,6 +89,12 @@ merged. Direct pushes to `master` are not allowed.
 Found a bug or have an idea? **Open an issue** with clear steps to reproduce
 (device, role, what you expected vs. saw).
 
+### Continuous deployment
+Every merge to `master` runs the test suite and then **automatically deploys the
+backend** (Cloud Functions, Firestore rules & indexes) — no manual
+`firebase deploy`. Contributors never get deploy access; only merged code on
+`master` ships. See [`docx/ci-cd-deploy-setup.md`](docx/ci-cd-deploy-setup.md).
+
 ## Documentation
 | Topic | Where |
 |---|---|

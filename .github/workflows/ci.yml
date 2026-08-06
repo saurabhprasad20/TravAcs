@@ -86,3 +86,52 @@ jobs:
         run: >
           firebase emulators:exec --only firestore --project demo-travacs
           "npm --prefix functions test"
+
+  # CD — Deploy the backend to the live project (travacs-dev) automatically,
+  # but ONLY on a push to master (i.e. after a PR is merged) and ONLY once BOTH
+  # test jobs above have passed. Requires the repo secret FIREBASE_SERVICE_ACCOUNT
+  # (a Google Cloud service-account JSON key) — see docx/ci-cd-deploy-setup.md.
+  deploy:
+    name: Deploy backend (travacs-dev)
+    needs: [flutter-tests, backend-tests]
+    if: >
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/master' &&
+      github.repository == 'saurabhprasad20/TravAcs'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: firebase-deploy-master
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: firebase
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # tsc lives in functions/devDependencies; the deploy's predeploy hook
+      # (npm run build) needs them installed first.
+      - name: Install functions dependencies
+        run: npm ci --prefix functions
+
+      # Write the service-account key from the secret to a temp file. Using an
+      # env var (not string interpolation) avoids any quoting/injection issues.
+      - name: Write service-account credentials
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/gcp-key.json"
+
+      - name: Deploy functions, rules & indexes
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gcp-key.json
+        run: >
+          npx -y firebase-tools deploy
+          --only functions,firestore:rules,firestore:indexes
+          --project travacs-dev --non-interactive --force
+
+      - name: Remove credentials
+        if: always()
+        run: rm -f "$RUNNER_TEMP/gcp-key.json"
