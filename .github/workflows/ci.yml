@@ -3,6 +3,7 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 jobs:
   # M10a — pure-Dart unit/widget suite. No emulator, no real Firebase.
