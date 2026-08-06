@@ -1,168 +1,105 @@
 # TravAcs
 
-An accessibility-first, cross-platform (Flutter) app that pairs visually-impaired
-**Users** ("requesters") with verified **TravAcsers** ("volunteers") for short,
-paid, in-person travel/mobility assistance in India.
+**TravAcs** is an accessibility-first mobile app that pairs visually-impaired
+**Users** with verified **TravAcsers** (assistants) for short, paid, in-person
+travel and mobility assistance across India.
 
-- **Agent & developer guide (start here):** [`AGENTS.md`](AGENTS.md)
-- **Behavior baseline (regression reference):** [`docx/behavior_baseline.md`](docx/behavior_baseline.md)
-- **Full design (source of truth):** [`docx/design_travacs.md`](docx/design_travacs.md)
-- **Product & requirements:** [`docx/appRequirements.md`](docx/appRequirements.md)
-- **Engineering principles:** [`docx/EngPrinciples.md`](docx/EngPrinciples.md)
+Our goal is simple: make independent travel easier and safer for people with
+visual impairment by connecting them, on demand, with trusted, verified helpers.
 
-## Stack
-Flutter (Dart) + **Riverpod 3** front end — layered (Clean-ish)
-`presentation → domain ← data`, Repository pattern, results as
-`Future<Either<Failure, T>>` (fpdart) — on a **Firebase** back end:
-**Phone-OTP Auth, Cloud Firestore, Cloud Functions (TypeScript, Node 20),
-FCM, Crashlytics**. In-app payments via **Razorpay** (live).
+> **Status:** in active development, currently in a limited test phase
+> (only ₹1 is collected at checkout while we test payments).
 
-- Firebase project: **`travacs-dev`** · callable functions region
-  **`asia-south2`** (scheduled functions in `asia-south1`).
-- Android: `applicationId`/`namespace` **`com.travacs.travacs`**, **minSdk 23**.
+## What it does
+- **Sign in with your phone** (OTP) and set up a simple profile as a **User** or
+  a **TravAcser**.
+- **Users** request assistance for a trip — city, date/time, meeting point,
+  destination, number of travellers and helpers needed, and any gender
+  preference.
+- Requests are **broadcast** to verified TravAcsers in the same city; the first
+  to accept is matched (first-come, first-served).
+- On the day, the trip **starts** (the TravAcser confirms a code the User
+  shares), the two travel together, then the trip is **completed** and
+  **paid in-app**, and both sides leave a **rating**.
+- Users can **reschedule** or **cancel**; either side can cancel before the trip
+  starts. An **admin** verifies TravAcsers before they can accept work.
 
-> **Backend history:** v1 was first built on Supabase, then migrated to Firebase
-> to remove backend friction — chiefly **phone-OTP for +91 numbers** (no DLT /
-> SMS-gateway). The Supabase version is preserved on the **`master_old`** branch.
+Pricing (post test-phase): **₹149/hr** per TravAcser assisting 1 traveller,
+**₹210/hr** assisting 2, plus **₹100 travel** per TravAcser, with a 1-hour
+minimum.
+
+## Built with
+Flutter (Dart) on the front end and **Firebase** on the back end (Phone Auth,
+Cloud Firestore, Cloud Functions, notifications, crash reporting), with
+**Razorpay** for in-app payments. The app is designed to be **accessibility-first**
+throughout (full screen-reader support, no colour-only status, large touch
+targets).
 
 ## Repository layout
 ```
-app/        Flutter application (lib/ + 100+ offline tests in test/)
-firebase/   Firestore rules + indexes + Cloud Functions + emulator test suites
-docx/       Design, requirements, engineering principles, behavior baseline
-AGENTS.md   Single entry point / agent context (fuller than this file)
+app/        Flutter application
+firebase/   Firestore rules + indexes + Cloud Functions
+docx/        Design, requirements and engineering docs
+AGENTS.md   Full developer & contributor guide (setup, commands, architecture)
 ```
 
-## What it does
-- **Phone-OTP login** → one-time **complete-profile** → role-based tab shell
-  (User / TravAcser) with a navigation **Drawer** (Contact, About, Terms,
-  Privacy, Sign out).
-- **Users** create travel-assistance **requests** (city, schedule, number of
-  travellers, TravAcsers needed, gender preference, meeting point, destination).
-- Requests **broadcast** to approved TravAcsers in the same city (FCM fan-out).
-  A late-approved TravAcser still sees any request that is still open + upcoming.
-- **TravAcsers accept** on a first-come-first-served basis (server transaction).
-- **Trip lifecycle:** start (TravAcser validates the User's deterministic
-  **offline start-code**) → end → **two-sided payment** (Razorpay) → **mutual
-  1–5 rating**. Users can **reschedule/cancel**; both sides can cancel.
-- **Admin** verifies (approves/rejects) TravAcsers and views active trips.
-- Billing: **₹149/hr** per TravAcser serving 1 traveller, **₹210/hr** serving 2,
-  **+ ₹100 travel** per TravAcser, min 1-hour bill. **Test phase: only ₹1 is
-  collected at checkout.**
+## Getting started (developers)
+The complete development guide — environment setup, build/run/test commands,
+architecture, and backend deploy steps — lives in **[`AGENTS.md`](AGENTS.md)**.
+In short:
 
-## Golden rules (do NOT regress)
-1. **No raw errors to users** — everything flows through the sealed `Failure`
-   taxonomy + `mapFirebaseError()`; raw detail only goes to Crashlytics.
-2. **Accessibility is first-class** — semantic labels on every control, status is
-   never colour-only, announcements on state change, text scale clamped to
-   `[1.0, 1.8]`, touch targets ≥48dp.
-3. **Privileged writes are server-only** — clients can't set role, verification,
-   ratings, amounts, or assignments; all state transitions go through Cloud
-   Functions and are enforced by Firestore Security Rules.
-See [`AGENTS.md`](AGENTS.md) for the full list.
-
-## Milestone status
-| Milestone | Status |
-|-----------|--------|
-| M0–M2 Firebase foundations, model + rules + phone-OTP, profiles + role shell | ✅ done |
-| M3 Requests + broadcast + FCM fan-out | ✅ done |
-| M4 FCFS accept + contact exchange · M5 Trip start/complete + billing | ✅ done |
-| M6 Two-sided payment · M7 Admin verification | ✅ done |
-| M8 Graceful error handling · M9 Accessibility pass | ✅ done |
-| M10 Automated tests (offline + emulator) + CI | ✅ done |
-| **M11 Play-Store release prep (Android)** | ⏸️ **paused** — see `docx/m11-store-release-plan.md` |
-| M12 Feature-completion / lifecycle gap-fill | ✅ done |
-| M13 App menu (Drawer + info screens) · M14 A11y label/control fixes | ✅ done |
-
-Beyond the numbered milestones: **in-app Razorpay payment (live)**, **offline
-start-code** trip start, one-trip-per-day guard, request auto-expiry,
-reschedule confirm/cancel, started-trip lock, gender-matched broadcast, and
-admin dashboards. Each milestone is checkpointed as branch `master_m<n>`.
-
-## Getting started
-
-### 1. Wire the Firebase config (one-time — gitignored, the app won't build without it)
 ```powershell
-# Requires: `firebase login` + `dart pub global activate flutterfire_cli`
 cd app
-flutterfire configure --project=travacs-dev
-# writes app/lib/firebase_options.dart + android/app/google-services.json
+flutterfire configure --project=travacs-dev   # one-time; writes gitignored config
 flutter pub get
+flutter run                                    # to a connected device
 ```
 
-### 2. Run on a device
+Before pushing changes, run the quality gates:
+
 ```powershell
 cd app
-flutter run                              # to a connected device/emulator
-flutter build apk --release              # shareable APK (currently debug-signed)
-```
-
-### Quality gates (offline, fast)
-```powershell
-cd app
-flutter analyze        # must be clean
-flutter test           # 104 offline tests
-```
-
-### Backend tests (Firestore emulator; needs Java)
-Run from `firebase/`. On JDK 17 pin firebase-tools@13 (see AGENTS.md):
-```powershell
-cd firebase
-npx -y firebase-tools@13 emulators:exec --only firestore --project demo-travacs "npm --prefix rules-tests test"   # 39 rules tests
-npx -y firebase-tools@13 emulators:exec --only firestore --project demo-travacs "npm --prefix functions test"     # 54 functions tests
-```
-
-### Build + deploy the backend (there is no `.firebaserc` — always pass `--project`)
-```powershell
-cd firebase
-npm --prefix functions run build
-firebase deploy --only functions --project travacs-dev
-firebase deploy --only firestore:rules --project travacs-dev
+flutter analyze      # must be clean
+flutter test         # all tests green
 ```
 
 ## Contributing
-`master` is **protected** — nobody pushes to it directly except the repository
-owner (**@saurabhprasad20**). All other changes land through a **pull request**
-that the owner reviews and approves. Please follow this flow:
+We welcome contributions! The `master` branch is **protected** — nobody pushes
+to it directly except the repository owner (**@saurabhprasad20**). Everyone else
+contributes through a **pull request** that the owner reviews and approves.
 
-1. **Get access & clone.** Ask @saurabhprasad20 for collaborator (Write) access,
-   then clone the repo.
-2. **Branch off `master`.** Use a short, descriptive branch name, ideally
-   namespaced with your GitHub handle:
+1. **Ask @saurabhprasad20 for collaborator (Write) access**, then clone the repo.
+2. **Create a branch off `master`** (you won't be able to push to `master` — push
+   your own branch instead):
    ```powershell
    git checkout master; git pull
-   git checkout -b <your-handle>/<short-topic>     # e.g. asha/fix-otp-timeout
+   git checkout -b <your-handle>/<short-topic>
+   git push -u origin <your-handle>/<short-topic>
    ```
-   > You will **not** be able to push to `master` — that's expected. Push your
-   > own branch instead: `git push -u origin <your-branch>`.
-3. **Make your change** and keep it focused. Before pushing, run the quality
-   gates locally — a PR won't be merged if these fail:
-   ```powershell
-   cd app; flutter analyze; flutter test
-   ```
-   Backend changes must also pass the emulator suites (see above).
-4. **Respect the Golden Rules** — no raw errors to users, accessibility is
-   first-class, privileged writes stay server-side. See [`AGENTS.md`](AGENTS.md).
-5. **Open a pull request** into `master` and **request a review**:
-   - Add **@saurabhprasad20** as a reviewer (his approval is **required** — the
-     merge is blocked until he approves).
+3. **Make a focused change** and run the quality gates above (`flutter analyze` +
+   `flutter test`; backend changes also need the emulator suites in `AGENTS.md`).
+   Please keep the project's principles intact — **accessibility-first**, and
+   **users never see raw errors**.
+4. **Open a pull request into `master`** and **request a review**:
+   - Add **@saurabhprasad20** as a reviewer — his approval is **required**.
    - At least **one approving review from someone other than you** is required,
-     and the CI checks must be green.
-   - Fill in the PR description: what changed, why, and how you tested it.
-6. **Address review feedback**, push follow-up commits to the same branch, and
-   the owner merges once approved. Pushing new commits **dismisses** prior
-   approvals, so re-request review after changes.
+     and CI must be green.
+   - In the description, say what changed, why, and how you tested it.
+5. **Address feedback** on the same branch (new commits dismiss old approvals, so
+   re-request review), and the owner merges once approved.
 
-Full details are in [`CONTRIBUTING.md`](CONTRIBUTING.md). The exact protection
-rules the owner enforces are documented in
-[`docx/branch-protection-setup.md`](docx/branch-protection-setup.md).
+Found a bug or have an idea? **Open an issue** with clear steps to reproduce
+(device, role, what you expected vs. saw).
 
-## Notes
-- **No SMS gateway / DLT** — Firebase Phone Auth handles OTP for India.
-  Test numbers: `+918979515501`, `+918178796516`, code `123456`.
-- **Plan:** Cloud Functions require the **Blaze** billing plan.
-- **Secrets are never committed** — `firebase_options.dart`,
-  `google-services.json`, keystores, and Razorpay keys (Firebase Secret Manager:
-  `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET`) are all kept out of the repo.
-- **CI** (`.github/workflows/ci.yml`): `flutter analyze` + `flutter test`, plus
-  the emulator rules + functions suites. Both jobs must be green.
+## Documentation
+| Topic | Where |
+|---|---|
+| Full developer & contributor guide | [`AGENTS.md`](AGENTS.md) |
+| Product requirements | [`docx/appRequirements.md`](docx/appRequirements.md) |
+| System design | [`docx/design_travacs.md`](docx/design_travacs.md) |
+| Engineering principles | [`docx/EngPrinciples.md`](docx/EngPrinciples.md) |
+
+## A note on privacy & secrets
+TravAcs handles personal data responsibly. Project config and credentials
+(`firebase_options.dart`, `google-services.json`, keystores, payment keys) are
+**never committed** — they're generated or stored securely outside the repo.
