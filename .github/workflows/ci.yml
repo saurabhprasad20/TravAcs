@@ -96,9 +96,10 @@ jobs:
     name: Deploy backend (travacs-dev)
     needs: [flutter-tests, backend-tests]
     if: >
-      github.event_name == 'push' &&
+      github.repository == 'saurabhprasad20/TravAcs' &&
       github.ref == 'refs/heads/master' &&
-      github.repository == 'saurabhprasad20/TravAcs'
+      (github.event_name == 'push' ||
+       (github.event_name == 'workflow_dispatch' && github.actor == 'saurabhprasad20'))
     runs-on: ubuntu-latest
     concurrency:
       group: firebase-deploy-master
