@@ -120,6 +120,43 @@ firebase deploy --only functions --project travacs-dev
 firebase deploy --only firestore:rules --project travacs-dev
 ```
 
+## Contributing
+`master` is **protected** — nobody pushes to it directly except the repository
+owner (**@saurabhprasad20**). All other changes land through a **pull request**
+that the owner reviews and approves. Please follow this flow:
+
+1. **Get access & clone.** Ask @saurabhprasad20 for collaborator (Write) access,
+   then clone the repo.
+2. **Branch off `master`.** Use a short, descriptive branch name, ideally
+   namespaced with your GitHub handle:
+   ```powershell
+   git checkout master; git pull
+   git checkout -b <your-handle>/<short-topic>     # e.g. asha/fix-otp-timeout
+   ```
+   > You will **not** be able to push to `master` — that's expected. Push your
+   > own branch instead: `git push -u origin <your-branch>`.
+3. **Make your change** and keep it focused. Before pushing, run the quality
+   gates locally — a PR won't be merged if these fail:
+   ```powershell
+   cd app; flutter analyze; flutter test
+   ```
+   Backend changes must also pass the emulator suites (see above).
+4. **Respect the Golden Rules** — no raw errors to users, accessibility is
+   first-class, privileged writes stay server-side. See [`AGENTS.md`](AGENTS.md).
+5. **Open a pull request** into `master` and **request a review**:
+   - Add **@saurabhprasad20** as a reviewer (his approval is **required** — the
+     merge is blocked until he approves).
+   - At least **one approving review from someone other than you** is required,
+     and the CI checks must be green.
+   - Fill in the PR description: what changed, why, and how you tested it.
+6. **Address review feedback**, push follow-up commits to the same branch, and
+   the owner merges once approved. Pushing new commits **dismisses** prior
+   approvals, so re-request review after changes.
+
+Full details are in [`CONTRIBUTING.md`](CONTRIBUTING.md). The exact protection
+rules the owner enforces are documented in
+[`docx/branch-protection-setup.md`](docx/branch-protection-setup.md).
+
 ## Notes
 - **No SMS gateway / DLT** — Firebase Phone Auth handles OTP for India.
   Test numbers: `+918979515501`, `+918178796516`, code `123456`.

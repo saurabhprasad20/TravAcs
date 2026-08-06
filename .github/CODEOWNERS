@@ -1,0 +1,10 @@
+# Code owners for TravAcs
+#
+# The repository owner is the required reviewer for every change. When branch
+# protection has "Require review from Code Owners" enabled, a pull request to a
+# protected branch (master) cannot be merged until @saurabhprasad20 approves it.
+#
+# Order matters: the LAST matching pattern for a given path wins.
+
+# Everything in the repo is owned by the repository owner.
+*       @saurabhprasad20
