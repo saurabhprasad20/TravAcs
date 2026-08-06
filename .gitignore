@@ -34,3 +34,7 @@ userRequestForm.txt
 
 # Owner-only CI/CD deploy setup notes (not for the public repo)
 docx/ci-cd-deploy-setup.md
+
+# Google Cloud service-account key(s) — NEVER commit
+travacs-dev-*.json
+*-service-account*.json
