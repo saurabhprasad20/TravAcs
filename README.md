@@ -64,29 +64,27 @@ flutter test         # all tests green
 ```
 
 ## Contributing
-We welcome contributions! The `master` branch is **protected** — nobody pushes
-to it directly except the repository owner (**@saurabhprasad20**). Everyone else
-contributes through a **pull request** that the owner reviews and approves.
+We welcome contributions! The `master` branch is **protected** — all changes
+land through a **pull request** that is reviewed and approved before it is
+merged. Direct pushes to `master` are not allowed.
 
-1. **Ask @saurabhprasad20 for collaborator (Write) access**, then clone the repo.
-2. **Create a branch off `master`** (you won't be able to push to `master` — push
-   your own branch instead):
+1. **Fork or request collaborator access**, then clone the repository.
+2. **Create a branch off `master`** and push your branch (not `master`):
    ```powershell
    git checkout master; git pull
    git checkout -b <your-handle>/<short-topic>
    git push -u origin <your-handle>/<short-topic>
    ```
-3. **Make a focused change** and run the quality gates above (`flutter analyze` +
+3. **Make a focused change** and run the quality gates (`flutter analyze` +
    `flutter test`; backend changes also need the emulator suites in `AGENTS.md`).
    Please keep the project's principles intact — **accessibility-first**, and
    **users never see raw errors**.
-4. **Open a pull request into `master`** and **request a review**:
-   - Add **@saurabhprasad20** as a reviewer — his approval is **required**.
-   - At least **one approving review from someone other than you** is required,
-     and CI must be green.
+4. **Open a pull request into `master`** and request a review:
+   - At least **one approving review** (from someone other than the author) is
+     required, and **CI must be green**.
    - In the description, say what changed, why, and how you tested it.
-5. **Address feedback** on the same branch (new commits dismiss old approvals, so
-   re-request review), and the owner merges once approved.
+5. **Address review feedback** on the same branch (pushing new commits dismisses
+   prior approvals, so re-request review), and a maintainer merges once approved.
 
 Found a bug or have an idea? **Open an issue** with clear steps to reproduce
 (device, role, what you expected vs. saw).
