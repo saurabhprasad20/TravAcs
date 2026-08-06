@@ -90,7 +90,7 @@ jobs:
   # CD — Deploy the backend to the live project (travacs-dev) automatically,
   # but ONLY on a push to master (i.e. after a PR is merged) and ONLY once BOTH
   # test jobs above have passed. Requires the repo secret FIREBASE_SERVICE_ACCOUNT
-  # (a Google Cloud service-account JSON key) — see docx/ci-cd-deploy-setup.md.
+  # (a Google Cloud service-account JSON key).
   deploy:
     name: Deploy backend (travacs-dev)
     needs: [flutter-tests, backend-tests]

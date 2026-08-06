@@ -93,7 +93,7 @@ Found a bug or have an idea? **Open an issue** with clear steps to reproduce
 Every merge to `master` runs the test suite and then **automatically deploys the
 backend** (Cloud Functions, Firestore rules & indexes) — no manual
 `firebase deploy`. Contributors never get deploy access; only merged code on
-`master` ships. See [`docx/ci-cd-deploy-setup.md`](docx/ci-cd-deploy-setup.md).
+`master` ships.
 
 ## Documentation
 | Topic | Where |
