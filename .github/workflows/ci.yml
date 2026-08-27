@@ -83,6 +83,11 @@ jobs:
           firebase emulators:exec --only firestore --project demo-travacs
           "npm --prefix rules-tests test"
 
+      - name: Storage Rules tests
+        run: >
+          firebase emulators:exec --only firestore,storage --project demo-travacs
+          "npm --prefix rules-tests run test:storage"
+
       - name: Cloud Functions tests
         run: >
           firebase emulators:exec --only firestore --project demo-travacs
@@ -126,12 +131,12 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/gcp-key.json"
 
-      - name: Deploy functions, rules & indexes
+      - name: Deploy functions, rules, indexes & storage rules
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gcp-key.json
         run: >
           npx -y firebase-tools deploy
-          --only functions,firestore:rules,firestore:indexes
+          --only functions,firestore:rules,firestore:indexes,storage
           --project travacs-dev --non-interactive --force
 
       - name: Remove credentials

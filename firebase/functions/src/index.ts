@@ -849,7 +849,7 @@ export const cancelTrip = onCall({region: REGION}, async (req) => {
  * during the 90-minute review window. Receipt upload happens directly to the
  * guarded Storage path; this callable records only the validated path.
  */
-export const submitTravelExpense = onCall({region: REGION}, async (req) => {
+export const submitTravelExpense = onCall({region: REGION, invoker: "public"}, async (req) => {
   const uid = req.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Please sign in.");
   await assertNotBanned(uid);
@@ -897,7 +897,7 @@ export const submitTravelExpense = onCall({region: REGION}, async (req) => {
 });
 
 /** Admin adjusts one TravAcser's travel compensation during review. */
-export const setTravelCompensation = onCall({region: REGION}, async (req) => {
+export const setTravelCompensation = onCall({region: REGION, invoker: "public"}, async (req) => {
   if (req.auth?.token?.admin !== true) {
     throw new HttpsError("permission-denied", "Admin only.");
   }
@@ -952,7 +952,7 @@ export const setTravelCompensation = onCall({region: REGION}, async (req) => {
 });
 
 /** Admin closes review early; otherwise the scheduler closes it at 90 minutes. */
-export const finalizePaymentReview = onCall({region: REGION}, async (req) => {
+export const finalizePaymentReview = onCall({region: REGION, invoker: "public"}, async (req) => {
   if (req.auth?.token?.admin !== true) {
     throw new HttpsError("permission-denied", "Admin only.");
   }
@@ -1433,7 +1433,7 @@ export const setVerification = onCall({region: REGION}, async (req) => {
 });
 
 /** Admin temporarily bans or immediately unbans a normal account. */
-export const setAccountBan = onCall({region: REGION}, async (req) => {
+export const setAccountBan = onCall({region: REGION, invoker: "public"}, async (req) => {
   if (req.auth?.token?.admin !== true) {
     throw new HttpsError("permission-denied", "Admin only.");
   }
@@ -1493,7 +1493,11 @@ export const setAccountBan = onCall({region: REGION}, async (req) => {
  * remains unchanged unless an admin adjusted a TravAcser's compensation.
  */
 export const finalizeExpiredPaymentReviews = onSchedule(
-  {region: SCHEDULER_REGION, schedule: "every 5 minutes"},
+  {
+    region: SCHEDULER_REGION,
+    schedule: "every 5 minutes",
+    timeZone: "Asia/Kolkata",
+  },
   async () => {
     const snap = await db
       .collection("requests")
