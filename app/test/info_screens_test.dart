@@ -38,20 +38,16 @@ void main() {
     expect(find.text('Terms & Conditions'), findsOneWidget);
     expect(find.textContaining('Draft'), findsNothing);
     expect(find.textContaining('placeholder'), findsNothing);
-    // Scroll to a lower section to confirm the real content is present.
-    await tester.scrollUntilVisible(find.text('Pricing'), 200,
-        scrollable: find.byType(Scrollable));
-    expect(find.text('Pricing'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('Payment'), 200,
-        scrollable: find.byType(Scrollable));
-    expect(find.text('Payment'), findsOneWidget);
+    expect(find.textContaining('TravAcs Welfare Foundation'), findsOneWidget);
+    expect(
+        find.textContaining('PAYMENTS, PRICING AND FINANCIAL'), findsOneWidget);
   });
 
   testWidgets('Privacy shows real sections and no draft banner', (tester) async {
     await tester.pumpWidget(host(const PrivacyPolicyScreen()));
     await tester.pumpAndSettle();
     expect(find.text('Privacy Policy'), findsOneWidget);
-    expect(find.text('Information we collect'), findsOneWidget);
+    expect(find.textContaining('INFORMATION WE COLLECT'), findsOneWidget);
     expect(find.textContaining('Draft'), findsNothing);
     expect(find.textContaining('placeholder'), findsNothing);
   });

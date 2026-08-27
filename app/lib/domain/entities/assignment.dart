@@ -34,6 +34,10 @@ class Assignment {
     this.durationMinutes,
     this.amountInr,
     this.travelCostInr,
+    this.paymentReviewEndsAt,
+    this.additionalTravelCostClaimedInr,
+    this.receiptStoragePath,
+    this.expenseClaimStatus,
     this.paymentStatus = PaymentStatus.pending,
     this.requesterPaidAt,
     this.travAcserReceivedAt,
@@ -54,6 +58,7 @@ class Assignment {
 
   final DateTime scheduledDate;
   final String startTime;
+
   /// Absolute instant the trip is scheduled to begin (scheduledDate + startTime).
   /// May be null on legacy docs; use [effectiveStartAt] which falls back.
   final DateTime? scheduledStartAt;
@@ -72,9 +77,14 @@ class Assignment {
   final DateTime? endedAt;
   final int? durationMinutes;
   final int? amountInr;
+
   /// Flat travel cost billed on this assignment (₹100 on the first-completed
   /// assignment of the trip, otherwise 0/null). Once per trip.
   final int? travelCostInr;
+  final DateTime? paymentReviewEndsAt;
+  final int? additionalTravelCostClaimedInr;
+  final String? receiptStoragePath;
+  final String? expenseClaimStatus;
 
   // Payment + ratings (M6).
   final PaymentStatus paymentStatus;
@@ -93,6 +103,14 @@ class Assignment {
   bool get ratedByRequester => requesterRatingStars != null;
   bool get ratedByVolunteer => volunteerRatingStars != null;
 
+  bool canSubmitExpense(DateTime now) =>
+      tripStatus == TripStatus.completed &&
+      requesterPaidAt == null &&
+      paymentReviewEndsAt != null &&
+      now.isBefore(paymentReviewEndsAt!) &&
+      expenseClaimStatus != 'submitted' &&
+      expenseClaimStatus != 'reviewed';
+
   /// True while this TravAcser still needs to confirm/decline a rescheduled
   /// trip (item 3).
   bool get needsRescheduleConfirm => rescheduleStatus == 'pending';
@@ -105,7 +123,9 @@ class Assignment {
     final mins = durationMinutes ?? expectedDurationMinutes;
     final hrs = Request.billedHours(mins);
     final hrsLabel =
-        hrs == hrs.roundToDouble() ? hrs.toStringAsFixed(0) : hrs.toStringAsFixed(1);
+        hrs == hrs.roundToDouble()
+            ? hrs.toStringAsFixed(0)
+            : hrs.toStringAsFixed(1);
     final travel = travelCostInr ?? AppConstants.travelCostInr;
     // Infer the per-head rate from the actual amount (the billed total once
     // completed, else the accept-time estimate) rather than assuming a fixed
@@ -113,9 +133,8 @@ class Assignment {
     // the breakdown line contradict the shown total.
     final total = amountInr ?? amountInrEstimate;
     final billedService = total - travel;
-    final rate = (hrs > 0)
-        ? (billedService / hrs).round()
-        : AppConstants.rateSoloInr;
+    final rate =
+        (hrs > 0) ? (billedService / hrs).round() : AppConstants.rateSoloInr;
     return '$hrsLabel hr × ₹$rate/hr + ₹$travel travel';
   }
 
@@ -128,10 +147,10 @@ class Assignment {
   /// TravAcser, who enters it to start the trip. Computed identically on both
   /// sides from the shared assignment fields, so no provider is involved.
   String get startOtp => tripStartOtp(
-        userPhone: requesterPhone,
-        travAcserPhone: volunteerPhone,
-        scheduledStartAt: effectiveStartAt,
-      );
+    userPhone: requesterPhone,
+    travAcserPhone: volunteerPhone,
+    scheduledStartAt: effectiveStartAt,
+  );
 
   /// The trip is "in progress" once it has actually been started via the
   /// start-code handshake (point 11). Time alone no longer starts a trip.

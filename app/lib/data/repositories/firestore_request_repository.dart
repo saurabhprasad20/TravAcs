@@ -1,7 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:fpdart/fpdart.dart';
+import 'dart:typed_data';
 
 import '../../core/error/failure.dart';
 import '../../core/error/firebase_error_mapper.dart';
@@ -17,11 +19,17 @@ import '../../domain/repositories/request_repository.dart';
 
 /// Firestore implementation of [RequestRepository].
 class FirestoreRequestRepository implements RequestRepository {
-  FirestoreRequestRepository(this._db, this._auth, this._functions);
+  FirestoreRequestRepository(
+    this._db,
+    this._auth,
+    this._functions,
+    this._storage,
+  );
 
   final FirebaseFirestore _db;
   final FirebaseAuth _auth;
   final FirebaseFunctions _functions;
+  final FirebaseStorage _storage;
 
   CollectionReference<Map<String, dynamic>> get _requests =>
       _db.collection('requests');
@@ -46,11 +54,14 @@ class FirestoreRequestRepository implements RequestRepository {
     String? specialNote,
   }) async {
     final uid = _uid;
-    if (uid == null) return failure(const AuthFailure('You are not signed in.'));
+    if (uid == null) {
+      return failure(const AuthFailure('You are not signed in.'));
+    }
     try {
       // A strict same-gender request can only be gender-matched when the
       // requester's own gender is a concrete value (not undisclosed).
-      final restrictable = requesterGender == Gender.male ||
+      final restrictable =
+          requesterGender == Gender.male ||
           requesterGender == Gender.female ||
           requesterGender == Gender.other;
       final genderRestricted =
@@ -71,16 +82,19 @@ class FirestoreRequestRepository implements RequestRepository {
         'genderWidened': false,
         'scheduledDate': Timestamp.fromDate(scheduledDate),
         'startTime': startTime,
-        'scheduledStartAt':
-            Timestamp.fromDate(combineDateAndTime(scheduledDate, startTime)),
+        'scheduledStartAt': Timestamp.fromDate(
+          combineDateAndTime(scheduledDate, startTime),
+        ),
         'expectedDurationMinutes': expectedDurationMinutes,
         'meetingPoint': meetingPoint,
         'destination': destination,
         'purpose': purpose,
         'specialNote': specialNote,
-        'estimatedAmountInr':
-            Request.computeEstimate(
-                expectedDurationMinutes, numTravellers, numTravAcsers),
+        'estimatedAmountInr': Request.computeEstimate(
+          expectedDurationMinutes,
+          numTravellers,
+          numTravAcsers,
+        ),
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
@@ -109,16 +123,17 @@ class FirestoreRequestRepository implements RequestRepository {
     // matches me) as query constraints. Rules are NOT filters: without these
     // the listing would be rejected outright as soon as a strict same-gender
     // request for the OTHER gender exists in the city.
-    final genderFilter = myGender == null
-        ? Filter.or(
-            Filter('genderRestricted', isEqualTo: false),
-            Filter('genderWidened', isEqualTo: true),
-          )
-        : Filter.or(
-            Filter('genderRestricted', isEqualTo: false),
-            Filter('genderWidened', isEqualTo: true),
-            Filter('requesterGender', isEqualTo: myGender.wireValue),
-          );
+    final genderFilter =
+        myGender == null
+            ? Filter.or(
+              Filter('genderRestricted', isEqualTo: false),
+              Filter('genderWidened', isEqualTo: true),
+            )
+            : Filter.or(
+              Filter('genderRestricted', isEqualTo: false),
+              Filter('genderWidened', isEqualTo: true),
+              Filter('requesterGender', isEqualTo: myGender.wireValue),
+            );
     return _requests
         .where('status', isEqualTo: RequestStatus.broadcast.wireValue)
         .where('serviceCity', isEqualTo: city.wireValue)
@@ -132,12 +147,25 @@ class FirestoreRequestRepository implements RequestRepository {
   @override
   Stream<List<Request>> watchActiveTrips() {
     return _requests
-        .where('status', whereIn: [
-          RequestStatus.broadcast.wireValue,
-          RequestStatus.assigned.wireValue,
-          RequestStatus.started.wireValue,
-        ])
+        .where(
+          'status',
+          whereIn: [
+            RequestStatus.broadcast.wireValue,
+            RequestStatus.assigned.wireValue,
+            RequestStatus.started.wireValue,
+          ],
+        )
         .orderBy('scheduledStartAt')
+        .snapshots()
+        .map(_mapDocs)
+        .mapErrorToFailure();
+  }
+
+  @override
+  Stream<List<Request>> watchPaymentReviews() {
+    return _requests
+        .where('paymentReviewStatus', isEqualTo: 'pending')
+        .orderBy('paymentReviewEndsAt')
         .snapshots()
         .map(_mapDocs)
         .mapErrorToFailure();
@@ -159,9 +187,9 @@ class FirestoreRequestRepository implements RequestRepository {
   @override
   FutureResult<Unit> acceptRequest(String requestId) async {
     try {
-      await _functions
-          .httpsCallable('acceptRequest')
-          .call<dynamic>({'requestId': requestId});
+      await _functions.httpsCallable('acceptRequest').call<dynamic>({
+        'requestId': requestId,
+      });
       return success(unit);
     } catch (e) {
       return failure(mapFirebaseError(e));
@@ -174,15 +202,15 @@ class FirestoreRequestRepository implements RequestRepository {
     DateTime scheduledDate,
     String startTime,
   ) =>
-      // Send absolute epoch millis (computed client-side) so the server avoids
-      // any date-string/timezone parsing.
-      _call('rescheduleTrip', {
-        'requestId': requestId,
-        'scheduledDateMs': scheduledDate.millisecondsSinceEpoch,
-        'startTime': startTime,
-        'scheduledStartAtMs':
-            combineDateAndTime(scheduledDate, startTime).millisecondsSinceEpoch,
-      });
+  // Send absolute epoch millis (computed client-side) so the server avoids
+  // any date-string/timezone parsing.
+  _call('rescheduleTrip', {
+    'requestId': requestId,
+    'scheduledDateMs': scheduledDate.millisecondsSinceEpoch,
+    'startTime': startTime,
+    'scheduledStartAtMs':
+        combineDateAndTime(scheduledDate, startTime).millisecondsSinceEpoch,
+  });
 
   @override
   FutureResult<Unit> cancelTrip(String requestId) =>
@@ -195,8 +223,10 @@ class FirestoreRequestRepository implements RequestRepository {
   @override
   FutureResult<Unit> completeTrip(String requestId, String volunteerId) async {
     try {
-      await _functions.httpsCallable('completeTrip').call<dynamic>(
-          {'requestId': requestId, 'volunteerId': volunteerId});
+      await _functions.httpsCallable('completeTrip').call<dynamic>({
+        'requestId': requestId,
+        'volunteerId': volunteerId,
+      });
       return success(unit);
     } catch (e) {
       return failure(mapFirebaseError(e));
@@ -208,18 +238,55 @@ class FirestoreRequestRepository implements RequestRepository {
       _call('startTrip', {'requestId': requestId, 'volunteerId': volunteerId});
 
   @override
+  FutureResult<Unit> submitTravelExpense({
+    required String requestId,
+    required int additionalTravelCostInr,
+    String? receiptPath,
+  }) => _call('submitTravelExpense', {
+    'requestId': requestId,
+    'additionalTravelCostInr': additionalTravelCostInr,
+    'receiptPath': receiptPath,
+  });
+
+  @override
+  FutureResult<String> uploadTravelReceipt({
+    required String requestId,
+    required Uint8List bytes,
+    required String contentType,
+  }) async {
+    final uid = _uid;
+    if (uid == null) {
+      return failure(const AuthFailure('You are not signed in.'));
+    }
+    try {
+      final extension = contentType == 'image/png' ? 'png' : 'jpg';
+      final path =
+          'payment-receipts/$requestId/$uid/${DateTime.now().millisecondsSinceEpoch}.$extension';
+      await _storage
+          .ref(path)
+          .putData(bytes, SettableMetadata(contentType: contentType));
+      return success(path);
+    } catch (e) {
+      return failure(mapFirebaseError(e));
+    }
+  }
+
+  @override
   FutureResult<RazorpayOrder> createRazorpayOrder(String requestId) async {
     try {
-      final res = await _functions.httpsCallable('createRazorpayOrder').call<dynamic>(
-          {'requestId': requestId});
+      final res = await _functions
+          .httpsCallable('createRazorpayOrder')
+          .call<dynamic>({'requestId': requestId});
       final d = Map<String, dynamic>.from(res.data as Map);
-      return success(RazorpayOrder(
-        orderId: d['orderId'] as String,
-        keyId: d['keyId'] as String,
-        amountPaise: (d['amountPaise'] as num).toInt(),
-        amountInr: (d['amountInr'] as num).toInt(),
-        currency: (d['currency'] as String?) ?? 'INR',
-      ));
+      return success(
+        RazorpayOrder(
+          orderId: d['orderId'] as String,
+          keyId: d['keyId'] as String,
+          amountPaise: (d['amountPaise'] as num).toInt(),
+          amountInr: (d['amountInr'] as num).toInt(),
+          currency: (d['currency'] as String?) ?? 'INR',
+        ),
+      );
     } catch (e) {
       return failure(mapFirebaseError(e));
     }
@@ -231,13 +298,12 @@ class FirestoreRequestRepository implements RequestRepository {
     required String razorpayOrderId,
     required String razorpayPaymentId,
     required String razorpaySignature,
-  }) =>
-      _call('verifyRazorpayPayment', {
-        'requestId': requestId,
-        'razorpayOrderId': razorpayOrderId,
-        'razorpayPaymentId': razorpayPaymentId,
-        'razorpaySignature': razorpaySignature,
-      });
+  }) => _call('verifyRazorpayPayment', {
+    'requestId': requestId,
+    'razorpayOrderId': razorpayOrderId,
+    'razorpayPaymentId': razorpayPaymentId,
+    'razorpaySignature': razorpaySignature,
+  });
 
   @override
   FutureResult<Unit> submitRating(
@@ -245,13 +311,12 @@ class FirestoreRequestRepository implements RequestRepository {
     String volunteerId,
     int stars,
     String? feedback,
-  ) =>
-      _call('submitRating', {
-        'requestId': requestId,
-        'volunteerId': volunteerId,
-        'stars': stars,
-        'feedback': feedback,
-      });
+  ) => _call('submitRating', {
+    'requestId': requestId,
+    'volunteerId': volunteerId,
+    'stars': stars,
+    'feedback': feedback,
+  });
 
   /// Shared helper to invoke a callable and map errors.
   FutureResult<Unit> _call(String name, Map<String, dynamic> data) async {
@@ -272,8 +337,10 @@ class FirestoreRequestRepository implements RequestRepository {
         .where('volunteerId', isEqualTo: uid)
         .orderBy('acceptedAt', descending: true)
         .snapshots()
-        .map((snap) =>
-            snap.docs.map(_toAssignment).whereType<Assignment>().toList())
+        .map(
+          (snap) =>
+              snap.docs.map(_toAssignment).whereType<Assignment>().toList(),
+        )
         .mapErrorToFailure();
   }
 
@@ -286,8 +353,10 @@ class FirestoreRequestRepository implements RequestRepository {
         .where('requesterId', isEqualTo: uid)
         .orderBy('acceptedAt', descending: true)
         .snapshots()
-        .map((snap) =>
-            snap.docs.map(_toAssignment).whereType<Assignment>().toList())
+        .map(
+          (snap) =>
+              snap.docs.map(_toAssignment).whereType<Assignment>().toList(),
+        )
         .mapErrorToFailure();
   }
 
@@ -297,8 +366,10 @@ class FirestoreRequestRepository implements RequestRepository {
         .doc(requestId)
         .collection('assignments')
         .snapshots()
-        .map((snap) =>
-            snap.docs.map(_toAssignment).whereType<Assignment>().toList())
+        .map(
+          (snap) =>
+              snap.docs.map(_toAssignment).whereType<Assignment>().toList(),
+        )
         .mapErrorToFailure();
   }
 
@@ -320,11 +391,13 @@ class FirestoreRequestRepository implements RequestRepository {
       requesterPhone: d['requesterPhone'] as String?,
       scheduledDate: scheduled,
       startTime: (d['startTime'] as String?) ?? '',
-      expectedDurationMinutes: (d['expectedDurationMinutes'] as num?)?.toInt() ?? 60,
+      expectedDurationMinutes:
+          (d['expectedDurationMinutes'] as num?)?.toInt() ?? 60,
       meetingPoint: (d['meetingPoint'] as String?) ?? '',
       destination: (d['destination'] as String?) ?? '',
-      genderPreference:
-          GenderPreference.fromWire(d['genderPreference'] as String?),
+      genderPreference: GenderPreference.fromWire(
+        d['genderPreference'] as String?,
+      ),
       scheduledStartAt: (d['scheduledStartAt'] as Timestamp?)?.toDate(),
       numTravellers: (d['numTravellers'] as num?)?.toInt() ?? 1,
       amountInrEstimate: (d['amountInrEstimate'] as num?)?.toInt() ?? 0,
@@ -335,6 +408,11 @@ class FirestoreRequestRepository implements RequestRepository {
       durationMinutes: (d['durationMinutes'] as num?)?.toInt(),
       amountInr: (d['amountInr'] as num?)?.toInt(),
       travelCostInr: (d['travelCostInr'] as num?)?.toInt(),
+      paymentReviewEndsAt: (d['paymentReviewEndsAt'] as Timestamp?)?.toDate(),
+      additionalTravelCostClaimedInr:
+          (d['additionalTravelCostClaimedInr'] as num?)?.toInt(),
+      receiptStoragePath: d['receiptStoragePath'] as String?,
+      expenseClaimStatus: d['expenseClaimStatus'] as String?,
       paymentStatus: PaymentStatus.fromWire(d['paymentStatus'] as String?),
       requesterPaidAt: (d['requesterPaidAt'] as Timestamp?)?.toDate(),
       travAcserReceivedAt: (d['travAcserReceivedAt'] as Timestamp?)?.toDate(),
@@ -374,14 +452,16 @@ class FirestoreRequestRepository implements RequestRepository {
       numTravellers: (d['numTravellers'] as num?)?.toInt() ?? 1,
       numTravAcsers: (d['numTravAcsers'] as num?)?.toInt() ?? 1,
       acceptedCount: (d['acceptedCount'] as num?)?.toInt() ?? 0,
-      genderPreference:
-          GenderPreference.fromWire(d['genderPreference'] as String?),
+      genderPreference: GenderPreference.fromWire(
+        d['genderPreference'] as String?,
+      ),
       requesterGender: _genderFromWire(d['requesterGender'] as String?),
       genderRestricted: (d['genderRestricted'] as bool?) ?? false,
       genderWidened: (d['genderWidened'] as bool?) ?? false,
       scheduledDate: scheduled,
       startTime: (d['startTime'] as String?) ?? '',
-      scheduledStartAt: (d['scheduledStartAt'] as Timestamp?)?.toDate() ??
+      scheduledStartAt:
+          (d['scheduledStartAt'] as Timestamp?)?.toDate() ??
           combineDateAndTime(scheduled, (d['startTime'] as String?) ?? '00:00'),
       expectedDurationMinutes:
           (d['expectedDurationMinutes'] as num?)?.toInt() ?? 60,
@@ -394,6 +474,8 @@ class FirestoreRequestRepository implements RequestRepository {
       createdAt: (d['createdAt'] as Timestamp?)?.toDate(),
       tripAmountInr: (d['tripAmountInr'] as num?)?.toInt(),
       requesterPaidAt: (d['requesterPaidAt'] as Timestamp?)?.toDate(),
+      paymentReviewStatus: d['paymentReviewStatus'] as String?,
+      paymentReviewEndsAt: (d['paymentReviewEndsAt'] as Timestamp?)?.toDate(),
     );
   }
 }

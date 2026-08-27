@@ -43,16 +43,17 @@ class MyRequestsScreen extends ConsumerWidget {
             return const Center(
               child: Padding(
                 padding: EdgeInsets.all(24),
-                child: Text('No active requests. Create one from the Request tab.',
-                    textAlign: TextAlign.center),
+                child: Text(
+                  'No active requests. Create one from the Request tab.',
+                  textAlign: TextAlign.center,
+                ),
               ),
             );
           }
           return ListView.builder(
             padding: const EdgeInsets.all(12),
             itemCount: list.length,
-            itemBuilder: (context, i) =>
-                _RequestSummaryTile(request: list[i]),
+            itemBuilder: (context, i) => _RequestSummaryTile(request: list[i]),
           );
         },
       ),
@@ -85,18 +86,25 @@ class _PaymentPendingChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
-            color: scheme.errorContainer,
-            borderRadius: BorderRadius.circular(20)),
+          color: scheme.errorContainer,
+          borderRadius: BorderRadius.circular(20),
+        ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.payments_outlined,
-                size: 16, color: scheme.onErrorContainer),
+            Icon(
+              Icons.payments_outlined,
+              size: 16,
+              color: scheme.onErrorContainer,
+            ),
             const SizedBox(width: 4),
-            Text('Payment pending',
-                style: TextStyle(
-                    color: scheme.onErrorContainer,
-                    fontWeight: FontWeight.w600)),
+            Text(
+              'Payment pending',
+              style: TextStyle(
+                color: scheme.onErrorContainer,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ],
         ),
       ),
@@ -122,7 +130,9 @@ class _RequestSummaryTile extends ConsumerWidget {
     final r = request;
     final date = DateFormat.yMMMEd().format(r.scheduledDate);
     final time = formatTime12h(r.startTime);
+    ref.watch(clockProvider);
     final paymentPending = r.isPaymentPending;
+    final paymentReady = r.isPaymentReady(DateTime.now());
 
     // Derive a compact code/status line only when a TravAcser has accepted and
     // the trip isn't already awaiting payment.
@@ -132,8 +142,10 @@ class _RequestSummaryTile extends ConsumerWidget {
     }
 
     final statusLabel = paymentPending ? 'Payment pending' : r.status.label;
-    final semantic = 'Trip on $date at $time, status $statusLabel'
-        '${paymentPending ? ', tap to pay ₹${r.tripAmountInr}' : ''}'
+    final semantic =
+        'Trip on $date at $time, status $statusLabel'
+        '${paymentReady ? ', tap to pay ₹${r.tripAmountInr}' : ''}'
+        '${paymentPending && !paymentReady ? ', amount under review' : ''}'
         '${code != null ? ', ${code.semantic}' : ''}. '
         'Double tap to view details.';
 
@@ -144,11 +156,12 @@ class _RequestSummaryTile extends ConsumerWidget {
         label: semantic,
         excludeSemantics: true,
         child: InkWell(
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => RequestDetailScreen(requestId: r.id),
-            ),
-          ),
+          onTap:
+              () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => RequestDetailScreen(requestId: r.id),
+                ),
+              ),
           child: Padding(
             padding: const EdgeInsets.all(14),
             child: Row(
@@ -157,20 +170,28 @@ class _RequestSummaryTile extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('$date · $time',
-                          style: Theme.of(context).textTheme.titleMedium),
+                      Text(
+                        '$date · $time',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
                       const SizedBox(height: 6),
                       paymentPending
                           ? const _PaymentPendingChip()
                           : RequestStatusChip(status: r.status),
                       if (paymentPending) ...[
                         const SizedBox(height: 6),
-                        Text('Tap to pay ₹${r.tripAmountInr}',
-                            style: Theme.of(context).textTheme.bodyMedium),
+                        Text(
+                          paymentReady
+                              ? 'Tap to pay ₹${r.tripAmountInr}'
+                              : 'Final amount under review',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
                       ] else if (code != null) ...[
                         const SizedBox(height: 6),
-                        Text(code.visual,
-                            style: Theme.of(context).textTheme.bodyMedium),
+                        Text(
+                          code.visual,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
                       ],
                     ],
                   ),
@@ -188,10 +209,12 @@ class _RequestSummaryTile extends ConsumerWidget {
   /// A short code/status summary across the request's active assignments.
   ({String visual, String semantic}) _codeSummary(WidgetRef ref) {
     final async = ref.watch(requestAssignmentsProvider(request.id));
-    final active =
-        async.value?.where((a) => a.isActive).toList() ?? const [];
+    final active = async.value?.where((a) => a.isActive).toList() ?? const [];
     if (active.isEmpty) {
-      return (visual: 'TravAcser assigned', semantic: 'a TravAcser is assigned');
+      return (
+        visual: 'TravAcser assigned',
+        semantic: 'a TravAcser is assigned',
+      );
     }
     if (active.any((a) => a.tripStatus == TripStatus.started)) {
       return (visual: 'In progress', semantic: 'trip in progress');
@@ -243,8 +266,10 @@ class RequestDetailScreen extends ConsumerWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text('This trip is no longer active.',
-                        textAlign: TextAlign.center),
+                    const Text(
+                      'This trip is no longer active.',
+                      textAlign: TextAlign.center,
+                    ),
                     const SizedBox(height: 12),
                     FilledButton(
                       onPressed: () => Navigator.of(context).maybePop(),
@@ -273,10 +298,12 @@ class _DetailBody extends ConsumerWidget {
     final time = formatTime12h(r.startTime);
     // Refresh on the clock so the "can end" gate advances with time.
     ref.watch(clockProvider);
+    final now = DateTime.now();
     // A trip that has started (a TravAcser validated the start code) can only be
     // ended — never cancelled or rescheduled. The request doc's own status does
     // not change on start, so we key off the assignments.
-    final started = ref
+    final started =
+        ref
             .watch(requestAssignmentsProvider(r.id))
             .value
             ?.where((a) => a.tripStatus == TripStatus.started)
@@ -284,6 +311,7 @@ class _DetailBody extends ConsumerWidget {
         const <Assignment>[];
     final anyStarted = started.isNotEmpty;
     final paymentPending = r.isPaymentPending;
+    final paymentReady = r.isPaymentReady(now);
     final canReschedule = !anyStarted && _rescheduleAllowed(r);
 
     return ListView(
@@ -291,31 +319,59 @@ class _DetailBody extends ConsumerWidget {
       children: [
         Align(
           alignment: Alignment.centerLeft,
-          child: paymentPending
-              ? const _PaymentPendingChip()
-              : RequestStatusChip(status: r.status),
+          child:
+              paymentPending
+                  ? const _PaymentPendingChip()
+                  : RequestStatusChip(status: r.status),
         ),
         const SizedBox(height: 12),
         _detailRow(context, Icons.schedule, 'Trip time', '$date, $time'),
         _detailRow(
-            context, Icons.my_location, 'Pick-up location', r.meetingPoint),
+          context,
+          Icons.my_location,
+          'Pick-up location',
+          r.meetingPoint,
+        ),
         _detailRow(context, Icons.place_outlined, 'Destination', r.destination),
         _detailRow(
-            context, Icons.group_outlined, 'Users travelling', '${r.numTravellers}'),
-        _detailRow(context, Icons.volunteer_activism_outlined,
-            'TravAcsers required', '${r.acceptedCount}/${r.numTravAcsers} filled'),
-        _detailRow(context, Icons.wc_outlined, 'TravAcser preference',
-            r.genderPreference.label),
+          context,
+          Icons.group_outlined,
+          'Users travelling',
+          '${r.numTravellers}',
+        ),
+        _detailRow(
+          context,
+          Icons.volunteer_activism_outlined,
+          'TravAcsers required',
+          '${r.acceptedCount}/${r.numTravAcsers} filled',
+        ),
+        _detailRow(
+          context,
+          Icons.wc_outlined,
+          'TravAcser preference',
+          r.genderPreference.label,
+        ),
         if (r.purpose != null && r.purpose!.isNotEmpty)
           _detailRow(context, Icons.info_outline, 'Purpose', r.purpose!),
         if (r.specialNote != null && r.specialNote!.isNotEmpty)
-          _detailRow(context, Icons.sticky_note_2_outlined, 'Note', r.specialNote!),
-        _detailRow(context, Icons.currency_rupee, 'Estimated amount',
-            '₹${r.estimatedAmountInr}  (${r.estimateBreakdown})'),
+          _detailRow(
+            context,
+            Icons.sticky_note_2_outlined,
+            'Note',
+            r.specialNote!,
+          ),
+        _detailRow(
+          context,
+          Icons.currency_rupee,
+          'Estimated amount',
+          '₹${r.estimatedAmountInr}  (${r.estimateBreakdown})',
+        ),
         if (r.acceptedCount > 0) ...[
           const Divider(height: 28),
-          Text('Your TravAcser${r.acceptedCount == 1 ? '' : 's'}',
-              style: Theme.of(context).textTheme.titleSmall),
+          Text(
+            'Your TravAcser${r.acceptedCount == 1 ? '' : 's'}',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
           const SizedBox(height: 4),
           _RequestAssignments(requestId: r.id),
         ],
@@ -336,8 +392,12 @@ class _DetailBody extends ConsumerWidget {
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Text(
-              'Your trip is complete. Please pay ₹${r.tripAmountInr} to finish. '
-              'One payment covers all your TravAcsers.',
+              paymentReady
+                  ? 'Your final trip amount is ₹${r.tripAmountInr}. One payment '
+                      'covers all your TravAcsers.'
+                  : 'Your trip is complete. TravAcsers and the admin team have '
+                      'up to 90 minutes to review travel costs. The Pay now '
+                      'button is enabled automatically when review ends.',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
           ),
@@ -345,8 +405,8 @@ class _DetailBody extends ConsumerWidget {
             alignment: Alignment.centerRight,
             child: FilledButton.icon(
               icon: const Icon(Icons.payments_outlined),
-              label: const Text('Pay now'),
-              onPressed: () => _pay(context, ref, r),
+              label: Text(paymentReady ? 'Pay now' : 'Amount under review'),
+              onPressed: paymentReady ? () => _pay(context, ref, r) : null,
             ),
           ),
           const SizedBox(height: 12),
@@ -359,10 +419,12 @@ class _DetailBody extends ConsumerWidget {
             OutlinedButton.icon(
               icon: const Icon(Icons.help_outline, semanticLabel: 'Get help'),
               label: const Text('Get help'),
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                    builder: (_) => const ContactUsScreen()),
-              ),
+              onPressed:
+                  () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const ContactUsScreen(),
+                    ),
+                  ),
             ),
             if (canReschedule)
               OutlinedButton.icon(
@@ -386,7 +448,8 @@ class _DetailBody extends ConsumerWidget {
   /// User pays after the TravAcser has ended the trip).
   Future<void> _pay(BuildContext context, WidgetRef ref, Request r) async {
     final assignments =
-        ref.read(requestAssignmentsProvider(r.id)).value ?? const <Assignment>[];
+        ref.read(requestAssignmentsProvider(r.id)).value ??
+        const <Assignment>[];
     final contact =
         assignments.isEmpty ? null : assignments.first.requesterPhone;
     await startTripPayment(context, ref, requestId: r.id, contact: contact);
@@ -395,7 +458,11 @@ class _DetailBody extends ConsumerWidget {
   /// A single labelled detail line as its OWN semantic node, so a screen-reader
   /// user lands on each field individually (unlike the merged summary card).
   Widget _detailRow(
-      BuildContext context, IconData icon, String label, String value) {
+    BuildContext context,
+    IconData icon,
+    String label,
+    String value,
+  ) {
     return Semantics(
       label: '$label: $value',
       excludeSemantics: true,
@@ -411,8 +478,9 @@ class _DetailBody extends ConsumerWidget {
                 TextSpan(
                   children: [
                     TextSpan(
-                        text: '$label: ',
-                        style: const TextStyle(fontWeight: FontWeight.w600)),
+                      text: '$label: ',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
                     TextSpan(text: value),
                   ],
                 ),
@@ -425,7 +493,11 @@ class _DetailBody extends ConsumerWidget {
     );
   }
 
-  Future<void> _reschedule(BuildContext context, WidgetRef ref, Request r) async {
+  Future<void> _reschedule(
+    BuildContext context,
+    WidgetRef ref,
+    Request r,
+  ) async {
     final now = DateTime.now();
     final today = DateUtils.dateOnly(now);
     // Rescheduling is limited to Today / Tomorrow / Day after — anything beyond
@@ -437,30 +509,33 @@ class _DetailBody extends ConsumerWidget {
     };
     final date = await showDialog<DateTime>(
       context: context,
-      builder: (ctx) => SimpleDialog(
-        title: const Text('New trip day'),
-        children: [
-          for (final e in options.entries)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(ctx, e.value),
-              child: Semantics(
-                button: true,
-                label: '${e.key}, ${DateFormat.yMMMEd().format(e.value)}',
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Text('${e.key} · ${DateFormat.yMMMEd().format(e.value)}'),
+      builder:
+          (ctx) => SimpleDialog(
+            title: const Text('New trip day'),
+            children: [
+              for (final e in options.entries)
+                SimpleDialogOption(
+                  onPressed: () => Navigator.pop(ctx, e.value),
+                  child: Semantics(
+                    button: true,
+                    label: '${e.key}, ${DateFormat.yMMMEd().format(e.value)}',
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text(
+                        '${e.key} · ${DateFormat.yMMMEd().format(e.value)}',
+                      ),
+                    ),
+                  ),
+                ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+                child: Text(
+                  'To move a trip further out, cancel it and create a new one.',
+                  style: Theme.of(ctx).textTheme.bodySmall,
                 ),
               ),
-            ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
-            child: Text(
-              'To move a trip further out, cancel it and create a new one.',
-              style: Theme.of(ctx).textTheme.bodySmall,
-            ),
+            ],
           ),
-        ],
-      ),
     );
     if (date == null || !context.mounted) return;
     final time = await showTimePicker(
@@ -488,27 +563,32 @@ class _DetailBody extends ConsumerWidget {
   Future<void> _cancel(BuildContext context, WidgetRef ref, Request r) async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Cancel this trip?'),
-        content: const Text(
-            'This withdraws the request. Any assigned TravAcsers are notified.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Keep')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Cancel trip')),
-        ],
-      ),
+      builder:
+          (ctx) => AlertDialog(
+            title: const Text('Cancel this trip?'),
+            content: const Text(
+              'This withdraws the request. Any assigned TravAcsers are notified.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Keep'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Cancel trip'),
+              ),
+            ],
+          ),
     );
     if (confirm != true || !context.mounted) return;
     // Before anyone accepts we can cancel client-side; afterwards the server
     // function cancels the request + notifies the assigned TravAcsers.
     final notifier = ref.read(requestControllerProvider.notifier);
-    final ok = r.acceptedCount == 0 && r.status.isCancellable
-        ? await notifier.cancel(r.id)
-        : await notifier.cancelTrip(r.id);
+    final ok =
+        r.acceptedCount == 0 && r.status.isCancellable
+            ? await notifier.cancel(r.id)
+            : await notifier.cancelTrip(r.id);
     if (!context.mounted) return;
     if (ok) {
       A11y.announce(context, 'Trip cancelled.');
@@ -537,22 +617,23 @@ class _RequestAssignments extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final assignments = ref.watch(requestAssignmentsProvider(requestId));
     return assignments.when(
-      loading: () => const Padding(
-        padding: EdgeInsets.all(8),
-        child: LinearProgressIndicator(),
-      ),
-      error: (e, _) => Padding(
-        padding: const EdgeInsets.all(8),
-        child: Text(failureMessage(e)),
-      ),
+      loading:
+          () => const Padding(
+            padding: EdgeInsets.all(8),
+            child: LinearProgressIndicator(),
+          ),
+      error:
+          (e, _) => Padding(
+            padding: const EdgeInsets.all(8),
+            child: Text(failureMessage(e)),
+          ),
       data: (list) {
         final active = list.where((a) => a.isActive).toList();
         if (active.isEmpty) return const SizedBox.shrink();
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (final a in active)
-              _AssignmentTile(requestId: requestId, a: a),
+            for (final a in active) _AssignmentTile(requestId: requestId, a: a),
           ],
         );
       },
@@ -572,9 +653,10 @@ class _AssignmentTile extends ConsumerWidget {
     final now = DateTime.now();
     final inProgress = a.isInProgress(now);
     final awaitingStart = a.awaitingStart(now);
-    final statusText = inProgress
-        ? 'In progress'
-        : awaitingStart
+    final statusText =
+        inProgress
+            ? 'In progress'
+            : awaitingStart
             ? 'Ready to start'
             : 'Scheduled';
     return Card(
@@ -585,7 +667,8 @@ class _AssignmentTile extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Semantics(
-              label: 'TravAcser ${a.volunteerName}, phone '
+              label:
+                  'TravAcser ${a.volunteerName}, phone '
                   '${a.volunteerPhone ?? 'not available'}, status $statusText',
               excludeSemantics: true,
               child: Row(
@@ -596,15 +679,21 @@ class _AssignmentTile extends ConsumerWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(a.volunteerName,
-                            style: Theme.of(context).textTheme.titleSmall),
-                        Text(a.volunteerPhone ?? 'Phone not available',
-                            style: Theme.of(context).textTheme.bodySmall),
+                        Text(
+                          a.volunteerName,
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                        Text(
+                          a.volunteerPhone ?? 'Phone not available',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
                       ],
                     ),
                   ),
-                  Text(statusText,
-                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                  Text(
+                    statusText,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
                 ],
               ),
             ),
@@ -620,10 +709,14 @@ class _AssignmentTile extends ConsumerWidget {
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
-                      'Starts at ${DateFormat.jm().format(a.effectiveStartAt)}.',
-                      style: Theme.of(context).textTheme.bodySmall),
+                    'Starts at ${DateFormat.jm().format(a.effectiveStartAt)}.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
                 ),
-              _StartCodeDisplay(otp: a.startOtp, travAcserName: a.volunteerName),
+              _StartCodeDisplay(
+                otp: a.startOtp,
+                travAcserName: a.volunteerName,
+              ),
             ],
           ],
         ),
@@ -648,7 +741,8 @@ class _StartCodeDisplay extends StatelessWidget {
     final spaced = otp.split('').join(' '); // "1 2 3 4" reads digit-by-digit
     final who = travAcserName.trim().isEmpty ? 'your TravAcser' : travAcserName;
     return Semantics(
-      label: 'Start code for $who: $spaced. '
+      label:
+          'Start code for $who: $spaced. '
           'Read it to $who to begin the trip.',
       excludeSemantics: true,
       child: Container(
@@ -662,26 +756,28 @@ class _StartCodeDisplay extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Start code for $who',
-                style: Theme.of(context)
-                    .textTheme
-                    .labelMedium
-                    ?.copyWith(color: scheme.onPrimaryContainer)),
+            Text(
+              'Start code for $who',
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: scheme.onPrimaryContainer,
+              ),
+            ),
             const SizedBox(height: 2),
             Text(
               spaced,
               style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    color: scheme.onPrimaryContainer,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 4,
-                  ),
+                color: scheme.onPrimaryContainer,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 4,
+              ),
             ),
             const SizedBox(height: 4),
-            Text('Read this code to $who to begin the trip.',
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: scheme.onPrimaryContainer)),
+            Text(
+              'Read this code to $who to begin the trip.',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: scheme.onPrimaryContainer),
+            ),
           ],
         ),
       ),

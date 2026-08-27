@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fpdart/fpdart.dart';
+import 'dart:typed_data';
 
 import '../../../core/error/result.dart';
 import '../../../domain/entities/city.dart';
@@ -83,8 +84,10 @@ class RequestController extends Notifier<AsyncValue<void>> {
 
   /// User reschedules a trip (new date + time) before it starts.
   Future<bool> reschedule(
-          String requestId, DateTime scheduledDate, String startTime) =>
-      _run(() => _repo.rescheduleTrip(requestId, scheduledDate, startTime));
+    String requestId,
+    DateTime scheduledDate,
+    String startTime,
+  ) => _run(() => _repo.rescheduleTrip(requestId, scheduledDate, startTime));
 
   /// Cancel after acceptance — the server infers the caller's role (requester
   /// cancels the whole request; TravAcser releases their slot).
@@ -104,6 +107,41 @@ class RequestController extends Notifier<AsyncValue<void>> {
   /// (offline, deterministic). Called by the TravAcser.
   Future<bool> startTrip(String requestId, String volunteerId) =>
       _run(() => _repo.startTrip(requestId, volunteerId));
+
+  Future<bool> submitTravelExpense({
+    required String requestId,
+    required int additionalTravelCostInr,
+    String? receiptPath,
+  }) => _run(
+    () => _repo.submitTravelExpense(
+      requestId: requestId,
+      additionalTravelCostInr: additionalTravelCostInr,
+      receiptPath: receiptPath,
+    ),
+  );
+
+  Future<String?> uploadTravelReceipt({
+    required String requestId,
+    required Uint8List bytes,
+    required String contentType,
+  }) async {
+    state = const AsyncLoading();
+    final result = await _repo.uploadTravelReceipt(
+      requestId: requestId,
+      bytes: bytes,
+      contentType: contentType,
+    );
+    return result.match(
+      (failure) {
+        state = AsyncError(failure, StackTrace.current);
+        return null;
+      },
+      (path) {
+        state = const AsyncData(null);
+        return path;
+      },
+    );
+  }
 
   /// Creates a Razorpay order for the whole trip. Returns the order (with key
   /// id) on success, or null on failure (error in state).
@@ -128,18 +166,22 @@ class RequestController extends Notifier<AsyncValue<void>> {
     required String razorpayOrderId,
     required String razorpayPaymentId,
     required String razorpaySignature,
-  }) =>
-      _run(() => _repo.verifyRazorpayPayment(
-            requestId: requestId,
-            razorpayOrderId: razorpayOrderId,
-            razorpayPaymentId: razorpayPaymentId,
-            razorpaySignature: razorpaySignature,
-          ));
+  }) => _run(
+    () => _repo.verifyRazorpayPayment(
+      requestId: requestId,
+      razorpayOrderId: razorpayOrderId,
+      razorpayPaymentId: razorpayPaymentId,
+      razorpaySignature: razorpaySignature,
+    ),
+  );
 
   /// Submit a rating for the counterpart.
   Future<bool> submitRating(
-          String requestId, String volunteerId, int stars, String? feedback) =>
-      _run(() => _repo.submitRating(requestId, volunteerId, stars, feedback));
+    String requestId,
+    String volunteerId,
+    int stars,
+    String? feedback,
+  ) => _run(() => _repo.submitRating(requestId, volunteerId, stars, feedback));
 
   Future<bool> _run(FutureResult<Unit> Function() action) async {
     state = const AsyncLoading();
@@ -158,4 +200,6 @@ class RequestController extends Notifier<AsyncValue<void>> {
 }
 
 final requestControllerProvider =
-    NotifierProvider<RequestController, AsyncValue<void>>(RequestController.new);
+    NotifierProvider<RequestController, AsyncValue<void>>(
+      RequestController.new,
+    );

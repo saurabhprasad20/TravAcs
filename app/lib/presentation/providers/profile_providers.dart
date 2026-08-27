@@ -23,3 +23,8 @@ final myProfileProvider = FutureProvider<MyProfile?>((ref) async {
   final result = await ref.watch(profileRepositoryProvider).getMyProfile();
   return result.match((failure) => throw failure, (profile) => profile);
 });
+
+final myAccountBanProvider = StreamProvider<AccountBan>((ref) {
+  ref.watch(authStateChangesProvider);
+  return ref.watch(profileRepositoryProvider).watchMyBan();
+});

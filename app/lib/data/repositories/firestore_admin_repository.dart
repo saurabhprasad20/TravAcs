@@ -8,6 +8,7 @@ import '../../core/error/stream_error.dart';
 import '../../domain/entities/city.dart';
 import '../../domain/entities/enums.dart';
 import '../../domain/entities/pending_volunteer.dart';
+import '../../domain/entities/profile.dart';
 import '../../domain/repositories/admin_repository.dart';
 
 class FirestoreAdminRepository implements AdminRepository {
@@ -28,13 +29,79 @@ class FirestoreAdminRepository implements AdminRepository {
   }
 
   @override
+  Stream<List<Profile>> watchAccounts() {
+    return _db.collection('profiles').snapshots().map((snap) {
+      final profiles =
+          snap.docs
+              .map((doc) => _toProfile(doc.id, doc.data()))
+              .whereType<Profile>()
+              .toList();
+      profiles.sort(
+        (a, b) => a.fullName.toLowerCase().compareTo(b.fullName.toLowerCase()),
+      );
+      return profiles;
+    }).mapErrorToFailure();
+  }
+
+  @override
   FutureResult<Unit> setVerification(
-      String uid, bool approved, String? reason) async {
+    String uid,
+    bool approved,
+    String? reason,
+  ) async {
     try {
       await _functions.httpsCallable('setVerification').call<dynamic>({
         'uid': uid,
         'decision': approved ? 'approved' : 'rejected',
         'reason': reason,
+      });
+      return success(unit);
+    } catch (e) {
+      return failure(mapFirebaseError(e));
+    }
+  }
+
+  @override
+  FutureResult<Unit> setAccountBan(
+    String uid, {
+    DateTime? bannedUntil,
+    String? reason,
+  }) async {
+    try {
+      await _functions.httpsCallable('setAccountBan').call<dynamic>({
+        'uid': uid,
+        'bannedUntilMs': bannedUntil?.millisecondsSinceEpoch,
+        'reason': reason,
+      });
+      return success(unit);
+    } catch (e) {
+      return failure(mapFirebaseError(e));
+    }
+  }
+
+  @override
+  FutureResult<Unit> setTravelCompensation(
+    String requestId,
+    String volunteerId,
+    int travelCostInr,
+  ) async {
+    try {
+      await _functions.httpsCallable('setTravelCompensation').call<dynamic>({
+        'requestId': requestId,
+        'volunteerId': volunteerId,
+        'travelCostInr': travelCostInr,
+      });
+      return success(unit);
+    } catch (e) {
+      return failure(mapFirebaseError(e));
+    }
+  }
+
+  @override
+  FutureResult<Unit> finalizePaymentReview(String requestId) async {
+    try {
+      await _functions.httpsCallable('finalizePaymentReview').call<dynamic>({
+        'requestId': requestId,
       });
       return success(unit);
     } catch (e) {
@@ -89,6 +156,24 @@ class FirestoreAdminRepository implements AdminRepository {
       city: City.fromWire(d['serviceCity'] as String?),
       gender: Gender.fromWire(d['gender'] as String?),
       dateOfBirth: (d['dateOfBirth'] as Timestamp?)?.toDate(),
+    );
+  }
+
+  Profile? _toProfile(String uid, Map<String, dynamic> d) {
+    final roleValue = d['role'] as String?;
+    if (roleValue != 'requester' && roleValue != 'volunteer') return null;
+    return Profile(
+      id: uid,
+      role: UserRole.fromWire(roleValue!),
+      fullName: (d['fullName'] as String?) ?? '',
+      gender: Gender.fromWire(d['gender'] as String?),
+      dateOfBirth: (d['dateOfBirth'] as Timestamp?)?.toDate(),
+      phone: d['phone'] as String?,
+      isActive: (d['isActive'] as bool?) ?? true,
+      bannedUntil: (d['bannedUntil'] as Timestamp?)?.toDate(),
+      banReason: d['banReason'] as String?,
+      serviceArea: Region.fromWireOrNull(d['serviceArea'] as String?),
+      serviceCity: City.fromWire(d['serviceCity'] as String?),
     );
   }
 }

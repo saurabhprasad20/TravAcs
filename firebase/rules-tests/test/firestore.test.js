@@ -29,6 +29,7 @@ const {
   where,
   or,
   and,
+  serverTimestamp,
   setLogLevel,
 } = require("firebase/firestore");
 
@@ -47,6 +48,10 @@ function profile(role, extra = {}) {
     ratingCount: 0,
     serviceArea: "delhi_ncr",
     serviceCity: CITY,
+    agreementRole: role,
+    agreementVersion: "2026-08-06",
+    agreementTypedName: "TEST USER",
+    agreementAcceptedAt: serverTimestamp(),
     ...(role === "volunteer" ? { verificationStatus: "pending" } : {}),
     ...extra,
   };

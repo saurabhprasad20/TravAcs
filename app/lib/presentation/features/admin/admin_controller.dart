@@ -19,6 +19,26 @@ class AdminController extends Notifier<AsyncValue<void>> {
   Future<bool> reject(String uid, String? reason) =>
       _run(() => _repo.setVerification(uid, false, reason));
 
+  Future<bool> ban(
+    String uid, {
+    required DateTime until,
+    required String reason,
+  }) =>
+      _run(() => _repo.setAccountBan(uid, bannedUntil: until, reason: reason));
+
+  Future<bool> unban(String uid) => _run(() => _repo.setAccountBan(uid));
+
+  Future<bool> setTravelCompensation(
+    String requestId,
+    String volunteerId,
+    int travelCostInr,
+  ) => _run(
+    () => _repo.setTravelCompensation(requestId, volunteerId, travelCostInr),
+  );
+
+  Future<bool> finalizePaymentReview(String requestId) =>
+      _run(() => _repo.finalizePaymentReview(requestId));
+
   /// Log a manually-booked (phone) trip into the telemetry collection. Mirrors
   /// the trip request form plus a free-text list of TravAcser names (item 12).
   Future<bool> logManualTrip({
@@ -34,21 +54,22 @@ class AdminController extends Notifier<AsyncValue<void>> {
     required String destination,
     required int estimatedAmountInr,
     String? note,
-  }) =>
-      _run(() => _repo.logManualTrip(
-            userDetails: userDetails,
-            travAcserNames: travAcserNames,
-            tripDate: tripDate,
-            startTime: startTime,
-            numTravellers: numTravellers,
-            numTravAcsers: numTravAcsers,
-            genderPreference: genderPreference,
-            durationMinutes: durationMinutes,
-            meetingPoint: meetingPoint,
-            destination: destination,
-            estimatedAmountInr: estimatedAmountInr,
-            note: note,
-          ));
+  }) => _run(
+    () => _repo.logManualTrip(
+      userDetails: userDetails,
+      travAcserNames: travAcserNames,
+      tripDate: tripDate,
+      startTime: startTime,
+      numTravellers: numTravellers,
+      numTravAcsers: numTravAcsers,
+      genderPreference: genderPreference,
+      durationMinutes: durationMinutes,
+      meetingPoint: meetingPoint,
+      destination: destination,
+      estimatedAmountInr: estimatedAmountInr,
+      note: note,
+    ),
+  );
 
   Future<bool> _run(FutureResult<Unit> Function() action) async {
     state = const AsyncLoading();

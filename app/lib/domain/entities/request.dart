@@ -34,6 +34,8 @@ class Request {
     this.createdAt,
     this.tripAmountInr,
     this.requesterPaidAt,
+    this.paymentReviewStatus,
+    this.paymentReviewEndsAt,
   });
 
   final String id;
@@ -100,6 +102,8 @@ class Request {
 
   /// When the User paid for the whole trip (null = unpaid).
   final DateTime? requesterPaidAt;
+  final String? paymentReviewStatus;
+  final DateTime? paymentReviewEndsAt;
 
   /// True once the whole trip has been paid for.
   bool get isPaid => requesterPaidAt != null;
@@ -108,6 +112,12 @@ class Request {
   /// the User's My Requests (not History) until this clears (item 9).
   bool get isPaymentPending =>
       status == RequestStatus.completed && !isPaid && (tripAmountInr ?? 0) > 0;
+
+  bool isPaymentReady(DateTime now) =>
+      isPaymentPending &&
+      (paymentReviewStatus == 'ready' ||
+          paymentReviewEndsAt == null ||
+          !now.isBefore(paymentReviewEndsAt!));
 
   double get durationHours => expectedDurationMinutes / 60.0;
 
@@ -124,9 +134,10 @@ class Request {
     if (durationMinutes <= 60) return 1.0;
     final whole = durationMinutes ~/ 60;
     final extra = durationMinutes - whole * 60;
-    final add = extra <= 14
-        ? 0.0
-        : extra <= 40
+    final add =
+        extra <= 14
+            ? 0.0
+            : extra <= 40
             ? 0.5
             : 1.0;
     return whole + add;
@@ -135,7 +146,9 @@ class Request {
   /// Per-hour rate for a TravAcser serving [travellersServed] people:
   /// ₹149/hr for one traveller, ₹210/hr for two.
   static int hourlyRateFor(int travellersServed) =>
-      travellersServed >= 2 ? AppConstants.ratePairInr : AppConstants.rateSoloInr;
+      travellersServed >= 2
+          ? AppConstants.ratePairInr
+          : AppConstants.rateSoloInr;
 
   /// How many of [numTravAcsers] serve two travellers (the "pair" rate) given
   /// [numTravellers] on the trip, distributed as evenly as possible (≤2 each).
@@ -152,18 +165,24 @@ class Request {
   /// completion — a single aggregate round would diverge by ₹1 on half-hour
   /// trips with multiple TravAcsers.
   static int computeEstimate(
-      int durationMinutes, int numTravellers, int numTravAcsers) {
+    int durationMinutes,
+    int numTravellers,
+    int numTravAcsers,
+  ) {
     final hours = billedHours(durationMinutes);
     final pair = pairServingCount(numTravellers, numTravAcsers);
     final solo = numTravAcsers - pair;
-    final service = pair * (hours * AppConstants.ratePairInr).round() +
+    final service =
+        pair * (hours * AppConstants.ratePairInr).round() +
         solo * (hours * AppConstants.rateSoloInr).round();
     final travel = AppConstants.travelCostInr * numTravAcsers;
     return service + travel;
   }
 
   static String _hoursLabel(double hrs) =>
-      hrs == hrs.roundToDouble() ? hrs.toStringAsFixed(0) : hrs.toStringAsFixed(1);
+      hrs == hrs.roundToDouble()
+          ? hrs.toStringAsFixed(0)
+          : hrs.toStringAsFixed(1);
 
   /// Human-readable breakdown of how [estimatedAmountInr] is computed, e.g.
   /// `"1.5 hr · ₹149/hr × 1 + ₹100 travel × 1"`. Shown next to the amount so the

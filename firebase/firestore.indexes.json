@@ -45,6 +45,14 @@
       "collectionGroup": "requests",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "paymentReviewStatus", "order": "ASCENDING" },
+        { "fieldPath": "paymentReviewEndsAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "requests",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "genderRestricted", "order": "ASCENDING" },
         { "fieldPath": "genderWidened", "order": "ASCENDING" }
       ]

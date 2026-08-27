@@ -19,6 +19,7 @@ final requestRepositoryProvider = Provider<RequestRepository>((ref) {
     ref.watch(firestoreProvider),
     ref.watch(firebaseAuthProvider),
     ref.watch(functionsProvider),
+    ref.watch(firebaseStorageProvider),
   );
 });
 
@@ -68,7 +69,8 @@ final availableRequestsProvider = Provider<AsyncValue<List<Request>>>((ref) {
   // TravAcser later cancels their slot, the (now cancelled) assignment must NOT
   // keep hiding the request — the server reopens it to broadcast, so it should
   // reappear here for everyone, including the TravAcser who cancelled.
-  final acceptedIds = ref
+  final acceptedIds =
+      ref
           .watch(myAssignmentsProvider)
           .value
           ?.where((a) => a.isActive)
@@ -83,22 +85,31 @@ final availableRequestsProvider = Provider<AsyncValue<List<Request>>>((ref) {
   ref.watch(clockProvider);
   final now = DateTime.now();
 
-  return ref.watch(_availableRequestsRawProvider).whenData((list) => list
-      .where((r) =>
-          !acceptedIds.contains(r.id) &&
-          r.scheduledStartAt.isAfter(now) &&
-          (!r.genderRestricted ||
-              r.genderWidened ||
-              r.requesterGender == myGender))
-      .toList());
+  return ref
+      .watch(_availableRequestsRawProvider)
+      .whenData(
+        (list) =>
+            list
+                .where(
+                  (r) =>
+                      !acceptedIds.contains(r.id) &&
+                      r.scheduledStartAt.isAfter(now) &&
+                      (!r.genderRestricted ||
+                          r.genderWidened ||
+                          r.requesterGender == myGender),
+                )
+                .toList(),
+      );
 });
 
 /// TravAcsers who have accepted a given request (requester's view). autoDispose
 /// so per-request listeners are released when no screen is watching them.
-final requestAssignmentsProvider =
-    StreamProvider.autoDispose.family<List<Assignment>, String>((ref, requestId) {
-  return ref.watch(requestRepositoryProvider).watchRequestAssignments(requestId);
-});
+final requestAssignmentsProvider = StreamProvider.autoDispose
+    .family<List<Assignment>, String>((ref, requestId) {
+      return ref
+          .watch(requestRepositoryProvider)
+          .watchRequestAssignments(requestId);
+    });
 
 /// The requester's completed-but-unpaid trips ("pending dues"). A User must
 /// clear these before creating a new request. Payment is per-trip, so this reads

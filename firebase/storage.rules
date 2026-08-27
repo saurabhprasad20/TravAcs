@@ -1,0 +1,50 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /payment-receipts/{requestId}/{uid}/{fileName} {
+      function isAdmin() {
+        return request.auth != null
+          && request.auth.token.get('admin', false) == true;
+      }
+
+      function isAssignmentOwner() {
+        return request.auth != null
+          && request.auth.uid == uid
+          && assignmentData().volunteerId == uid;
+      }
+
+      function assignmentData() {
+        return firestore.get(
+          /databases/(default)/documents/requests/$(requestId)/assignments/$(uid)
+        ).data;
+      }
+
+      function tripData() {
+        return firestore.get(
+          /databases/(default)/documents/requests/$(requestId)
+        ).data;
+      }
+
+      function isOpenReview() {
+        return isAssignmentOwner()
+          && assignmentData().tripStatus == 'completed'
+          && tripData().paymentReviewStatus == 'pending'
+          && tripData().paymentReviewEndsAt > request.time;
+      }
+
+      function isReferencedReceipt() {
+        return assignmentData().get('receiptStoragePath', '') ==
+          'payment-receipts/' + requestId + '/' + uid + '/' + fileName;
+      }
+
+      allow read: if isAdmin() || isAssignmentOwner();
+      allow create: if resource == null
+        && isOpenReview()
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*|application/pdf');
+      allow update: if false;
+      allow delete: if isOpenReview() && !isReferencedReceipt();
+    }
+  }
+}

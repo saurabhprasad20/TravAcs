@@ -16,6 +16,8 @@ class ProfileController extends Notifier<AsyncValue<void>> {
   Future<bool> save({
     required UserRole role,
     required String fullName,
+    required String agreementVersion,
+    required String agreementTypedName,
     required Region serviceState,
     required City serviceCity,
     Gender? gender,
@@ -28,6 +30,8 @@ class ProfileController extends Notifier<AsyncValue<void>> {
     final res = await _repo.saveProfile(
       role: role,
       fullName: fullName,
+      agreementVersion: agreementVersion,
+      agreementTypedName: agreementTypedName,
       state: serviceState,
       city: serviceCity,
       gender: gender,
@@ -83,4 +87,6 @@ class ProfileController extends Notifier<AsyncValue<void>> {
 }
 
 final profileControllerProvider =
-    NotifierProvider<ProfileController, AsyncValue<void>>(ProfileController.new);
+    NotifierProvider<ProfileController, AsyncValue<void>>(
+      ProfileController.new,
+    );

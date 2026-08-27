@@ -1,6 +1,16 @@
 import 'city.dart';
 import 'enums.dart';
 
+class AccountBan {
+  const AccountBan({this.bannedUntil, this.reason});
+
+  final DateTime? bannedUntil;
+  final String? reason;
+
+  bool get isActive =>
+      bannedUntil != null && bannedUntil!.isAfter(DateTime.now());
+}
+
 /// Core user profile (design §5.2 `profiles`). Pure domain entity — no
 /// framework or SDK dependencies.
 class Profile {
@@ -12,6 +22,8 @@ class Profile {
     this.dateOfBirth,
     this.phone,
     this.isActive = true,
+    this.bannedUntil,
+    this.banReason,
     this.serviceArea,
     this.serviceCity,
   });
@@ -23,6 +35,8 @@ class Profile {
   final DateTime? dateOfBirth;
   final String? phone;
   final bool isActive;
+  final DateTime? bannedUntil;
+  final String? banReason;
 
   /// Service **state** (e.g. Delhi NCR, Maharashtra). Nullable for legacy docs.
   final Region? serviceArea;
@@ -34,6 +48,8 @@ class Profile {
   bool get isRequester => role == UserRole.requester;
   bool get isVolunteer => role == UserRole.volunteer;
   bool get isAdmin => role == UserRole.admin;
+  bool get isBanned =>
+      bannedUntil != null && bannedUntil!.isAfter(DateTime.now());
 
   /// True once both state and city are set (required for creating/matching).
   bool get hasServiceArea => serviceArea != null && serviceCity != null;
@@ -44,6 +60,8 @@ class Profile {
     DateTime? dateOfBirth,
     String? phone,
     bool? isActive,
+    DateTime? bannedUntil,
+    String? banReason,
     Region? serviceArea,
     City? serviceCity,
   }) {
@@ -55,6 +73,8 @@ class Profile {
       dateOfBirth: dateOfBirth ?? this.dateOfBirth,
       phone: phone ?? this.phone,
       isActive: isActive ?? this.isActive,
+      bannedUntil: bannedUntil ?? this.bannedUntil,
+      banReason: banReason ?? this.banReason,
       serviceArea: serviceArea ?? this.serviceArea,
       serviceCity: serviceCity ?? this.serviceCity,
     );
@@ -80,11 +100,7 @@ class RequesterProfile {
 /// role-specific row. Returned by the profile repository; `null` means the
 /// user has authenticated but not yet completed registration.
 class MyProfile {
-  const MyProfile({
-    required this.profile,
-    this.requester,
-    this.volunteer,
-  });
+  const MyProfile({required this.profile, this.requester, this.volunteer});
 
   final Profile profile;
   final RequesterProfile? requester;

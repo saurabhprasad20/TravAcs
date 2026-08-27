@@ -12,10 +12,16 @@ abstract interface class ProfileRepository {
   /// authenticated but not yet completed registration.
   FutureResult<MyProfile?> getMyProfile();
 
+  /// Live moderation state so a newly-applied ban immediately leaves the app
+  /// shell without waiting for a restart or another profile action.
+  Stream<AccountBan> watchMyBan();
+
   /// Creates or updates the caller's profile + role-specific row.
   FutureResult<Unit> saveProfile({
     required UserRole role,
     required String fullName,
+    required String agreementVersion,
+    required String agreementTypedName,
     required Region state,
     required City city,
     Gender? gender,

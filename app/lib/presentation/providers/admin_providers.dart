@@ -3,11 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/repositories/firestore_admin_repository.dart';
 import '../../domain/entities/enums.dart';
 import '../../domain/entities/pending_volunteer.dart';
+import '../../domain/entities/profile.dart';
 import '../../domain/entities/request.dart';
 import '../../domain/repositories/admin_repository.dart';
 import 'auth_providers.dart';
 import 'core_providers.dart';
-import 'request_providers.dart' show functionsProvider, requestRepositoryProvider;
+import 'request_providers.dart'
+    show functionsProvider, requestRepositoryProvider;
 
 final adminRepositoryProvider = Provider<AdminRepository>((ref) {
   return FirestoreAdminRepository(
@@ -17,9 +19,12 @@ final adminRepositoryProvider = Provider<AdminRepository>((ref) {
 });
 
 /// Live list of TravAcsers awaiting verification (admin only).
-final pendingVolunteersProvider =
-    StreamProvider<List<PendingVolunteer>>((ref) {
+final pendingVolunteersProvider = StreamProvider<List<PendingVolunteer>>((ref) {
   return ref.watch(adminRepositoryProvider).watchPendingVolunteers();
+});
+
+final adminAccountsProvider = StreamProvider<List<Profile>>((ref) {
+  return ref.watch(adminRepositoryProvider).watchAccounts();
 });
 
 /// Raw live stream of all active-STATUS trips (broadcast/assigned/started),
@@ -40,9 +45,21 @@ final activeTripsProvider = Provider<AsyncValue<List<Request>>>((ref) {
   // Keep an overdue-but-unstarted trip visible for a couple of hours so the
   // admin can intervene; only older leftovers fall off.
   final cutoff = DateTime.now().subtract(const Duration(hours: 2));
-  return ref.watch(_activeTripsRawProvider).whenData((list) => list
-      .where((r) =>
-          r.status == RequestStatus.started ||
-          r.scheduledStartAt.isAfter(cutoff))
-      .toList());
+  return ref
+      .watch(_activeTripsRawProvider)
+      .whenData(
+        (list) =>
+            list
+                .where(
+                  (r) =>
+                      r.status == RequestStatus.started ||
+                      r.scheduledStartAt.isAfter(cutoff),
+                )
+                .toList(),
+      );
+});
+
+final paymentReviewsProvider = StreamProvider<List<Request>>((ref) {
+  ref.watch(authStateChangesProvider);
+  return ref.watch(requestRepositoryProvider).watchPaymentReviews();
 });

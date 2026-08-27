@@ -26,6 +26,10 @@ const submitRating = fft.wrap(fns.submitRating);
 const setVerification = fft.wrap(fns.setVerification);
 const verifyRazorpayPayment = fft.wrap(fns.verifyRazorpayPayment);
 const createRazorpayOrder = fft.wrap(fns.createRazorpayOrder);
+const finalizePaymentReview = fft.wrap(fns.finalizePaymentReview);
+const submitTravelExpense = fft.wrap(fns.submitTravelExpense);
+const setTravelCompensation = fft.wrap(fns.setTravelCompensation);
+const setAccountBan = fft.wrap(fns.setAccountBan);
 const logManualTrip = fft.wrap(fns.logManualTrip);
 const widenGenderRequests = fft.wrap(fns.widenGenderRequests);
 const expireStaleRequests = fft.wrap(fns.expireStaleRequests);
@@ -805,7 +809,7 @@ describe("expireStaleRequests", () => {
   });
 });
 
-describe("createRazorpayOrder (trip-level, Rs.1 test override)", () => {
+describe("createRazorpayOrder (trip-level actual amount)", () => {
   const origFetch = globalThis.fetch;
   before(() => {
     process.env.RAZORPAY_KEY_ID = "rzp_test_key";
@@ -820,28 +824,43 @@ describe("createRazorpayOrder (trip-level, Rs.1 test override)", () => {
     (globalThis as any).fetch = origFetch;
   });
 
-  it("charges Rs.1 for the whole trip and stores the order on the request", async () => {
+  it("charges the final trip amount and stores the order on the request", async () => {
     await db.doc("requests/r1").set({
       requesterId: "alice", status: "completed", tripAmountInr: 498,
+      paymentReviewStatus: "ready",
     });
     const res: any = await createRazorpayOrder(call({requestId: "r1"}, "alice"));
-    assert.equal(res.amountInr, 1); // test-phase Rs.1, NOT the real 498
-    assert.equal(res.amountPaise, 100);
+    assert.equal(res.amountInr, 498);
+    assert.equal(res.amountPaise, 49800);
     assert.equal(res.orderId, "order_stub_1");
     const r = (await db.doc("requests/r1").get()).data()!;
     assert.equal(r.razorpayOrderId, "order_stub_1");
-    assert.equal(r.razorpayAmountInr, 1);
-    assert.equal(r.tripAmountInr, 498); // real amount untouched
+    assert.equal(r.razorpayAmountInr, 498);
+    assert.equal(r.tripAmountInr, 498);
   });
 
   it("reuses the stored order on a retry (same key + amount)", async () => {
     await db.doc("requests/r1").set({
       requesterId: "alice", status: "completed", tripAmountInr: 498,
+      paymentReviewStatus: "ready",
       razorpayOrderId: "order_existing", razorpayKeyId: "rzp_test_key",
-      razorpayAmountInr: 1,
+      razorpayAmountInr: 498,
     });
     const res: any = await createRazorpayOrder(call({requestId: "r1"}, "alice"));
     assert.equal(res.orderId, "order_existing"); // reused, not re-minted
+  });
+
+  it("atomically finalizes an expired review before charging", async () => {
+    await db.doc("requests/r1").set({
+      requesterId: "alice", status: "completed", tripAmountInr: 612,
+      paymentReviewStatus: "pending",
+      paymentReviewEndsAt: Timestamp.fromMillis(Date.now() - 1000),
+    });
+    const res: any = await createRazorpayOrder(call({requestId: "r1"}, "alice"));
+    assert.equal(res.amountInr, 612);
+    const r = (await db.doc("requests/r1").get()).data()!;
+    assert.equal(r.paymentReviewStatus, "ready");
+    assert.equal(r.razorpayAmountInr, 612);
   });
 
   it("rejects when the trip is already paid", async () => {
@@ -853,6 +872,100 @@ describe("createRazorpayOrder (trip-level, Rs.1 test override)", () => {
       () => createRazorpayOrder(call({requestId: "r1"}, "alice")),
       /already paid/i
     );
+  });
+});
+
+describe("payment review and travel compensation", () => {
+  it("accepts a claim, lets admin adjust it, then enables payment", async () => {
+    const reviewEndsAt = Timestamp.fromMillis(Date.now() + HOUR);
+    await db.doc("requests/r1").set({
+      requesterId: "alice",
+      status: "completed",
+      tripAmountInr: 324,
+      paymentReviewStatus: "pending",
+      paymentReviewEndsAt: reviewEndsAt,
+    });
+    await db.doc("requests/r1/assignments/vol").set({
+      volunteerId: "vol",
+      requesterId: "alice",
+      tripStatus: "completed",
+      serviceChargeInr: 224,
+      travelCostInr: 100,
+      amountInr: 324,
+    });
+
+    await submitTravelExpense(call({
+      requestId: "r1",
+      additionalTravelCostInr: 75,
+      receiptPath: "payment-receipts/r1/vol/receipt.jpg",
+    }, "vol"));
+    let assignment =
+      (await db.doc("requests/r1/assignments/vol").get()).data()!;
+    assert.equal(assignment.additionalTravelCostClaimedInr, 75);
+    assert.equal(assignment.expenseClaimStatus, "submitted");
+
+    await setTravelCompensation(call({
+      requestId: "r1",
+      volunteerId: "vol",
+      travelCostInr: 160,
+    }, "admin", {admin: true}));
+    assignment = (await db.doc("requests/r1/assignments/vol").get()).data()!;
+    assert.equal(assignment.amountInr, 384);
+    assert.equal(assignment.expenseClaimStatus, "reviewed");
+
+    await finalizePaymentReview(
+      call({requestId: "r1"}, "admin", {admin: true})
+    );
+    const request = (await db.doc("requests/r1").get()).data()!;
+    assert.equal(request.tripAmountInr, 384);
+    assert.equal(request.paymentReviewStatus, "ready");
+  });
+
+  it("rejects compensation changes after the review deadline", async () => {
+    await db.doc("requests/r1").set({
+      requesterId: "alice",
+      status: "completed",
+      tripAmountInr: 324,
+      paymentReviewStatus: "pending",
+      paymentReviewEndsAt: Timestamp.fromMillis(Date.now() - 1000),
+    });
+    await db.doc("requests/r1/assignments/vol").set({
+      volunteerId: "vol",
+      requesterId: "alice",
+      tripStatus: "completed",
+      serviceChargeInr: 224,
+      travelCostInr: 100,
+      amountInr: 324,
+    });
+
+    await assert.rejects(
+      () => setTravelCompensation(call({
+        requestId: "r1",
+        volunteerId: "vol",
+        travelCostInr: 160,
+      }, "admin", {admin: true})),
+      /already closed/i
+    );
+  });
+});
+
+describe("temporary account bans", () => {
+  it("blocks callable use until an admin lifts the ban", async () => {
+    await approvedVolunteer("vol");
+    await setAccountBan(call({
+      uid: "vol",
+      bannedUntilMs: Date.now() + HOUR,
+      reason: "Safety review",
+    }, "admin", {admin: true}));
+
+    await assert.rejects(
+      () => acceptRequest(call({requestId: "missing"}, "vol")),
+      /temporarily suspended/i
+    );
+
+    await setAccountBan(call({uid: "vol"}, "admin", {admin: true}));
+    const profile = (await db.doc("profiles/vol").get()).data()!;
+    assert.equal(profile.bannedUntil, undefined);
   });
 });
 
@@ -1084,9 +1197,12 @@ describe("SCENARIO E2E (ft1.txt #8-#11): 2 TravAcsers, 1 serves, 1 no-show, 1 co
     assert.equal(r.tripAmountInr, 415);
     assert.equal(r.paymentStatus, "pending");
 
-    // #10: the User makes ONE payment (₹1 in test phase) covering the whole trip.
+    // #10: admin finalizes the review, then the User pays the actual total.
+    await finalizePaymentReview(
+      call({requestId: "r1"}, "admin", {admin: true})
+    );
     const order: any = await createRazorpayOrder(call({requestId: "r1"}, "alice"));
-    assert.equal(order.amountInr, 1);   // test-phase ₹1 actually collected
+    assert.equal(order.amountInr, 415);
     r = (await db.doc("requests/r1").get()).data()!;
     assert.equal(r.tripAmountInr, 415); // real total untouched
     assert.equal(r.razorpayOrderId, "order_scn_1");

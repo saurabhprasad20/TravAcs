@@ -1,0 +1,792 @@
+TravAcs Welfare Foundation 
+ Terms of Use 
+ Effective Date:  01/12/2024 
+ Last Updated: 01/08/2026 
+ 1. INTRODUCTION 
+ Welcome to TravAcs. 
+ These Terms of Use ("Terms") govern your access to and use of the TravAcs mobile application, 
+ website, and any related products, services, features, content, communications, and technology 
+ platforms (collectively referred to as the "Platform") operated by  TravAcs Welfare Foundation  , 
+ a not-for-profit company incorporated under Section 8 of the Companies Act, 2013 (CIN: 
+ U88900UP2024NPL203107), having its registered office at 128 Smith Ganj, Neer Gulzar Dary, 
+ Meerut, Uttar Pradesh – 250002, India ("TravAcs", "we", "our", or "us"). 
+ TravAcs is committed to making mobility and travel more accessible by facilitating assistance 
+ services for visually impaired individuals through trained travel companions ("TravAcsers") and 
+ other accessibility-related services offered through the Platform. 
+ These Terms constitute a legally binding agreement between you and TravAcs. By accessing, 
+ downloading, installing, registering for, or using the Platform in any manner, you acknowledge 
+ that you have read, understood, and agree to be bound by these Terms, our Privacy Policy, and 
+ any other policies published by TravAcs from time to time. 
+ If you do not agree with any part of these Terms, you must immediately discontinue the use of 
+ the Platform. 
+ 2. ACCEPTANCE OF TERMS 
+ By using the Platform, you represent and warrant that:
+
+●  You have carefully read and understood these Terms. 
+ ●  You have the legal capacity to enter into a binding agreement under applicable laws. 
+ ●  All information provided by you during registration and while using the Platform is 
+ accurate, complete, and up to date. 
+ ●  You will comply with these Terms and all applicable laws, regulations, and policies. 
+ ●  You will use the Platform only for lawful purposes. 
+ Your continued use of the Platform after any modifications to these Terms shall constitute your 
+ acceptance of the revised Terms. 
+ 3. DEFINITIONS 
+ Unless the context otherwise requires, the following terms shall have the meanings assigned 
+ below: 
+ "Account"  means the registered account created on  the Platform to access TravAcs services. 
+ "Applicable Laws"  means all laws, rules, regulations,  notifications, governmental directions, 
+ judicial orders, and statutory requirements applicable within India. 
+ "Booking"  means a request made through the Platform  for any service facilitated by TravAcs. 
+ "Community Guidelines"  means the behavioural standards,  safety expectations, and conduct 
+ requirements published by TravAcs from time to time. 
+ "Content"  includes all text, graphics, images, logos,  software, databases, videos, audio 
+ recordings, documents, training materials, user reviews, ratings, and other information available 
+ on or through the Platform. 
+ "Platform"  means the TravAcs mobile application, website,  software, communication systems, 
+ APIs, customer support channels, and all associated digital services. 
+ "Policies"  means all operational, safety, pricing,  refund, privacy, accessibility, community, 
+ cancellation, and other policies published by TravAcs from time to time. 
+ "Services"  means all accessibility, travel assistance,  coordination, support, booking, 
+ technology, training, or related services offered or facilitated by TravAcs. 
+ "TravAcser"  means an individual approved by TravAcs  to provide travel assistance or 
+ accessibility support through the Platform. 
+ "Trip"  means any confirmed service session facilitated  through the Platform.
+
+"User"  means any individual or entity accessing or using the Platform, including visually 
+ impaired travellers, TravAcsers, visitors, volunteers, representatives, and any other registered or 
+ unregistered users, unless the context specifically refers to a particular category. 
+ "User Content"  means any information, documents, photographs,  reviews, ratings, messages, 
+ feedback, or other material uploaded, submitted, or shared by users on the Platform. 
+ 4. ELIGIBILITY 
+ To access or use the Platform, you must satisfy the following eligibility requirements: 
+ 1.  You must be at least eighteen (18) years of age or such other age as may be prescribed 
+ under applicable law for entering into legally binding agreements. 
+ 2.  If you are below the age of eighteen (18), you may use the Platform only under the 
+ supervision and responsibility of your parent, legal guardian, or any person legally 
+ authorised to act on your behalf. 
+ 3.  You must possess the legal capacity to enter into a binding agreement under Indian law. 
+ 4.  You must not be prohibited from using the Platform under any applicable law or 
+ governmental order. 
+ 5.  TravAcs reserves the right to require proof of age, identity, disability status (where 
+ relevant to the Services), emergency contact information, or any other information 
+ reasonably necessary to provide the Services safely and effectively. 
+ 6.  TravAcs may refuse registration or access to any individual if: 
+ ○  the information provided appears false, misleading, incomplete, or fraudulent; 
+ ○  the individual has previously violated TravAcs policies; 
+ ○  the individual's conduct poses a safety, legal, operational, or reputational risk to 
+ TravAcs or other users; or 
+ ○  TravAcs reasonably believes that permitting access would not be in the best 
+ interests of the Platform or its community. 
+ Eligibility to use specific Services may be subject to additional requirements communicated by 
+ TravAcs from time to time. 
+ 5. ACCOUNT REGISTRATION 
+ Certain features of the Platform require you to create an Account. 
+ By creating an Account, you agree that:
+
+1.  All information submitted by you shall be accurate, complete, current, and truthful. 
+ 2.  You shall promptly update your information whenever there is any change. 
+ 3.  You shall maintain only one active personal account unless expressly permitted 
+ otherwise by TravAcs. 
+ 4.  You are solely responsible for maintaining the confidentiality of your login credentials, 
+ passwords, OTPs, and other authentication methods. 
+ 5.  You shall not share your Account with any other person or permit another person to use 
+ your credentials. 
+ 6.  You shall immediately notify TravAcs if you become aware of any unauthorised access to 
+ your Account or any suspected security breach. 
+ 7.  TravAcs may verify your identity using mobile verification, email verification, 
+ government-issued identification, photographs, video verification, or any other 
+ reasonable verification process. 
+ 8.  Registration on the Platform does not guarantee access to any specific Service, 
+ Booking, assignment, or opportunity. 
+ 9.  TravAcs reserves the right to suspend, restrict, verify, or permanently deactivate any 
+ Account where it reasonably believes that: 
+ ○  false information has been submitted; 
+ ○  the Account has been compromised; 
+ ○  multiple fraudulent accounts have been created; 
+ ○  the Platform is being misused; or 
+ ○  continued operation of the Account poses a safety or legal concern. 
+ Users remain solely responsible for all activities conducted through their Accounts unless they 
+ have promptly informed TravAcs of any unauthorised access. 
+ 6. IDENTITY VERIFICATION 
+ To maintain a safe, trustworthy, and accessible community, TravAcs may require identity 
+ verification before permitting access to certain Services. 
+ Depending on the nature of the Service, TravAcs may request: 
+ ●  Government-issued identification. 
+ ●  Recent photograph. 
+ ●  Mobile number verification. 
+ ●  Email verification. 
+ ●  Emergency contact details. 
+ ●  Address verification. 
+ ●  Disability-related information where relevant to providing accessibility services. 
+ ●  Background verification for TravAcsers or other service providers.
+
+●  Any additional documentation reasonably required for safety, regulatory compliance, or 
+ fraud prevention. 
+ TravAcs reserves the right to engage authorised third-party verification service providers for 
+ identity verification. 
+ Submission of verification documents does not automatically guarantee approval or continued 
+ access to the Platform. 
+ Providing forged, altered, misleading, or fraudulent documents may result in immediate 
+ suspension or permanent termination of your Account and may be reported to the appropriate 
+ authorities where required by law. 
+ 7. PERMITTED AND PROHIBITED USE OF 
+ THE PLATFORM 
+ The Platform is intended solely for lawful purposes and in accordance with these Terms and all 
+ applicable laws. 
+ By using the Platform, you agree to use it responsibly, ethically, and in a manner that respects 
+ the rights, safety, dignity, and privacy of all users. 
+ 7.1 Permitted Use 
+ Subject to these Terms, you may use the Platform to: 
+ ●  Create and manage your account. 
+ ●  Request or provide services offered through the Platform, as applicable. 
+ ●  Schedule, manage, modify, or cancel bookings in accordance with applicable policies. 
+ ●  Communicate with TravAcs through authorised communication channels. 
+ ●  Submit ratings, reviews, and feedback regarding completed services. 
+ ●  Access educational resources, accessibility information, and other content made 
+ available by TravAcs. 
+ ●  Participate in programmes, events, campaigns, or initiatives organised by TravAcs. 
+ 7.2 Prohibited Activities 
+ You shall not, directly or indirectly: 
+ ●  Use the Platform for any unlawful, fraudulent, deceptive, or misleading purpose. 
+ ●  Provide false, inaccurate, outdated, or misleading information.
+
+●  Impersonate another individual or organisation. 
+ ●  Create multiple accounts without prior written approval from TravAcs. 
+ ●  Share your account credentials with another person. 
+ ●  Allow another person to use your account. 
+ ●  Attempt to gain unauthorised access to the Platform, its servers, databases, or systems. 
+ ●  Interfere with or disrupt the security, stability, or operation of the Platform. 
+ ●  Upload malware, viruses, malicious software, or harmful code. 
+ ●  Reverse engineer, decompile, modify, copy, scrape, or reproduce any part of the 
+ Platform except as expressly permitted by law. 
+ ●  Use bots, scripts, automated software, or similar technologies to access or interact with 
+ the Platform without prior written authorisation. 
+ ●  Attempt to manipulate ratings, reviews, payments, bookings, or platform metrics. 
+ ●  Use the Platform to advertise, promote, market, or sell products or services unrelated to 
+ TravAcs without prior written consent. 
+ ●  Engage in any conduct that may harm the reputation, goodwill, or operations of TravAcs. 
+ 7.3 Fraud Prevention 
+ TravAcs maintains a zero-tolerance policy towards fraud. 
+ The following actions may constitute fraudulent activity: 
+ ●  Fake bookings. 
+ ●  Fake identities. 
+ ●  Identity theft. 
+ ●  Submission of forged documents. 
+ ●  Fraudulent payment claims. 
+ ●  Intentional chargebacks without valid grounds. 
+ ●  Misrepresentation of trip details. 
+ ●  Abuse of promotional offers or referral programmes. 
+ ●  Any attempt to obtain financial or operational benefits through dishonest means. 
+ TravAcs reserves the right to investigate suspected fraudulent activity and may suspend or 
+ terminate accounts, withhold payments, cancel bookings, recover losses, and report such 
+ activities to law enforcement authorities where appropriate. 
+ 8. NATURE OF SERVICES 
+ TravAcs is an accessibility-focused platform that facilitates travel assistance and related support 
+ services for visually impaired individuals and other users through trained TravAcsers and 
+ authorised partners.
+
+TravAcs strives to provide safe, reliable, and accessible services. However, users acknowledge 
+ and agree that TravAcs primarily acts as a facilitator and coordinator of services and does not 
+ independently provide transportation or guarantee uninterrupted availability of services. 
+ 8.1 Platform Role 
+ Depending on the nature of the service, TravAcs may: 
+ ●  Facilitate bookings between users and TravAcsers. 
+ ●  Coordinate accessibility support. 
+ ●  Assist in trip planning. 
+ ●  Provide customer support. 
+ ●  Facilitate communication related to bookings. 
+ ●  Process payments through authorised payment channels. 
+ ●  Provide training and operational guidance. 
+ ●  Maintain quality standards through ratings, feedback, and monitoring. 
+ 8.2 No Transportation Services 
+ Unless expressly stated otherwise, TravAcs does not: 
+ ●  Own or operate taxi services. 
+ ●  Operate buses, trains, flights, or other transportation systems. 
+ ●  Guarantee availability of public or private transport. 
+ ●  Control third-party transportation providers. 
+ ●  Guarantee uninterrupted access to public infrastructure. 
+ Where transportation services are utilised during a trip, they remain subject to the policies and 
+ terms of the respective transportation provider. 
+ 8.3 Service Availability 
+ All services are subject to: 
+ ●  Availability of TravAcsers. 
+ ●  Operational feasibility. 
+ ●  Geographic coverage. 
+ ●  Safety considerations. 
+ ●  Applicable laws. 
+ ●  Weather and environmental conditions. 
+ ●  Resource availability. 
+ ●  Other operational factors beyond TravAcs' reasonable control. 
+ TravAcs does not guarantee that every booking request will be accepted.
+
+9. BOOKINGS AND SERVICE REQUESTS 
+ 9.1 Booking Requests 
+ Users may request services only through authorised TravAcs channels. 
+ Submission of a booking request does not constitute confirmation of a booking. 
+ A booking shall be considered confirmed only after confirmation is communicated by TravAcs 
+ through the Platform or any other authorised communication channel. 
+ 9.2 Booking Information 
+ Users are responsible for providing accurate booking information, including but not limited to: 
+ ●  Date and time. 
+ ●  Pick-up location. 
+ ●  Destination. 
+ ●  Estimated duration. 
+ ●  Number of travellers. 
+ ●  Accessibility requirements. 
+ ●  Emergency contact details where required. 
+ ●  Any special instructions relevant to the service. 
+ TravAcs shall not be responsible for delays, inconvenience, or service issues arising from 
+ inaccurate or incomplete information. 
+ 9.3 Changes to Bookings 
+ Users may request modifications to bookings in accordance with applicable policies. 
+ TravAcs shall use reasonable efforts to accommodate such requests but does not guarantee 
+ that modifications can be accommodated. 
+ Changes may affect availability, pricing, assigned TravAcser, duration, or other booking details. 
+ 9.4 Right to Refuse or Cancel Services 
+ TravAcs reserves the right to refuse, suspend, reschedule, or cancel any booking where it 
+ reasonably believes that: 
+ ●  Safety may be compromised.
+
+●  False information has been provided. 
+ ●  Payment has not been successfully received. 
+ ●  Operational constraints prevent service delivery. 
+ ●  Weather or environmental conditions make travel unsafe. 
+ ●  Applicable laws or governmental directions require cancellation. 
+ ●  A user has violated these Terms or other TravAcs policies. 
+ ●  Continuing with the booking may expose TravAcs, TravAcsers, or other users to 
+ unreasonable risk. 
+ Where appropriate, refunds shall be governed by the applicable Refund and Cancellation Policy. 
+ 9.5 Additional Participants 
+ Users must accurately disclose the number of individuals expected to receive assistance. 
+ TravAcs reserves the right to revise pricing, assign additional TravAcsers, modify operational 
+ arrangements, or decline service where additional participants are present but were not 
+ disclosed during booking. 
+ 9.6 Waiting Time 
+ TravAcs may prescribe waiting time limits through its operational policies. 
+ Where a user fails to arrive within the applicable waiting period, the booking may be treated as a 
+ no-show and handled in accordance with the applicable Cancellation Policy. 
+ 10. PAYMENTS, PRICING AND FINANCIAL 
+ TERMS 
+ 10.1 Pricing 
+ The pricing applicable to any service shall be that displayed or communicated by TravAcs at the 
+ time of booking. 
+ TravAcs reserves the right to revise, update, introduce, or withdraw pricing structures, 
+ discounts, promotional offers, travel reimbursements, convenience fees, cancellation charges, 
+ late payment charges, subscription plans, or any other financial components at its sole 
+ discretion.
+
+Current pricing shall be published through the Platform or other authorised communication 
+ channels. 
+ 10.2 Dynamic Pricing 
+ Certain services may be subject to dynamic pricing based on factors including but not limited to: 
+ ●  Duration. 
+ ●  Distance. 
+ ●  Time of day. 
+ ●  Peak demand. 
+ ●  Availability of TravAcsers. 
+ ●  Geographic location. 
+ ●  Public holidays. 
+ ●  Special events. 
+ ●  Operational complexity. 
+ ●  Accessibility requirements. 
+ The applicable charges shall be communicated before confirmation of the booking wherever 
+ reasonably practicable. 
+ 10.3 Payment Processing 
+ Payments shall be processed through payment gateways, banking partners, or other authorised 
+ payment methods approved by TravAcs. 
+ TravAcs is not responsible for failures, delays, interruptions, or errors attributable to third-party 
+ payment service providers. 
+ 10.4 Outstanding Dues 
+ Users shall remain responsible for all applicable charges arising from services availed through 
+ the Platform. 
+ TravAcs reserves the right to: 
+ ●  Restrict future bookings. 
+ ●  Suspend accounts. 
+ ●  Recover outstanding dues through lawful means. 
+ ●  Apply late payment charges in accordance with applicable policies. 
+ ●  Offset refunds against outstanding dues where permitted by law. 
+ 10.5 Taxes
+
+Unless otherwise specified, all applicable taxes, statutory levies, government charges, and 
+ regulatory fees shall be payable in accordance with applicable law. 
+ 10.6 Promotional Offers 
+ TravAcs may, from time to time, introduce promotional offers, discounts, coupons, referral 
+ programmes, or incentives. 
+ Such offers: 
+ ●  May be modified or withdrawn without prior notice. 
+ ●  Shall remain subject to separate terms and conditions. 
+ ●  Shall not create any continuing right or entitlement. 
+ ●  May be revoked in cases of misuse, fraud, or violation of these Terms. 
+ TravAcs reserves the right to cancel promotional benefits obtained through fraudulent or 
+ abusive conduct. 
+ 11. COMMUNITY STANDARDS AND CODE 
+ OF CONDUCT 
+ TravAcs is committed to fostering a safe, respectful, inclusive, and accessible environment for 
+ all members of its community. Every individual using the Platform is expected to conduct 
+ themselves with professionalism, courtesy, and respect. 
+ By using the Platform, you agree to comply with these Community Standards at all times. 
+ 11.1 Respect and Inclusion 
+ Every user shall: 
+ ●  Treat all individuals with dignity, courtesy, and respect. 
+ ●  Respect differences in disability, gender, age, religion, language, ethnicity, sexual 
+ orientation, or any other legally protected characteristic. 
+ ●  Cooperate with TravAcs personnel during service delivery. 
+ ●  Maintain professional and appropriate communication at all times. 
+ 11.2 Prohibited Behaviour
+
+The following conduct is strictly prohibited: 
+ ●  Physical, verbal, emotional, or psychological abuse. 
+ ●  Sexual harassment or unwanted physical contact. 
+ ●  Intimidation, threats, coercion, or stalking. 
+ ●  Bullying or discriminatory behaviour. 
+ ●  Use of abusive, obscene, or offensive language. 
+ ●  Deliberate damage to property. 
+ ●  Carrying or using illegal weapons. 
+ ●  Possessing, consuming, distributing, or being under the influence of illegal drugs during 
+ any TravAcs-related activity. 
+ ●  Engaging in criminal or unlawful activities. 
+ ●  Encouraging others to violate these Terms. 
+ ●  Any conduct that compromises the safety, dignity, or well-being of another person. 
+ TravAcs maintains a zero-tolerance policy towards harassment, violence, discrimination, and 
+ abuse. 
+ 11.3 Professional Boundaries 
+ To maintain transparency and fairness within the TravAcs ecosystem: 
+ ●  All bookings must be initiated and managed through authorised TravAcs channels. 
+ ●  Users and TravAcsers shall not intentionally bypass the Platform for future service 
+ arrangements. 
+ ●  Neither party shall solicit private bookings, commissions, or business opportunities 
+ arising from introductions made through the Platform without TravAcs' prior written 
+ consent. 
+ ●  Users and TravAcsers shall not exchange payments outside authorised payment 
+ channels where payment is intended for TravAcs services. 
+ ●  Users and TravAcsers shall not misuse personal information obtained through the 
+ Platform for unrelated purposes. 
+ Nothing in this clause prevents individuals from maintaining ordinary social interactions or 
+ friendships that may naturally arise. However, any professional engagement involving services 
+ substantially similar to those facilitated by TravAcs must comply with applicable TravAcs 
+ policies. 
+ 11.4 Alcohol, Drugs and Intoxication 
+ TravAcs may refuse, suspend, or terminate any service where a participant appears to be under 
+ the influence of alcohol or any intoxicating substance to an extent that reasonably compromises 
+ safety, dignity, or service quality.
+
+Nothing in this clause prevents lawful consumption of alcohol where unrelated to TravAcs 
+ services and where such consumption does not adversely affect safety or conduct. 
+ 11.5 Reporting Misconduct 
+ Users are encouraged to promptly report: 
+ ●  Safety concerns. 
+ ●  Harassment. 
+ ●  Fraud. 
+ ●  Abuse. 
+ ●  Misconduct. 
+ ●  Criminal activity. 
+ ●  Policy violations. 
+ ●  Emergencies. 
+ TravAcs may investigate such reports and take appropriate action, including suspension, 
+ termination, reporting to authorities, or other lawful measures. 
+ 12. SAFETY AND EMERGENCY 
+ RESPONSIBILITIES 
+ Safety remains a shared responsibility between TravAcs, Users, TravAcsers, and any 
+ participating third parties. 
+ 12.1 General Safety 
+ Every participant shall: 
+ ●  Exercise reasonable care during services. 
+ ●  Follow lawful instructions issued by emergency authorities. 
+ ●  Cooperate during emergencies. 
+ ●  Immediately report any accident, injury, or unsafe situation. 
+ 12.2 Medical Emergencies 
+ Where a medical emergency arises during a service: 
+ ●  TravAcsers may assist in obtaining emergency medical attention.
+
+●  TravAcs may contact emergency contacts where reasonably necessary. 
+ ●  TravAcs may coordinate emergency response to the extent reasonably practicable. 
+ TravAcs does not provide medical diagnosis, treatment, ambulance services, or healthcare 
+ services. 
+ 12.3 Emergency Contacts 
+ Users may be requested to provide emergency contact information. 
+ TravAcs may communicate with such contacts where reasonably necessary for the safety of the 
+ user. 
+ 12.4 Right to Suspend Services 
+ TravAcs may immediately suspend or terminate any ongoing or scheduled service where 
+ continuing the service would reasonably pose a risk to: 
+ ●  Human life. 
+ ●  Health. 
+ ●  Personal safety. 
+ ●  Public safety. 
+ ●  Property. 
+ ●  Compliance with applicable law. 
+ 13. PRIVACY, DATA PROTECTION AND 
+ COMMUNICATIONS 
+ TravAcs values the privacy of its users and is committed to protecting personal information in 
+ accordance with applicable laws. 
+ Use of the Platform is also governed by the TravAcs Privacy Policy, which forms an integral part 
+ of these Terms. 
+ 13.1 Information Collected 
+ TravAcs may collect information including: 
+ ●  Identity information.
+
+●  Contact details. 
+ ●  Accessibility-related information. 
+ ●  Booking information. 
+ ●  Device information. 
+ ●  Location information. 
+ ●  Communication records. 
+ ●  Payment information. 
+ ●  Feedback and ratings. 
+ ●  Verification documents. 
+ ●  Any other information necessary for providing services. 
+ 13.2 Purpose of Collection 
+ Personal information may be used for: 
+ ●  Providing services. 
+ ●  Identity verification. 
+ ●  Customer support. 
+ ●  Fraud prevention. 
+ ●  Quality assurance. 
+ ●  Regulatory compliance. 
+ ●  Safety monitoring. 
+ ●  Improving accessibility. 
+ ●  Research and analytics. 
+ ●  Product development. 
+ 13.3 Communications 
+ By using the Platform, you consent to receive communications through: 
+ ●  Mobile calls. 
+ ●  SMS. 
+ ●  WhatsApp. 
+ ●  Email. 
+ ●  Push notifications. 
+ ●  In-app notifications. 
+ ●  Other authorised electronic communication channels. 
+ Such communications may include: 
+ ●  Booking confirmations. 
+ ●  OTP verification. 
+ ●  Safety alerts. 
+ ●  Service updates.
+
+●  Policy updates. 
+ ●  Payment confirmations. 
+ ●  Customer support communications. 
+ ●  Promotional or awareness campaigns, where permitted by law. 
+ Users may opt out of non-essential promotional communications where such option is made 
+ available. 
+ 14. LOCATION SERVICES 
+ Certain features of the Platform may require access to your device's location information. 
+ By enabling location permissions, you acknowledge and consent that TravAcs may use location 
+ information for purposes including: 
+ ●  Facilitating bookings. 
+ ●  Matching users with TravAcsers. 
+ ●  Route coordination. 
+ ●  Safety monitoring. 
+ ●  Emergency assistance. 
+ ●  Improving service quality. 
+ ●  Fraud prevention. 
+ Location information may not always be accurate due to limitations of GPS, network 
+ connectivity, hardware, or third-party services. 
+ TravAcs shall not be responsible for inaccuracies in location data originating from third-party 
+ technologies. 
+ Users may disable location permissions; however, certain Platform features may become 
+ unavailable or function with reduced effectiveness. 
+ 15. ARTIFICIAL INTELLIGENCE AND 
+ TECHNOLOGY-ASSISTED SERVICES 
+ TravAcs may utilise artificial intelligence ("AI"), machine learning, automation, or similar 
+ technologies to improve user experience and operational efficiency.
+
+Such technologies may assist in functions including: 
+ ●  Accessibility support. 
+ ●  Trip recommendations. 
+ ●  Customer support. 
+ ●  Content generation. 
+ ●  Scheduling assistance. 
+ ●  Fraud detection. 
+ ●  Service optimisation. 
+ ●  Analytics. 
+ AI-generated outputs are intended to assist users and shall not be regarded as professional, 
+ medical, legal, or financial advice. 
+ TravAcs reserves the right to review, modify, override, or discontinue AI-generated outputs 
+ where necessary. 
+ 16. USER-GENERATED CONTENT 
+ Users may voluntarily submit: 
+ ●  Ratings. 
+ ●  Reviews. 
+ ●  Feedback. 
+ ●  Testimonials. 
+ ●  Audio recordings. 
+ ●  Photographs. 
+ ●  Videos. 
+ ●  Suggestions. 
+ ●  Other content. 
+ By submitting such content, you represent that: 
+ ●  You own or have the necessary rights to the content. 
+ ●  The content does not infringe any third-party rights. 
+ ●  The content is accurate to the best of your knowledge. 
+ ●  The content complies with applicable laws. 
+ You grant TravAcs a worldwide, non-exclusive, royalty-free, transferable licence to use, 
+ reproduce, modify, publish, display, distribute, translate, and otherwise utilise such content for 
+ operating, improving, promoting, documenting, or marketing the Platform, subject to applicable 
+ law and the Privacy Policy.
+
+TravAcs reserves the right to remove any content that it reasonably believes violates these 
+ Terms or applicable laws. 
+ 17. INTELLECTUAL PROPERTY 
+ Unless otherwise expressly stated, all intellectual property rights associated with the Platform 
+ remain the exclusive property of TravAcs or its licensors. 
+ This includes, without limitation: 
+ ●  The TravAcs name. 
+ ●  Logos. 
+ ●  Trademarks. 
+ ●  Service marks. 
+ ●  Software. 
+ ●  Mobile application. 
+ ●  Website. 
+ ●  User interface. 
+ ●  Designs. 
+ ●  Graphics. 
+ ●  Training materials. 
+ ●  Databases. 
+ ●  Written content. 
+ ●  Audio-visual material. 
+ ●  Technology. 
+ ●  Source code. 
+ ●  Documentation. 
+ No user acquires ownership of any intellectual property merely by using the Platform. 
+ Users shall not copy, reproduce, modify, distribute, commercially exploit, reverse engineer, or 
+ otherwise use any part of the Platform except as expressly permitted by applicable law or with 
+ TravAcs' prior written consent. 
+ 18. BETA FEATURES AND PLATFORM 
+ IMPROVEMENTS
+
+TravAcs may, from time to time, introduce experimental or beta features. 
+ Such features: 
+ ●  May be incomplete or under development. 
+ ●  May contain errors or interruptions. 
+ ●  May be modified or withdrawn at any time. 
+ ●  May not be supported continuously. 
+ ●  Are provided on an "as available" basis. 
+ User feedback relating to beta features may be used by TravAcs for product improvement 
+ without creating any obligation to implement suggested changes. 
+ 19. ELECTRONIC RECORDS AND DIGITAL 
+ CONSENT 
+ You acknowledge and agree that: 
+ ●  Electronic records maintained by TravAcs shall constitute valid records of transactions 
+ conducted through the Platform. 
+ ●  Acceptance of these Terms by clicking "I Agree", "Accept", "Continue", registering an 
+ account, booking a service, or otherwise using the Platform shall constitute valid 
+ electronic consent and a legally binding agreement. 
+ ●  Electronic communications, notifications, invoices, receipts, confirmations, and other 
+ records generated through the Platform may be relied upon by TravAcs as evidence of 
+ transactions and communications, subject to applicable law. 
+ ●  You are responsible for ensuring that the contact details associated with your account 
+ remain accurate so that important communications can be delivered to you. 
+ 20. THIRD-PARTY SERVICES 
+ The Platform may integrate with or provide access to third-party products, services, software, 
+ websites, payment gateways, mapping services, communication providers, cloud infrastructure, 
+ analytics providers, or other technologies. 
+ Such third-party services are governed by their respective terms and privacy policies.
+
+TravAcs does not own or control such third-party services and, except where required by 
+ applicable law, shall not be responsible for: 
+ ●  Their availability. 
+ ●  Accuracy of information. 
+ ●  Security practices. 
+ ●  Service interruptions. 
+ ●  Pricing. 
+ ●  Performance. 
+ ●  Content. 
+ ●  Acts or omissions. 
+ Users access and use such third-party services at their own discretion and subject to the 
+ applicable third-party terms. 
+ 21. PLATFORM AVAILABILITY 
+ TravAcs strives to maintain uninterrupted availability of the Platform. 
+ However, the Platform may occasionally become unavailable due to: 
+ ●  Scheduled maintenance. 
+ ●  System upgrades. 
+ ●  Technical failures. 
+ ●  Internet disruptions. 
+ ●  Cybersecurity incidents. 
+ ●  Third-party service interruptions. 
+ ●  Governmental restrictions. 
+ ●  Events beyond TravAcs' reasonable control. 
+ TravAcs does not guarantee uninterrupted, continuous, secure, or error-free operation of the 
+ Platform. 
+ TravAcs reserves the right to suspend, modify, discontinue, or replace any feature or service at 
+ any time without creating any obligation to continue such feature or service. 
+ 22. ACCESSIBILITY COMMITMENT
+
+Accessibility is central to TravAcs' mission. 
+ TravAcs continuously endeavours to make its Platform and Services as accessible, inclusive, 
+ and user-friendly as reasonably practicable for persons with disabilities. 
+ However, users acknowledge that: 
+ ●  accessibility technologies continue to evolve; 
+ ●  certain third-party services may have accessibility limitations beyond TravAcs' control; 
+ and 
+ ●  absolute accessibility across every device, operating system, network environment, or 
+ third-party integration cannot be guaranteed. 
+ TravAcs welcomes user feedback to improve accessibility and encourages users to report 
+ accessibility barriers through the Platform's support channels. 
+ 23. FEEDBACK AND SUGGESTIONS 
+ TravAcs values suggestions, ideas, recommendations, and feedback provided by users. 
+ Unless otherwise expressly agreed in writing, any feedback voluntarily submitted to TravAcs 
+ may be used by TravAcs for improving its Platform, Services, technology, operations, or 
+ products without any obligation to compensate the person providing such feedback. 
+ Submission of feedback does not create any partnership, ownership, intellectual property right, 
+ or expectation of implementation. 
+ 24. RESPONSIBLE SECURITY 
+ DISCLOSURE 
+ If any user discovers a security vulnerability affecting the Platform, TravAcs encourages 
+ responsible disclosure. 
+ Users shall not: 
+ ●  exploit vulnerabilities for personal gain; 
+ ●  access data belonging to other users without authorisation; 
+ ●  disrupt Platform operations; or
+
+●  publicly disclose vulnerabilities before TravAcs has had a reasonable opportunity to 
+ investigate and address them. 
+ Responsible disclosures made in good faith shall be reviewed by TravAcs, and the organisation 
+ may acknowledge such disclosures at its discretion. 
+ 25. SUSPENSION AND TERMINATION 
+ TravAcs reserves the right to suspend, restrict, deactivate, or permanently terminate any 
+ account or access to the Platform, with or without prior notice, where it reasonably believes that: 
+ ●  these Terms have been violated; 
+ ●  any applicable law has been violated; 
+ ●  fraudulent or misleading information has been provided; 
+ ●  payment obligations remain outstanding; 
+ ●  platform security has been compromised; 
+ ●  abusive or unsafe behaviour has occurred; 
+ ●  there has been repeated violation of TravAcs policies; 
+ ●  continued access poses a safety, legal, operational, or reputational risk; or 
+ ●  such action is otherwise necessary to protect TravAcs, its users, or the public. 
+ Where reasonably practicable, TravAcs may provide an opportunity for the affected user to 
+ explain or rectify the matter before permanent termination. However, immediate suspension or 
+ termination may occur where necessary to address urgent safety, security, fraud, or legal 
+ concerns. 
+ Termination of an account shall not affect any rights, obligations, liabilities, or remedies that 
+ accrued before the date of termination. 
+ 26. DISCLAIMERS 
+ The Platform and Services are provided on an "as is" and "as available" basis, subject to 
+ applicable law. 
+ To the maximum extent permitted by law, TravAcs does not warrant that: 
+ ●  the Platform will always be uninterrupted; 
+ ●  Services will always be available;
+
+●  all bookings will be accepted; 
+ ●  every Trip will proceed exactly as scheduled; 
+ ●  information on the Platform will always be complete, current, or error-free; or 
+ ●  third-party services will function without interruption. 
+ TravAcs makes reasonable efforts to maintain quality, safety, and reliability but cannot 
+ guarantee outcomes that depend upon third-party providers, public infrastructure, user conduct, 
+ weather conditions, or circumstances beyond its reasonable control. 
+ Nothing in these Terms excludes or limits any statutory rights that cannot lawfully be excluded 
+ under applicable law. 
+ 27. LIMITATION OF LIABILITY 
+ To the fullest extent permitted under applicable law, TravAcs, its directors, officers, employees, 
+ volunteers, consultants, affiliates, and authorised representatives shall not be liable for any 
+ indirect, incidental, consequential, special, exemplary, punitive, or economic damages arising 
+ out of or relating to: 
+ ●  use or inability to use the Platform; 
+ ●  delays or interruptions in Services; 
+ ●  acts or omissions of third parties; 
+ ●  technical failures; 
+ ●  loss of profits, goodwill, reputation, opportunities, or data; or 
+ ●  events beyond TravAcs' reasonable control. 
+ Nothing in these Terms shall exclude liability for fraud, wilful misconduct, or any liability that 
+ cannot lawfully be excluded under applicable Indian law. 
+ Where liability cannot be excluded, TravAcs' liability shall be limited to the maximum extent 
+ permitted by applicable law. 
+ 28. INDEMNITY 
+ You agree to indemnify, defend, and hold harmless TravAcs, its directors, officers, employees, 
+ volunteers, affiliates, consultants, and authorised representatives from and against any claims, 
+ actions, proceedings, liabilities, damages, losses, penalties, costs, or expenses (including 
+ reasonable legal fees) arising out of or relating to:
+
+●  your breach of these Terms; 
+ ●  violation of applicable law; 
+ ●  misuse of the Platform; 
+ ●  infringement of any third-party rights; 
+ ●  fraudulent conduct; 
+ ●  negligent or intentional misconduct; or 
+ ●  any information or content submitted by you. 
+ This obligation shall survive termination of these Terms. 
+ 29. FORCE MAJEURE 
+ TravAcs shall not be liable for any delay, interruption, suspension, or failure in performance 
+ resulting from events beyond its reasonable control, including but not limited to: 
+ ●  natural disasters; 
+ ●  floods; 
+ ●  earthquakes; 
+ ●  pandemics; 
+ ●  epidemics; 
+ ●  fire; 
+ ●  war; 
+ ●  terrorism; 
+ ●  civil unrest; 
+ ●  labour disputes; 
+ ●  governmental actions; 
+ ●  court orders; 
+ ●  internet failures; 
+ ●  power outages; 
+ ●  cyberattacks; 
+ ●  transportation disruptions; or 
+ ●  failures of third-party service providers. 
+ TravAcs shall use reasonable efforts to resume normal operations as soon as practicable 
+ following such events.
+
+30. GOVERNING LAW AND DISPUTE 
+ RESOLUTION 
+ These Terms shall be governed by and construed in accordance with the laws of India. 
+ The parties shall first attempt to resolve any dispute through good-faith discussions and 
+ negotiations. 
+ If the dispute cannot be resolved amicably within thirty (30) days, it shall be referred to 
+ arbitration in accordance with the Arbitration and Conciliation Act, 1996, as amended from time 
+ to time. 
+ The arbitration shall: 
+ ●  be conducted by a sole arbitrator appointed by TravAcs, subject to applicable law; 
+ ●  take place in Delhi, unless otherwise agreed in writing; 
+ ●  be conducted in the English language; and 
+ ●  result in an award that shall be final and binding on the parties. 
+ Nothing in this clause prevents TravAcs from seeking urgent interim or injunctive relief before a 
+ court of competent jurisdiction where necessary. 
+ Subject to the arbitration provisions above, courts having jurisdiction over Delhi shall have 
+ jurisdiction in relation to matters arising under these Terms. 
+ 31. MISCELLANEOUS 
+ 31.1 Amendments 
+ TravAcs may amend these Terms from time to time. 
+ Material amendments shall be communicated through appropriate channels, including the 
+ Platform where reasonably practicable. 
+ Continued use of the Platform after such amendments constitutes acceptance of the revised 
+ Terms. 
+ 31.2 Entire Agreement
+
+These Terms, together with the Privacy Policy and any other applicable TravAcs policies, 
+ constitute the complete agreement between the parties concerning the use of the Platform. 
+ 31.3 Severability 
+ If any provision of these Terms is held to be invalid, unlawful, or unenforceable, the remaining 
+ provisions shall continue in full force and effect. 
+ 31.4 No Waiver 
+ Failure by TravAcs to enforce any provision of these Terms shall not constitute a waiver of that 
+ provision or any other provision. 
+ 31.5 Assignment 
+ TravAcs may assign, transfer, or novate its rights and obligations under these Terms to any 
+ affiliate, successor, or other entity as part of a merger, restructuring, acquisition, or transfer of 
+ operations, subject to applicable law. 
+ Users may not assign or transfer their rights or obligations without TravAcs' prior written 
+ consent. 
+ 31.6 Survival 
+ The provisions relating to intellectual property, confidentiality, privacy, payment obligations, 
+ limitation of liability, indemnity, dispute resolution, governing law, and any other provisions 
+ intended by their nature to survive termination shall remain in effect after termination of these 
+ Terms. 
+ 32. CONTACT US 
+ For questions, complaints, feedback, or legal notices relating to these Terms or the Platform, 
+ you may contact TravAcs through the official communication channels published on the 
+ Platform. 
+ Email:  support@travacs.in 
+ Website:  www.travacs.in
+
+Registered Office: 
+ TravAcs Welfare Foundation 
+ 128 Smith Ganj, Neer Gulzar Dary, Meerut, Uttar Pradesh – 250002, India 
+ TravAcs aims to respond to genuine queries and concerns within a reasonable timeframe. 
+ However, response times may vary depending on the nature and complexity of the request. 
+ ACKNOWLEDGEMENT 
+ By accessing or using the TravAcs Platform, you acknowledge that you have read, understood, 
+ and agree to be bound by these Terms of Use, together with all policies incorporated by 
+ reference. 
+ If you do not agree with these Terms, you must discontinue use of the Platform immediately.

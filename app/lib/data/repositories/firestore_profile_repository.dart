@@ -28,7 +28,9 @@ class FirestoreProfileRepository implements ProfileRepository {
   @override
   FutureResult<MyProfile?> getMyProfile() async {
     final uid = _uid;
-    if (uid == null) return failure(const AuthFailure('You are not signed in.'));
+    if (uid == null) {
+      return failure(const AuthFailure('You are not signed in.'));
+    }
     try {
       final doc = await _profiles.doc(uid).get();
       if (!doc.exists) return success(null); // not yet registered
@@ -39,9 +41,24 @@ class FirestoreProfileRepository implements ProfileRepository {
   }
 
   @override
+  Stream<AccountBan> watchMyBan() {
+    final uid = _uid;
+    if (uid == null) return Stream.value(const AccountBan());
+    return _profiles.doc(uid).snapshots().map((doc) {
+      final data = doc.data();
+      return AccountBan(
+        bannedUntil: (data?['bannedUntil'] as Timestamp?)?.toDate(),
+        reason: data?['banReason'] as String?,
+      );
+    });
+  }
+
+  @override
   FutureResult<Unit> saveProfile({
     required UserRole role,
     required String fullName,
+    required String agreementVersion,
+    required String agreementTypedName,
     required Region state,
     required City city,
     Gender? gender,
@@ -51,7 +68,9 @@ class FirestoreProfileRepository implements ProfileRepository {
     String? homeLocationText,
   }) async {
     final uid = _uid;
-    if (uid == null) return failure(const AuthFailure('You are not signed in.'));
+    if (uid == null) {
+      return failure(const AuthFailure('You are not signed in.'));
+    }
     try {
       final ref = _profiles.doc(uid);
       final existing = await ref.get();
@@ -74,6 +93,10 @@ class FirestoreProfileRepository implements ProfileRepository {
         // First-time creation: set immutable/server-managed fields once.
         data.addAll({
           'role': role.wireValue,
+          'agreementRole': role.wireValue,
+          'agreementVersion': agreementVersion,
+          'agreementTypedName': agreementTypedName,
+          'agreementAcceptedAt': FieldValue.serverTimestamp(),
           'isActive': true,
           'ratingAvg': 0,
           'ratingCount': 0,
@@ -93,7 +116,9 @@ class FirestoreProfileRepository implements ProfileRepository {
   @override
   FutureResult<Unit> setServiceArea(Region state, City city) async {
     final uid = _uid;
-    if (uid == null) return failure(const AuthFailure('You are not signed in.'));
+    if (uid == null) {
+      return failure(const AuthFailure('You are not signed in.'));
+    }
     try {
       await _profiles.doc(uid).update({
         'serviceArea': state.wireValue,
@@ -109,7 +134,9 @@ class FirestoreProfileRepository implements ProfileRepository {
   @override
   FutureResult<Unit> setAvailability(bool isActive) async {
     final uid = _uid;
-    if (uid == null) return failure(const AuthFailure('You are not signed in.'));
+    if (uid == null) {
+      return failure(const AuthFailure('You are not signed in.'));
+    }
     try {
       await _profiles.doc(uid).update({
         'isActive': isActive,
@@ -133,6 +160,8 @@ class FirestoreProfileRepository implements ProfileRepository {
       dateOfBirth: (d['dateOfBirth'] as Timestamp?)?.toDate(),
       phone: d['phone'] as String?,
       isActive: (d['isActive'] as bool?) ?? true,
+      bannedUntil: (d['bannedUntil'] as Timestamp?)?.toDate(),
+      banReason: d['banReason'] as String?,
       serviceArea: Region.fromWireOrNull(d['serviceArea'] as String?),
       serviceCity: City.fromWire(d['serviceCity'] as String?),
     );
@@ -150,14 +179,19 @@ class FirestoreProfileRepository implements ProfileRepository {
       volunteer = VolunteerProfile(
         profileId: uid,
         address: d['address'] as String?,
-        verificationStatus:
-            VerificationStatus.fromWire((d['verificationStatus'] as String?) ?? 'pending'),
+        verificationStatus: VerificationStatus.fromWire(
+          (d['verificationStatus'] as String?) ?? 'pending',
+        ),
         rejectionReason: d['rejectionReason'] as String?,
         ratingAvg: _toDouble(d['ratingAvg']),
         ratingCount: (d['ratingCount'] as num?)?.toInt() ?? 0,
       );
     }
-    return MyProfile(profile: profile, requester: requester, volunteer: volunteer);
+    return MyProfile(
+      profile: profile,
+      requester: requester,
+      volunteer: volunteer,
+    );
   }
 
   static double _toDouble(Object? v) =>

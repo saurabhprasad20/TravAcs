@@ -12,7 +12,7 @@
 - **TravAcs** is an accessibility-first mobile app that pairs **visually-impaired Users** with
   **verified TravAcsers** (assistants) for **paid in-person travel assistance** (₹149/hr per TravAcser
   serving 1 traveller, ₹210/hr serving 2, + ₹100 travel per TravAcser; min 1-hour bill; see
-  [Billing](#firestore-data-model)). **Test phase: only ₹1 is collected at checkout.**
+  [Billing](#firestore-data-model)). Checkout collects the finalized real trip total.
 - **Stack:** Flutter (Dart) front end + **Firebase** back end (Phone-OTP Auth, Cloud Firestore,
   Cloud Functions, FCM, Crashlytics). Firebase project: **`travacs-dev`**, functions region
   **`asia-south2`**.
@@ -27,7 +27,7 @@
 1. Skim this file top-to-bottom, then [`docx/design_travacs.md`](docx/design_travacs.md) §0–§14.
 2. Regenerate the gitignored Firebase config (see [First-time setup](#a-first-time-setup-on-a-fresh-clone)) —
    the app **will not build** without `app/lib/firebase_options.dart`.
-3. `cd app; flutter pub get; flutter analyze; flutter test` — expect **101 passing tests**, analyzer clean.
+3. `cd app; flutter pub get; flutter analyze; flutter test` — expect **104 passing tests**, analyzer clean.
 4. Build + install on the connected phone (see [Build & run](#b-build--run-on-the-phone)).
 5. Before changing anything, read the [Golden Rules](#golden-rules-do-not-regress-these).
 
@@ -183,9 +183,9 @@ cancelTrip/completeTrip/markPaid/markReceived/submitRating) · `adminControllerP
 ### Firestore data model
 | Path | Written by | Key fields |
 |---|---|---|
-| `profiles/{uid}` | client (editable) + functions (protected) | role, fullName, gender?, dateOfBirth?, phone?, isActive, serviceArea, serviceCity, ratingAvg, ratingCount; **volunteer:** address?, verificationStatus, verifiedBy?, rejectionReason?; **requester:** homeLocationText? |
-| `requests/{id}` | client create; functions transition | requesterId, status, serviceArea, serviceCity, numTravellers, numTravAcsers, acceptedCount, genderPreference, scheduledDate, startTime, **scheduledStartAt** (schedule/billing anchor), expectedDurationMinutes, meetingPoint, destination, estimatedAmountInr, … |
-| `requests/{id}/assignments/{volunteerId}` | **functions only** | contact pair, denormalized summary (incl. genderPreference, scheduledStartAt), tripStatus (assigned/started/completed/closed/cancelled), startedAt/endedAt, durationMinutes, amountInr, paymentStatus, requesterPaidAt/travAcserReceivedAt, ratings |
+| `profiles/{uid}` | client (editable) + functions (protected) | role, fullName, agreement acceptance, optional temporary-ban state, service area, ratings; **volunteer:** address?, verificationStatus; **requester:** homeLocationText? |
+| `requests/{id}` | client create; functions transition | requesterId, status, schedule, trip details, estimate/final total, payment-review status/timestamps, Razorpay payment state |
+| `requests/{id}/assignments/{volunteerId}` | **functions only** | contact pair, trip state/timing, service and travel compensation, optional expense claim/receipt path, payment state, ratings |
 | `devices/{uid}/tokens/{token}` | client (self) | FCM tokens |
 | `ratings/{id}`, `trips/{id}` | (rules present; ratings are primarily stored on the assignment) | audit/future use |
 
@@ -212,6 +212,10 @@ TravAcser, who enters it, and `startTrip` records the flip). Scheduled functions
 | `acceptRequest` | onCall | FCFS slot fill in a transaction: must be approved+active TravAcser, request `broadcast` + same city + not full + not already accepted; creates the assignment (denormalizing genderPreference + scheduledStartAt); auto-transitions request to `assigned` when full. Rejects a second accepted trip on the same IST day. |
 | `startTrip` | onCall | **TravAcser-only**; after the TravAcser enters and validates the User's start code, flips `assigned`→`started` (guarded to on/after the scheduled time) and records `startedAt`; notifies the User. |
 | `completeTrip` | onCall | End a **started** trip — caller = TravAcser **or** requester; bills from the recorded `startedAt`; marks `completed`; marks the request completed when no active assignment remains. |
+| `submitTravelExpense` | onCall | TravAcser submits optional additional travel cost and guarded receipt path during the 90-minute post-trip review. |
+| `setTravelCompensation` / `finalizePaymentReview` | onCall | Admin adjusts a TravAcser's travel compensation and may make the trip payable before the review deadline. |
+| `finalizeExpiredPaymentReviews` | scheduled | Every five minutes, makes completed trips payable after their 90-minute review window. |
+| `setAccountBan` | onCall | Admin temporarily suspends or immediately restores a User or TravAcser account. |
 | `rescheduleTrip` | onCall | **Requester-only**, before start; validates a bounded future time; updates the request + all assignments' schedule and requires each TravAcser to re-confirm. |
 | `cancelTrip` | onCall | Either party. Requester → cancels the whole request + assignments. TravAcser → cancels their assignment, decrements `acceptedCount`, reopens the request to `broadcast`. |
 | `markPaid` / `markReceived` | onCall | Two-sided payment state machine (`pending`→`awaiting_other`→`confirmed`). `markPaid` is requester-only. |

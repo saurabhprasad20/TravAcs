@@ -18,12 +18,19 @@ service cloud.firestore {
     function profileData(uid) {
       return get(/databases/$(database)/documents/profiles/$(uid)).data;
     }
+    function isNotBanned() {
+      return isSignedIn()
+        && (!exists(/databases/$(database)/documents/profiles/$(request.auth.uid))
+            || profileData(request.auth.uid).get('bannedUntil', request.time)
+                 <= request.time);
+    }
     function isApprovedVolunteer() {
       return isSignedIn()
         && exists(/databases/$(database)/documents/profiles/$(request.auth.uid))
         && profileData(request.auth.uid).role == 'volunteer'
         && profileData(request.auth.uid).verificationStatus == 'approved'
-        && profileData(request.auth.uid).isActive == true;
+        && profileData(request.auth.uid).isActive == true
+        && isNotBanned();
     }
     // The caller's (TravAcser's) service city, or '' if unset.
     function myCity() {
@@ -41,6 +48,11 @@ service cloud.firestore {
       // server-managed fields must start at their initial values.
       allow create: if isSignedIn() && request.auth.uid == uid
         && request.resource.data.role in ['requester', 'volunteer']
+        && request.resource.data.agreementRole == request.resource.data.role
+        && request.resource.data.agreementVersion is string
+        && request.resource.data.agreementTypedName is string
+        && request.resource.data.agreementTypedName.size() > 0
+        && request.resource.data.agreementAcceptedAt == request.time
         && request.resource.data.ratingAvg == 0
         && request.resource.data.ratingCount == 0
         && (request.resource.data.role != 'volunteer'
@@ -59,14 +71,22 @@ service cloud.firestore {
         && request.resource.data.get('verificationStatus', 'pending')
              == resource.data.get('verificationStatus', 'pending')
         && request.resource.data.get('rejectionReason', '')
-             == resource.data.get('rejectionReason', '');
+             == resource.data.get('rejectionReason', '')
+        && request.resource.data.get('agreementRole', '')
+             == resource.data.get('agreementRole', '')
+        && request.resource.data.get('agreementVersion', '')
+             == resource.data.get('agreementVersion', '')
+        && request.resource.data.get('agreementTypedName', '')
+             == resource.data.get('agreementTypedName', '')
+        && request.resource.data.get('agreementAcceptedAt', null)
+             == resource.data.get('agreementAcceptedAt', null);
 
       allow delete: if false;
     }
 
     // ---- requests ---------------------------------------------------------
     match /requests/{requestId} {
-      allow read: if isSignedIn() && (
+      allow read: if isSignedIn() && isNotBanned() && (
         resource.data.requesterId == request.auth.uid
         || resource.data.volunteerId == request.auth.uid
         // Region-scoped: an approved TravAcser sees open requests only in their
@@ -83,7 +103,7 @@ service cloud.firestore {
         || isAdmin()
       );
 
-      allow create: if isSignedIn()
+      allow create: if isSignedIn() && isNotBanned()
         && request.resource.data.requesterId == request.auth.uid
         && request.resource.data.status in ['draft', 'broadcast']
         && request.resource.data.volunteerId == null
@@ -125,7 +145,8 @@ service cloud.firestore {
       // (Admin SDK), never by clients. The update may ONLY flip status to
       // 'cancelled' (plus updatedAt) — it must not touch ownership, amounts,
       // payment fields, or any other data in the same write.
-      allow update: if resource.data.requesterId == request.auth.uid
+      allow update: if isNotBanned()
+        && resource.data.requesterId == request.auth.uid
         && resource.data.status in ['draft', 'broadcast']
         && resource.data.get('acceptedCount', 0) == 0
         && request.resource.data.status == 'cancelled'
@@ -139,7 +160,7 @@ service cloud.firestore {
       // direct-path reads). Collection-group reads are covered by the
       // top-level rule below.
       match /assignments/{vid} {
-        allow read: if isSignedIn() && (
+        allow read: if isSignedIn() && isNotBanned() && (
           vid == request.auth.uid
           || requestData(requestId).requesterId == request.auth.uid
           || isAdmin()
@@ -154,7 +175,7 @@ service cloud.firestore {
     // the query filters on (`volunteerId` / `requesterId`) — during a list the
     // path wildcard `vid` is null, so a doc-id check would error.
     match /{path=**}/assignments/{vid} {
-      allow read: if isSignedIn()
+      allow read: if isSignedIn() && isNotBanned()
         && (resource.data.volunteerId == request.auth.uid
             || resource.data.requesterId == request.auth.uid);
       allow write: if false;
@@ -162,7 +183,7 @@ service cloud.firestore {
 
     // ---- trips (id == requestId) -----------------------------------------
     match /trips/{requestId} {
-      allow read: if isSignedIn() && (
+      allow read: if isSignedIn() && isNotBanned() && (
         requestData(requestId).requesterId == request.auth.uid
         || requestData(requestId).volunteerId == request.auth.uid
         || isAdmin()
@@ -176,7 +197,7 @@ service cloud.firestore {
     // the ratee's profile aggregate); clients never create them directly, so a
     // spammed/forged rating can't inflate a rating average.
     match /ratings/{ratingId} {
-      allow read: if isSignedIn() && (
+      allow read: if isSignedIn() && isNotBanned() && (
         resource.data.raterId == request.auth.uid
         || resource.data.rateeId == request.auth.uid
         || isAdmin()
@@ -193,7 +214,8 @@ service cloud.firestore {
 
     // ---- devices (FCM tokens) --------------------------------------------
     match /devices/{uid}/tokens/{token} {
-      allow read, write: if isSignedIn() && request.auth.uid == uid;
+      allow read, write: if isSignedIn() && isNotBanned()
+        && request.auth.uid == uid;
     }
   }
 }

@@ -1,6 +1,7 @@
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:firebase_auth_mocks/firebase_auth_mocks.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:travacs/core/error/failure.dart';
@@ -12,9 +13,12 @@ import 'package:travacs/domain/entities/enums.dart';
 
 class _MockFunctions extends Mock implements FirebaseFunctions {}
 
+class _MockStorage extends Mock implements FirebaseStorage {}
+
 class _MockCallable extends Mock implements HttpsCallable {}
 
-class _FakeCallableResult extends Fake implements HttpsCallableResult<dynamic> {}
+class _FakeCallableResult extends Fake
+    implements HttpsCallableResult<dynamic> {}
 
 /// Repository unit tests (M10a) using in-memory fakes — no network, no
 /// emulator. Locks down write shapes, query filters, and the
@@ -43,35 +47,44 @@ void main() {
     test('not signed in -> AuthFailure (does not throw)', () async {
       final signedOut = FirestoreProfileRepository(db, MockFirebaseAuth());
       final r = await signedOut.getMyProfile();
-      r.fold((f) => expect(f, isA<AuthFailure>()), (_) => fail('expected Left'));
-    });
-
-    test('saveProfile creates a volunteer with server-managed defaults',
-        () async {
-      final saved = await repo.saveProfile(
-        role: UserRole.volunteer,
-        fullName: 'Asha',
-        state: Region.delhiNcr,
-        city: city,
-        address: 'Some address',
+      r.fold(
+        (f) => expect(f, isA<AuthFailure>()),
+        (_) => fail('expected Left'),
       );
-      expect(saved.isRight(), isTrue);
-
-      final doc = (await db.collection('profiles').doc('u1').get()).data()!;
-      expect(doc['role'], 'volunteer');
-      expect(doc['verificationStatus'], 'pending');
-      expect(doc['isActive'], true);
-      expect(doc['ratingAvg'], 0);
-
-      final me = (await repo.getMyProfile()).getOrElse((_) => throw 'left')!;
-      expect(me.profile.isVolunteer, isTrue);
-      expect(me.volunteer!.isApproved, isFalse);
     });
+
+    test(
+      'saveProfile creates a volunteer with server-managed defaults',
+      () async {
+        final saved = await repo.saveProfile(
+          role: UserRole.volunteer,
+          fullName: 'Asha',
+          agreementVersion: '2026-08-06',
+          agreementTypedName: 'ASHA',
+          state: Region.delhiNcr,
+          city: city,
+          address: 'Some address',
+        );
+        expect(saved.isRight(), isTrue);
+
+        final doc = (await db.collection('profiles').doc('u1').get()).data()!;
+        expect(doc['role'], 'volunteer');
+        expect(doc['verificationStatus'], 'pending');
+        expect(doc['isActive'], true);
+        expect(doc['ratingAvg'], 0);
+
+        final me = (await repo.getMyProfile()).getOrElse((_) => throw 'left')!;
+        expect(me.profile.isVolunteer, isTrue);
+        expect(me.volunteer!.isApproved, isFalse);
+      },
+    );
 
     test('saveProfile update cannot flip role or reset verification', () async {
       await repo.saveProfile(
         role: UserRole.volunteer,
         fullName: 'Asha',
+        agreementVersion: '2026-08-06',
+        agreementTypedName: 'ASHA',
         state: Region.delhiNcr,
         city: city,
         address: 'A',
@@ -80,6 +93,8 @@ void main() {
       await repo.saveProfile(
         role: UserRole.requester,
         fullName: 'Asha Rao',
+        agreementVersion: '2026-08-06',
+        agreementTypedName: 'ASHA RAO',
         state: Region.delhiNcr,
         city: city,
         homeLocationText: 'Home',
@@ -95,6 +110,8 @@ void main() {
       await repo.saveProfile(
         role: UserRole.volunteer,
         fullName: 'Asha',
+        agreementVersion: '2026-08-06',
+        agreementTypedName: 'ASHA',
         state: Region.delhiNcr,
         city: city,
         address: 'A',
@@ -109,6 +126,7 @@ void main() {
     late FakeFirebaseFirestore db;
     late MockFirebaseAuth auth;
     late _MockFunctions functions;
+    late _MockStorage storage;
     late FirestoreRequestRepository repo;
 
     setUpAll(() => registerFallbackValue(<String, dynamic>{}));
@@ -117,7 +135,8 @@ void main() {
       db = FakeFirebaseFirestore();
       auth = MockFirebaseAuth(signedIn: true, mockUser: MockUser(uid: 'u1'));
       functions = _MockFunctions();
-      repo = FirestoreRequestRepository(db, auth, functions);
+      storage = _MockStorage();
+      repo = FirestoreRequestRepository(db, auth, functions, storage);
     });
 
     Future<String> createSample({City? inCity, String requester = 'u1'}) async {
@@ -125,6 +144,7 @@ void main() {
         db,
         MockFirebaseAuth(signedIn: true, mockUser: MockUser(uid: requester)),
         functions,
+        storage,
       ).createRequest(
         serviceState: Region.delhiNcr,
         serviceCity: inCity ?? city,
@@ -148,7 +168,10 @@ void main() {
       expect(doc['acceptedCount'], 0);
       expect(doc['volunteerId'], isNull);
       expect(doc['serviceCity'], 'delhi_ncr');
-      expect(doc['estimatedAmountInr'], 520); // 2 travellers/1 TravAcser 2h: 2×₹210 + ₹100 travel
+      expect(
+        doc['estimatedAmountInr'],
+        520,
+      ); // 2 travellers/1 TravAcser 2h: 2×₹210 + ₹100 travel
       expect(doc['genderPreference'], 'prefer_same_gender');
       expect(doc['scheduledStartAt'], isNotNull); // auto-start anchor
     });
@@ -161,41 +184,47 @@ void main() {
       expect(list.single.requesterId, 'u1');
     });
 
-    test('watchAvailableRequests filters by city and broadcast status',
-        () async {
-      final here = await createSample(inCity: city);
-      await createSample(inCity: otherCity);
-      // Cancel one in-city request: it must drop out of "available".
-      final extra = await createSample(inCity: city);
-      await repo.cancelRequest(extra);
+    test(
+      'watchAvailableRequests filters by city and broadcast status',
+      () async {
+        final here = await createSample(inCity: city);
+        await createSample(inCity: otherCity);
+        // Cancel one in-city request: it must drop out of "available".
+        final extra = await createSample(inCity: city);
+        await repo.cancelRequest(extra);
 
-      final list = await repo.watchAvailableRequests(city).first;
-      expect(list.map((r) => r.id), contains(here));
-      expect(list.every((r) => r.serviceCity == city), isTrue);
-      expect(list.any((r) => r.id == extra), isFalse); // cancelled
-    });
+        final list = await repo.watchAvailableRequests(city).first;
+        expect(list.map((r) => r.id), contains(here));
+        expect(list.every((r) => r.serviceCity == city), isTrue);
+        expect(list.any((r) => r.id == extra), isFalse); // cancelled
+      },
+    );
 
     test('acceptRequest returns Right when the callable succeeds', () async {
       final callable = _MockCallable();
       when(() => functions.httpsCallable('acceptRequest')).thenReturn(callable);
-      when(() => callable.call<dynamic>(any()))
-          .thenAnswer((_) async => _FakeCallableResult());
+      when(
+        () => callable.call<dynamic>(any()),
+      ).thenAnswer((_) async => _FakeCallableResult());
 
       final r = await repo.acceptRequest('req1');
       expect(r.isRight(), isTrue);
       verify(() => callable.call<dynamic>({'requestId': 'req1'})).called(1);
     });
 
-    test('acceptRequest maps a thrown error to a Failure (never rethrows)',
-        () async {
-      final callable = _MockCallable();
-      when(() => functions.httpsCallable('acceptRequest')).thenReturn(callable);
-      when(() => callable.call<dynamic>(any()))
-          .thenThrow(Exception('boom'));
+    test(
+      'acceptRequest maps a thrown error to a Failure (never rethrows)',
+      () async {
+        final callable = _MockCallable();
+        when(
+          () => functions.httpsCallable('acceptRequest'),
+        ).thenReturn(callable);
+        when(() => callable.call<dynamic>(any())).thenThrow(Exception('boom'));
 
-      final r = await repo.acceptRequest('req1');
-      r.fold((f) => expect(f, isA<Failure>()), (_) => fail('expected Left'));
-    });
+        final r = await repo.acceptRequest('req1');
+        r.fold((f) => expect(f, isA<Failure>()), (_) => fail('expected Left'));
+      },
+    );
   });
 
   group('FirebaseAuthRepository', () {
@@ -206,13 +235,16 @@ void main() {
 
     test('currentUserId reflects the signed-in user', () {
       final repo = FirebaseAuthRepository(
-          MockFirebaseAuth(signedIn: true, mockUser: MockUser(uid: 'u9')));
+        MockFirebaseAuth(signedIn: true, mockUser: MockUser(uid: 'u9')),
+      );
       expect(repo.currentUserId, 'u9');
     });
 
     test('signOut clears the session', () async {
-      final auth =
-          MockFirebaseAuth(signedIn: true, mockUser: MockUser(uid: 'u9'));
+      final auth = MockFirebaseAuth(
+        signedIn: true,
+        mockUser: MockUser(uid: 'u9'),
+      );
       final repo = FirebaseAuthRepository(auth);
       final r = await repo.signOut();
       expect(r.isRight(), isTrue);

@@ -1,4 +1,5 @@
 import 'package:fpdart/fpdart.dart';
+import 'dart:typed_data';
 
 import '../../core/error/result.dart';
 import '../entities/assignment.dart';
@@ -44,6 +45,9 @@ abstract interface class RequestRepository {
   /// admins.
   Stream<List<Request>> watchActiveTrips();
 
+  /// Completed trips whose final payment amount is in the review window.
+  Stream<List<Request>> watchPaymentReviews();
+
   /// Requester cancels their own request before anyone has accepted.
   FutureResult<Unit> cancelRequest(String id);
 
@@ -85,6 +89,19 @@ abstract interface class RequestRepository {
   /// Flips the assignment to `started` ("In progress"). TravAcser-only, and only
   /// once the scheduled time has arrived.
   FutureResult<Unit> startTrip(String requestId, String volunteerId);
+
+  /// Submits an optional additional travel-cost claim and receipt path.
+  FutureResult<Unit> submitTravelExpense({
+    required String requestId,
+    required int additionalTravelCostInr,
+    String? receiptPath,
+  });
+
+  FutureResult<String> uploadTravelReceipt({
+    required String requestId,
+    required Uint8List bytes,
+    required String contentType,
+  });
 
   /// Creates a Razorpay order for the WHOLE trip's total (requester only). The
   /// client opens the checkout with the returned order + key id, and the User

@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/accessibility/announce.dart';
 import '../../../core/error/failure.dart';
+import '../../../core/legal/legal_documents.dart';
 import '../../../domain/entities/city.dart';
 import '../../../domain/entities/enums.dart';
 import '../../providers/core_providers.dart';
+import 'agreement_dialog.dart';
 import 'profile_controller.dart';
 
 /// One-time registration after first phone-OTP sign-in (design §7, §10).
@@ -20,8 +22,7 @@ class CompleteProfileScreen extends ConsumerStatefulWidget {
       _CompleteProfileScreenState();
 }
 
-class _CompleteProfileScreenState
-    extends ConsumerState<CompleteProfileScreen> {
+class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _addressController = TextEditingController();
@@ -32,6 +33,14 @@ class _CompleteProfileScreenState
   City? _serviceCity;
   Gender? _gender;
   DateTime? _dob;
+  AgreementAcceptance? _agreement;
+  bool _agreementDialogOpen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _reviewAgreement());
+  }
 
   @override
   void dispose() {
@@ -55,32 +64,42 @@ class _CompleteProfileScreenState
 
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+    final agreement = _agreement;
+    if (agreement == null) {
+      await _reviewAgreement();
+      return;
+    }
 
     // Firebase stores the verified number; prefill it on the profile.
     final phone = ref.read(firebaseAuthProvider).currentUser?.phoneNumber;
 
-    final ok = await ref.read(profileControllerProvider.notifier).save(
+    final ok = await ref
+        .read(profileControllerProvider.notifier)
+        .save(
           role: _role,
           fullName: _nameController.text.trim(),
+          agreementVersion: LegalDocuments.agreementVersion,
+          agreementTypedName: agreement.typedName,
           serviceState: _serviceState!,
           serviceCity: _serviceCity!,
           gender: _gender,
           dateOfBirth: _dob,
           phone: phone,
-          address: _role == UserRole.volunteer
-              ? _addressController.text.trim()
-              : null,
-          homeLocationText: _role == UserRole.requester
-              ? _homeLocationController.text.trim()
-              : null,
+          address:
+              _role == UserRole.volunteer
+                  ? _addressController.text.trim()
+                  : null,
+          homeLocationText:
+              _role == UserRole.requester
+                  ? _homeLocationController.text.trim()
+                  : null,
         );
     if (!mounted) return;
 
     if (ok) {
       A11y.announce(context, 'Profile created. Welcome to TravAcs.');
     } else {
-      final message =
-          failureMessage(ref.read(profileControllerProvider).error);
+      final message = failureMessage(ref.read(profileControllerProvider).error);
       A11y.announce(context, message);
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
@@ -88,13 +107,27 @@ class _CompleteProfileScreenState
     }
   }
 
+  Future<void> _reviewAgreement() async {
+    if (_agreementDialogOpen || !mounted) return;
+    _agreementDialogOpen = true;
+    final result = await showAgreementDialog(context, initialRole: _role);
+    if (!mounted) return;
+    setState(() {
+      _agreement = result;
+      _role = result.role;
+      _nameController.text = result.typedName;
+      _agreementDialogOpen = false;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final isLoading = ref.watch(profileControllerProvider).isLoading;
-    final dobLabel = _dob == null
-        ? 'Not set'
-        : '${_dob!.year}-${_dob!.month.toString().padLeft(2, '0')}-'
-            '${_dob!.day.toString().padLeft(2, '0')}';
+    final dobLabel =
+        _dob == null
+            ? 'Not set'
+            : '${_dob!.year}-${_dob!.month.toString().padLeft(2, '0')}-'
+                '${_dob!.day.toString().padLeft(2, '0')}';
 
     return Scaffold(
       appBar: AppBar(title: const Text('Complete your profile')),
@@ -108,8 +141,10 @@ class _CompleteProfileScreenState
               children: [
                 Semantics(
                   header: true,
-                  child: Text('I am a',
-                      style: Theme.of(context).textTheme.titleMedium),
+                  child: Text(
+                    'I am a',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Semantics(
@@ -128,7 +163,10 @@ class _CompleteProfileScreenState
                       ),
                     ],
                     selected: {_role},
-                    onSelectionChanged: (s) => setState(() => _role = s.first),
+                    onSelectionChanged: (s) async {
+                      setState(() => _role = s.first);
+                      await _reviewAgreement();
+                    },
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -141,29 +179,45 @@ class _CompleteProfileScreenState
                 const SizedBox(height: 20),
                 TextFormField(
                   controller: _nameController,
-                  textCapitalization: TextCapitalization.words,
-                  decoration: const InputDecoration(labelText: 'Full name'),
-                  validator: (v) => (v == null || v.trim().isEmpty)
-                      ? 'Please enter your name'
-                      : null,
+                  readOnly: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Confirmed full name',
+                    helperText: 'Change this name by reviewing the agreement.',
+                  ),
+                  validator:
+                      (v) =>
+                          (v == null || v.trim().isEmpty)
+                              ? 'Please enter your name'
+                              : null,
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: _reviewAgreement,
+                    child: const Text('Review or change agreement'),
+                  ),
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<Region>(
                   value: _serviceState,
                   isExpanded: true,
                   decoration: const InputDecoration(labelText: 'State'),
-                  items: Region.options
-                      .map((r) => DropdownMenuItem(
-                            value: r,
-                            child: Text(r.label),
-                          ))
-                      .toList(),
-                  onChanged: (r) => setState(() {
-                    _serviceState = r;
-                    _serviceCity = null; // reset dependent city
-                  }),
-                  validator: (r) =>
-                      r == null ? 'Please select your state' : null,
+                  items:
+                      Region.options
+                          .map(
+                            (r) => DropdownMenuItem(
+                              value: r,
+                              child: Text(r.label),
+                            ),
+                          )
+                          .toList(),
+                  onChanged:
+                      (r) => setState(() {
+                        _serviceState = r;
+                        _serviceCity = null; // reset dependent city
+                      }),
+                  validator:
+                      (r) => r == null ? 'Please select your state' : null,
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<City>(
@@ -173,32 +227,40 @@ class _CompleteProfileScreenState
                     labelText: 'City',
                     helperText: 'You are matched with people in this city.',
                   ),
-                  items: (_serviceState == null
-                          ? const <City>[]
-                          : City.forState(_serviceState!))
-                      .map((c) => DropdownMenuItem(
-                            value: c,
-                            child: Text(c.label),
-                          ))
-                      .toList(),
-                  onChanged: _serviceState == null
-                      ? null
-                      : (c) => setState(() => _serviceCity = c),
-                  validator: (c) =>
-                      c == null ? 'Please select your city' : null,
+                  items:
+                      (_serviceState == null
+                              ? const <City>[]
+                              : City.forState(_serviceState!))
+                          .map(
+                            (c) => DropdownMenuItem(
+                              value: c,
+                              child: Text(c.label),
+                            ),
+                          )
+                          .toList(),
+                  onChanged:
+                      _serviceState == null
+                          ? null
+                          : (c) => setState(() => _serviceCity = c),
+                  validator:
+                      (c) => c == null ? 'Please select your city' : null,
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<Gender>(
                   value: _gender,
                   decoration: const InputDecoration(labelText: 'Gender'),
-                  items: Gender.values
-                      .map((g) => DropdownMenuItem(
-                            value: g,
-                            child: Text(g.label),
-                          ))
-                      .toList(),
+                  items:
+                      Gender.values
+                          .map(
+                            (g) => DropdownMenuItem(
+                              value: g,
+                              child: Text(g.label),
+                            ),
+                          )
+                          .toList(),
                   onChanged: (g) => setState(() => _gender = g),
-                  validator: (g) => g == null ? 'Please select your gender' : null,
+                  validator:
+                      (g) => g == null ? 'Please select your gender' : null,
                 ),
                 const SizedBox(height: 16),
                 Semantics(
@@ -220,9 +282,11 @@ class _CompleteProfileScreenState
                     textCapitalization: TextCapitalization.words,
                     maxLines: 2,
                     decoration: const InputDecoration(labelText: 'Address'),
-                    validator: (v) => (v == null || v.trim().isEmpty)
-                        ? 'Please enter your address'
-                        : null,
+                    validator:
+                        (v) =>
+                            (v == null || v.trim().isEmpty)
+                                ? 'Please enter your address'
+                                : null,
                   )
                 else
                   TextFormField(
@@ -234,14 +298,15 @@ class _CompleteProfileScreenState
                   ),
                 const SizedBox(height: 28),
                 FilledButton(
-                  onPressed: isLoading ? null : _submit,
-                  child: isLoading
-                      ? const SizedBox(
-                          height: 22,
-                          width: 22,
-                          child: CircularProgressIndicator(strokeWidth: 2.5),
-                        )
-                      : const Text('Create profile'),
+                  onPressed: isLoading || _agreement == null ? null : _submit,
+                  child:
+                      isLoading
+                          ? const SizedBox(
+                            height: 22,
+                            width: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2.5),
+                          )
+                          : const Text('Create profile'),
                 ),
               ],
             ),

@@ -31,13 +31,8 @@ const RATE_SOLO_INR = 149;
 const RATE_PAIR_INR = 210;
 /** Flat travel cost (INR) charged PER TravAcser (× number of TravAcsers). */
 const TRAVEL_COST_INR = 100;
-/**
- * TEST-PHASE payment override: the amount actually collected at checkout is
- * forced to this (₹1) so no real money moves during testing. The real computed
- * `amountInr` is still stored on the assignment (History/estimates stay real).
- * Remove this override to bill the real amount.
- */
-const TEST_BILL_INR = 1;
+/** Time after trip completion for expense submission and admin review. */
+const PAYMENT_REVIEW_MS = 90 * 60 * 1000;
 
 /**
  * Billed hours for `minutes` under the company rounding rule: minimum 1 hour,
@@ -75,6 +70,18 @@ function istDateKey(
   if (!ts) return null;
   const d = new Date(ts.toMillis() + IST_OFFSET_MS);
   return `${d.getUTCFullYear()}-${d.getUTCMonth() + 1}-${d.getUTCDate()}`;
+}
+
+async function assertNotBanned(uid: string): Promise<void> {
+  const profile = (await db.collection("profiles").doc(uid).get()).data();
+  const until = profile?.bannedUntil as FirebaseFirestore.Timestamp | undefined;
+  if (until && until.toMillis() > Date.now()) {
+    throw new HttpsError(
+      "permission-denied",
+      "Your account is temporarily suspended.",
+      {code: "ACCOUNT_BANNED"}
+    );
+  }
 }
 
 /** Max tokens per sendEachForMulticast call (Admin SDK hard limit). */
@@ -237,6 +244,7 @@ export const onRequestCreated = onDocumentCreated(
 export const acceptRequest = onCall({region: REGION}, async (req) => {
   const uid = req.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Please sign in.");
+  await assertNotBanned(uid);
   const requestId: string | undefined = req.data?.requestId;
   if (!requestId) {
     throw new HttpsError("invalid-argument", "requestId is required.");
@@ -402,6 +410,7 @@ export const acceptRequest = onCall({region: REGION}, async (req) => {
 export const startTrip = onCall({region: REGION}, async (req) => {
   const uid = req.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Please sign in.");
+  await assertNotBanned(uid);
   const {requestId, volunteerId} = req.data ?? {};
   if (!requestId || !volunteerId) {
     throw new HttpsError("invalid-argument", "requestId and volunteerId are required.");
@@ -471,6 +480,7 @@ export const startTrip = onCall({region: REGION}, async (req) => {
 export const completeTrip = onCall({region: REGION}, async (req) => {
   const uid = req.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Please sign in.");
+  await assertNotBanned(uid);
   const requestId: string | undefined = req.data?.requestId;
   const volunteerId: string | undefined = req.data?.volunteerId;
   if (!requestId || !volunteerId) {
@@ -542,6 +552,8 @@ export const completeTrip = onCall({region: REGION}, async (req) => {
         travelCostInr: TRAVEL_COST_INR,
         amountInr,
         paymentStatus: "pending",
+        paymentReviewEndsAt: Timestamp.fromMillis(nowMs + PAYMENT_REVIEW_MS),
+        expenseClaimStatus: "not_submitted",
       });
       notifyVolunteerIds.push(d.id);
     });
@@ -560,6 +572,9 @@ export const completeTrip = onCall({region: REGION}, async (req) => {
       status: "completed",
       tripAmountInr: tripTotalInr,
       paymentStatus: "pending",
+      paymentReviewStatus: "pending",
+      paymentReviewStartedAt: FieldValue.serverTimestamp(),
+      paymentReviewEndsAt: Timestamp.fromMillis(nowMs + PAYMENT_REVIEW_MS),
       updatedAt: FieldValue.serverTimestamp(),
     });
     return {requesterId: r.requesterId, notifyVolunteerIds, billedCount: started.length};
@@ -587,6 +602,7 @@ export const completeTrip = onCall({region: REGION}, async (req) => {
 export const rescheduleTrip = onCall({region: REGION}, async (req) => {
   const uid = req.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Please sign in.");
+  await assertNotBanned(uid);
   const {requestId, scheduledDateMs, startTime, scheduledStartAtMs} = req.data ?? {};
   if (
     !requestId ||
@@ -694,6 +710,7 @@ export const rescheduleTrip = onCall({region: REGION}, async (req) => {
 export const respondReschedule = onCall({region: REGION}, async (req) => {
   const uid = req.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Please sign in.");
+  await assertNotBanned(uid);
   const {requestId, accept} = req.data ?? {};
   if (!requestId || typeof accept !== "boolean") {
     throw new HttpsError("invalid-argument", "requestId and accept (bool) required.");
@@ -756,6 +773,7 @@ export const respondReschedule = onCall({region: REGION}, async (req) => {
 export const cancelTrip = onCall({region: REGION}, async (req) => {
   const uid = req.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Please sign in.");
+  await assertNotBanned(uid);
   const {requestId} = req.data ?? {};
   if (!requestId) throw new HttpsError("invalid-argument", "requestId required.");
 
@@ -826,6 +844,147 @@ export const cancelTrip = onCall({region: REGION}, async (req) => {
   return {ok: true, code: "CANCELLED"};
 });
 
+/**
+ * A completed-trip TravAcser submits an optional additional travel-cost claim
+ * during the 90-minute review window. Receipt upload happens directly to the
+ * guarded Storage path; this callable records only the validated path.
+ */
+export const submitTravelExpense = onCall({region: REGION}, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Please sign in.");
+  await assertNotBanned(uid);
+  const {requestId, additionalTravelCostInr, receiptPath} = req.data ?? {};
+  if (
+    typeof requestId !== "string" ||
+    !Number.isInteger(additionalTravelCostInr) ||
+    additionalTravelCostInr < 0 ||
+    additionalTravelCostInr > 10000 ||
+    (receiptPath != null &&
+      (typeof receiptPath !== "string" ||
+        !receiptPath.startsWith(`payment-receipts/${requestId}/${uid}/`)))
+  ) {
+    throw new HttpsError("invalid-argument", "Invalid travel expense request.");
+  }
+  const reqRef = db.collection("requests").doc(requestId);
+  const assignRef = reqRef.collection("assignments").doc(uid);
+  await db.runTransaction(async (tx) => {
+    const r = (await tx.get(reqRef)).data();
+    const a = (await tx.get(assignRef)).data();
+    if (!r || !a) throw new HttpsError("not-found", "Completed trip not found.");
+    if (a.volunteerId !== uid || a.tripStatus !== "completed") {
+      throw new HttpsError("permission-denied", "This is not your completed trip.");
+    }
+    const reviewEndsAt = r.paymentReviewEndsAt as Timestamp | undefined;
+    if (
+      r.paymentReviewStatus !== "pending" ||
+      !reviewEndsAt ||
+      Date.now() >= reviewEndsAt.toMillis()
+    ) {
+      throw new HttpsError(
+        "failed-precondition",
+        "The travel expense review window has closed.",
+        {code: "REVIEW_CLOSED"}
+      );
+    }
+    tx.update(assignRef, {
+      additionalTravelCostClaimedInr: additionalTravelCostInr,
+      receiptStoragePath: receiptPath ?? FieldValue.delete(),
+      expenseClaimStatus: "submitted",
+      expenseSubmittedAt: FieldValue.serverTimestamp(),
+    });
+  });
+  return {ok: true, code: "EXPENSE_SUBMITTED"};
+});
+
+/** Admin adjusts one TravAcser's travel compensation during review. */
+export const setTravelCompensation = onCall({region: REGION}, async (req) => {
+  if (req.auth?.token?.admin !== true) {
+    throw new HttpsError("permission-denied", "Admin only.");
+  }
+  const {requestId, volunteerId, travelCostInr} = req.data ?? {};
+  if (
+    typeof requestId !== "string" ||
+    typeof volunteerId !== "string" ||
+    !Number.isInteger(travelCostInr) ||
+    travelCostInr < 0 ||
+    travelCostInr > 20000
+  ) {
+    throw new HttpsError("invalid-argument", "Invalid travel compensation.");
+  }
+  const reqRef = db.collection("requests").doc(requestId);
+  const assignRef = reqRef.collection("assignments").doc(volunteerId);
+  await db.runTransaction(async (tx) => {
+    const r = (await tx.get(reqRef)).data();
+    const a = (await tx.get(assignRef)).data();
+    if (!r || !a || a.tripStatus !== "completed") {
+      throw new HttpsError("not-found", "Completed trip not found.");
+    }
+    const reviewEndsAt = r.paymentReviewEndsAt as Timestamp | undefined;
+    if (
+      r.requesterPaidAt ||
+      r.paymentReviewStatus !== "pending" ||
+      !reviewEndsAt ||
+      Date.now() >= reviewEndsAt.toMillis()
+    ) {
+      throw new HttpsError(
+        "failed-precondition",
+        "This payment review is already closed.",
+        {code: "REVIEW_CLOSED"}
+      );
+    }
+    const oldTravel: number = a.travelCostInr ?? TRAVEL_COST_INR;
+    const service: number = a.serviceChargeInr ??
+      Math.max(0, (a.amountInr ?? 0) - oldTravel);
+    const delta = travelCostInr - oldTravel;
+    tx.update(assignRef, {
+      travelCostInr,
+      amountInr: service + travelCostInr,
+      approvedByAdmin: req.auth!.uid,
+      expenseClaimStatus: "reviewed",
+      expenseReviewedAt: FieldValue.serverTimestamp(),
+    });
+    tx.update(reqRef, {
+      tripAmountInr: Math.max(0, (r.tripAmountInr ?? 0) + delta),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+  return {ok: true, code: "COMPENSATION_UPDATED"};
+});
+
+/** Admin closes review early; otherwise the scheduler closes it at 90 minutes. */
+export const finalizePaymentReview = onCall({region: REGION}, async (req) => {
+  if (req.auth?.token?.admin !== true) {
+    throw new HttpsError("permission-denied", "Admin only.");
+  }
+  const {requestId} = req.data ?? {};
+  if (typeof requestId !== "string") {
+    throw new HttpsError("invalid-argument", "requestId is required.");
+  }
+  const ref = db.collection("requests").doc(requestId);
+  await db.runTransaction(async (tx) => {
+    const r = (await tx.get(ref)).data();
+    if (!r) throw new HttpsError("not-found", "Trip not found.");
+    if (r.requesterPaidAt) {
+      throw new HttpsError("failed-precondition", "This trip is already paid.");
+    }
+    if (r.paymentReviewStatus === "ready") return;
+    if (r.status !== "completed" || r.paymentReviewStatus !== "pending") {
+      throw new HttpsError(
+        "failed-precondition",
+        "This trip is not awaiting payment review.",
+        {code: "INVALID_STATE"}
+      );
+    }
+    tx.update(ref, {
+      paymentReviewStatus: "ready",
+      paymentReviewFinalizedAt: FieldValue.serverTimestamp(),
+      paymentReviewFinalizedBy: req.auth!.uid,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+  return {ok: true, code: "PAYMENT_READY"};
+});
+
 
 /**
  * Creates a Razorpay order for the WHOLE trip's total (all TravAcsers) and
@@ -839,31 +998,52 @@ export const createRazorpayOrder = onCall(
   async (req) => {
     const uid = req.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Please sign in.");
+    await assertNotBanned(uid);
     const {requestId} = req.data ?? {};
     if (!requestId) {
       throw new HttpsError("invalid-argument", "requestId required.");
     }
     const reqRef = db.collection("requests").doc(requestId);
-    const reqSnap = await reqRef.get();
-    const r = reqSnap.data();
-    if (!r) throw new HttpsError("not-found", "Trip not found.");
-    if (r.requesterId !== uid) {
-      throw new HttpsError("permission-denied", "Only the User can pay.");
-    }
-    if (r.status !== "completed") {
-      throw new HttpsError("failed-precondition", "The trip is not completed yet.", {code: "INVALID_STATE"});
-    }
-    if (r.requesterPaidAt) {
-      throw new HttpsError("failed-precondition", "This trip is already paid.", {code: "ALREADY_PAID"});
-    }
+    // Atomically close an expired review and lock in its current amount. Once
+    // ready, compensation edits are rejected, so the total cannot change while
+    // the matching Razorpay order is being created.
+    const r = await db.runTransaction(async (tx) => {
+      const current = (await tx.get(reqRef)).data();
+      if (!current) throw new HttpsError("not-found", "Trip not found.");
+      if (current.requesterId !== uid) {
+        throw new HttpsError("permission-denied", "Only the User can pay.");
+      }
+      if (current.status !== "completed") {
+        throw new HttpsError("failed-precondition", "The trip is not completed yet.", {code: "INVALID_STATE"});
+      }
+      if (current.requesterPaidAt) {
+        throw new HttpsError("failed-precondition", "This trip is already paid.", {code: "ALREADY_PAID"});
+      }
+      const reviewEndsAt =
+        current.paymentReviewEndsAt as Timestamp | undefined;
+      const reviewExpired =
+        reviewEndsAt != null && Date.now() >= reviewEndsAt.toMillis();
+      if (current.paymentReviewStatus !== "ready" && !reviewExpired) {
+        throw new HttpsError(
+          "failed-precondition",
+          "The payment amount is still under review.",
+          {code: "PAYMENT_REVIEW_PENDING"}
+        );
+      }
+      if (reviewExpired && current.paymentReviewStatus !== "ready") {
+        tx.update(reqRef, {
+          paymentReviewStatus: "ready",
+          paymentReviewFinalizedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
+      return current;
+    });
     const amountInr: number = r.tripAmountInr ?? 0;
     if (amountInr <= 0) {
       throw new HttpsError("failed-precondition", "There is nothing to pay for this trip.", {code: "NO_AMOUNT"});
     }
-    // TEST PHASE: collect a token ₹1 at checkout instead of the real trip total.
-    // The real `tripAmountInr` stays on the request (History/estimates unchanged);
-    // only the Razorpay order + the amount shown at checkout are overridden.
-    const billedInr = TEST_BILL_INR;
+    const billedInr = amountInr;
     const keyId = RAZORPAY_KEY_ID.value();
     // Idempotent: reuse a previously-created order for this still-unpaid trip
     // rather than minting (and overwriting the stored id with) a new one — a
@@ -913,6 +1093,16 @@ export const createRazorpayOrder = onCall(
         throw new HttpsError("failed-precondition", "This trip is already paid.", {code: "ALREADY_PAID"});
       }
       if (
+        cur.paymentReviewStatus !== "ready" ||
+        cur.tripAmountInr !== billedInr
+      ) {
+        throw new HttpsError(
+          "failed-precondition",
+          "The payment amount changed. Please try again.",
+          {code: "PAYMENT_AMOUNT_CHANGED"}
+        );
+      }
+      if (
         cur.razorpayOrderId &&
         cur.razorpayKeyId === keyId &&
         cur.razorpayAmountInr === billedInr
@@ -947,6 +1137,7 @@ export const verifyRazorpayPayment = onCall(
   async (req) => {
     const uid = req.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Please sign in.");
+    await assertNotBanned(uid);
     const {requestId, razorpayOrderId, razorpayPaymentId, razorpaySignature} =
       req.data ?? {};
     if (!requestId || !razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
@@ -1104,6 +1295,7 @@ export const razorpayWebhook = onRequest(
 export const submitRating = onCall({region: REGION}, async (req) => {
   const uid = req.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Please sign in.");
+  await assertNotBanned(uid);
   const {requestId, volunteerId, stars, feedback} = req.data ?? {};
   if (!requestId || !volunteerId || typeof stars !== "number") {
     throw new HttpsError("invalid-argument", "requestId, volunteerId, stars required.");
@@ -1226,6 +1418,7 @@ export const setVerification = onCall({region: REGION}, async (req) => {
     verifiedAt: FieldValue.serverTimestamp(),
     rejectionReason: decision === "rejected" ? (reason ?? null) : FieldValue.delete(),
   });
+
   await pushToUser(
     uid,
     {
@@ -1238,6 +1431,102 @@ export const setVerification = onCall({region: REGION}, async (req) => {
   ).catch(() => {});
   return {ok: true, code: decision.toUpperCase()};
 });
+
+/** Admin temporarily bans or immediately unbans a normal account. */
+export const setAccountBan = onCall({region: REGION}, async (req) => {
+  if (req.auth?.token?.admin !== true) {
+    throw new HttpsError("permission-denied", "Admin only.");
+  }
+  const {uid, bannedUntilMs, reason} = req.data ?? {};
+  if (typeof uid !== "string" || !uid) {
+    throw new HttpsError("invalid-argument", "uid is required.");
+  }
+  const ref = db.collection("profiles").doc(uid);
+  const snap = await ref.get();
+  if (!snap.exists || !["requester", "volunteer"].includes(snap.data()?.role)) {
+    throw new HttpsError("not-found", "User or TravAcser not found.");
+  }
+  if (bannedUntilMs == null) {
+    await ref.update({
+      bannedUntil: FieldValue.delete(),
+      banReason: FieldValue.delete(),
+      bannedBy: FieldValue.delete(),
+      bannedAt: FieldValue.delete(),
+      banLiftedAt: FieldValue.serverTimestamp(),
+    });
+    return {ok: true, code: "UNBANNED"};
+  }
+  if (
+    typeof bannedUntilMs !== "number" ||
+    !Number.isFinite(bannedUntilMs) ||
+    bannedUntilMs <= Date.now() ||
+    bannedUntilMs > Date.now() + 366 * 24 * 60 * 60000 ||
+    typeof reason !== "string" ||
+    !reason.trim() ||
+    reason.trim().length > 500
+  ) {
+    throw new HttpsError(
+      "invalid-argument",
+      "A future ban end time and a reason are required."
+    );
+  }
+  await ref.update({
+    bannedUntil: Timestamp.fromMillis(bannedUntilMs),
+    banReason: reason.trim(),
+    bannedBy: req.auth!.uid,
+    bannedAt: FieldValue.serverTimestamp(),
+    banLiftedAt: FieldValue.delete(),
+  });
+  await pushToUser(
+    uid,
+    {
+      title: "Account temporarily suspended",
+      body: "Open TravAcs for details about this temporary suspension.",
+    },
+    {type: "account_banned"}
+  ).catch(() => {});
+  return {ok: true, code: "BANNED"};
+});
+
+/**
+ * Closes untouched payment reviews after 90 minutes. The computed trip amount
+ * remains unchanged unless an admin adjusted a TravAcser's compensation.
+ */
+export const finalizeExpiredPaymentReviews = onSchedule(
+  {region: SCHEDULER_REGION, schedule: "every 5 minutes"},
+  async () => {
+    const snap = await db
+      .collection("requests")
+      .where("paymentReviewStatus", "==", "pending")
+      .where("paymentReviewEndsAt", "<=", Timestamp.now())
+      .get();
+    for (const doc of snap.docs) {
+      try {
+        await db.runTransaction(async (tx) => {
+          const current = (await tx.get(doc.ref)).data();
+          const endsAt = current?.paymentReviewEndsAt as Timestamp | undefined;
+          if (
+            !current ||
+            current.status !== "completed" ||
+            current.requesterPaidAt ||
+            current.paymentReviewStatus !== "pending" ||
+            !endsAt ||
+            endsAt.toMillis() > Date.now()
+          ) {
+            return;
+          }
+          tx.update(doc.ref, {
+            paymentReviewStatus: "ready",
+            paymentReviewFinalizedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+        });
+      } catch (error) {
+        logger.error(`Failed to finalize payment review ${doc.id}`, error);
+      }
+    }
+  }
+);
 
 /**
  * Periodically auto-expires unaccepted requests (item 2):

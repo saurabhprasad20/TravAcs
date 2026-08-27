@@ -4,7 +4,8 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "test": "mocha test/firestore.test.js --timeout 20000"
+    "test": "mocha test/firestore.test.js --timeout 20000",
+    "test:storage": "mocha test/storage.test.js --timeout 20000"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^3.0.4",
