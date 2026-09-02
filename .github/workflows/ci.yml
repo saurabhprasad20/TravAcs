@@ -93,7 +93,7 @@ jobs:
           firebase emulators:exec --only firestore --project demo-travacs
           "npm --prefix functions test"
 
-  # CD — Deploy the backend to the live project (travacs-dev) automatically,
+  # CD — Deploy the backend and public policy pages to travacs-dev automatically,
   # but ONLY on a push to master (i.e. after a PR is merged) and ONLY once BOTH
   # test jobs above have passed. Requires the repo secret FIREBASE_SERVICE_ACCOUNT
   # (a Google Cloud service-account JSON key).
@@ -131,12 +131,12 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/gcp-key.json"
 
-      - name: Deploy functions, rules, indexes & storage rules
+      - name: Deploy backend and public policy pages
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gcp-key.json
         run: >
           npx -y firebase-tools deploy
-          --only functions,firestore:rules,firestore:indexes,storage
+          --only functions,firestore:rules,firestore:indexes,storage,hosting
           --project travacs-dev --non-interactive --force
 
       - name: Remove credentials

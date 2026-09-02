@@ -426,9 +426,9 @@ the public Actions API.
 ## Known gaps & next work
 - **M11 (Play-Store release) — engineering ready, external work pending.** API 36, production upload
   signing, release permissions, branded adaptive icons, R8/resource shrinking, and Crashlytics
-  mapping are implemented. The signed AAB is generated locally. Remaining blockers are a working
-  public Privacy/Terms URL, a public deletion page, Play Console declarations/listing assets,
-  Play App Signing enrollment, and reviewer/tester access.
+  mapping, public legal pages, and account deletion are implemented. The signed AAB is generated
+  locally. Remaining blockers are Play Console declarations/listing assets, Play App Signing
+  enrollment, reviewer/tester access, and physical-device testing.
 - **Deferred on-device passes:** the M8 error-handling runtime check (airplane mode, full-slot
   accept, denied permission, forced crash → friendly fallback) and the M9 TalkBack end-to-end pass
   were never run on a physical device. Also re-verify the full trip flow on-device

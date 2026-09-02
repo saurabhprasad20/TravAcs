@@ -40,13 +40,13 @@ upload-key backup outside the repository and protect it as a release credential.
 
 ## Blocking external and product work
 
-1. **Legal pages:** the supplied URLs currently return HTTP 404:
-   - `https://travacs.in/termsandconditions`
-   - `https://travacs.in/privacypolicies`
-   Publish these exact routes or provide replacement public HTTPS URLs before submission.
+1. **Legal pages:** published on the owned Firebase Hosting site:
+   - `https://travacs-dev.web.app/termsandconditions`
+   - `https://travacs-dev.web.app/privacypolicies`
 2. **Account deletion:** authenticated in-app deletion is implemented. It removes Auth, profile,
-   and device-token data and anonymizes retained trip history. Publish the public deletion-request
-   page and document the retention period and legal purpose before submission.
+   and device-token data and anonymizes retained trip history. The public instructions are at
+   `https://travacs-dev.web.app/accountdeletion`. Document the retention period and legal purpose
+   in the final Play declarations.
 3. **Physical-device release test:** install the minified signed APK and test Phone Auth,
    notifications, agreements, legal links, receipt upload, Razorpay, and TalkBack.
 4. **Play Console details:** confirm developer display name/contact/address, app category, release

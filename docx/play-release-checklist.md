@@ -16,11 +16,11 @@
 
 ## Public policy requirements
 
-- [ ] Terms URL returns a public page instead of HTTP 404.
-- [ ] Privacy URL returns a public page instead of HTTP 404.
+- [x] Terms URL published on the owned Firebase Hosting site.
+- [x] Privacy URL published on the owned Firebase Hosting site.
 - [x] Account-retention and deletion behavior approved: preserve anonymized trip history.
 - [x] Authenticated in-app account deletion implemented.
-- [ ] Public account-deletion request URL published.
+- [x] Public account-deletion request URL published.
 - [ ] Privacy policy and Play Data Safety answers match actual collection, sharing, and retention.
 
 ## Play Console

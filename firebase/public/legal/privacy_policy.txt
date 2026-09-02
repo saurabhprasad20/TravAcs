@@ -1,0 +1,516 @@
+TravAcs Welfare Foundation 
+ Privacy Policy 
+ Effective Date:  01/08/2026 
+ Last Updated:  06/08/2026 
+ 1. INTRODUCTION 
+ TravAcs Welfare Foundation ("TravAcs", "we", "our", or "us") respects your privacy and is 
+ committed to protecting your personal data. 
+ This Privacy Policy explains how we collect, use, store, disclose, protect, and otherwise process 
+ your personal information when you access or use the TravAcs mobile application, website, 
+ customer support services, or any other services offered by TravAcs (collectively referred to as 
+ the "Platform"). 
+ TravAcs Welfare Foundation is a not-for-profit company incorporated under Section 8 of the 
+ Companies Act, 2013 (CIN: U88900UP2024NPL203107), having its registered office at 128 
+ Smith Ganj, Neer Gulzar Dary, Meerut, Uttar Pradesh – 250002, India. 
+ Your privacy is important to us because our mission extends beyond providing services—we 
+ strive to build a trusted, safe, and accessible ecosystem for visually impaired individuals and the 
+ wider TravAcs community. 
+ By accessing or using the Platform, you acknowledge that you have read and understood this 
+ Privacy Policy and consent to the collection, use, storage, and disclosure of your personal 
+ information in accordance with this Policy and applicable law. 
+ Where your consent is required under applicable law, we shall seek such consent before 
+ processing your personal data. 
+ 2. SCOPE OF THIS POLICY
+
+This Privacy Policy applies to all individuals who interact with the TravAcs Platform, including 
+ but not limited to: 
+ ●  Registered Users. 
+ ●  TravAcsers. 
+ ●  Volunteers. 
+ ●  Applicants. 
+ ●  Website visitors. 
+ ●  Event participants. 
+ ●  Donors where applicable. 
+ ●  Corporate partners using the Platform. 
+ ●  Customer support users. 
+ ●  Any other individual whose personal information is processed by TravAcs. 
+ This Policy applies regardless of whether you access the Platform through: 
+ ●  Mobile application. 
+ ●  Website. 
+ ●  WhatsApp or other authorised messaging channels. 
+ ●  Telephone support. 
+ ●  Email. 
+ ●  Social media interactions managed by TravAcs. 
+ ●  Offline interactions that later become part of TravAcs' records. 
+ 3. DEFINITIONS 
+ For the purposes of this Privacy Policy: 
+ "Personal Data"  means any information relating to  an identified or identifiable individual. 
+ "Processing"  means any operation performed on Personal  Data including collection, recording, 
+ storage, organisation, retrieval, consultation, use, disclosure, sharing, transmission, deletion, or 
+ destruction. 
+ "Platform"  means the TravAcs mobile application, website,  communication systems, and 
+ associated digital services. 
+ "Services"  means all services offered or facilitated  by TravAcs. 
+ "User"  includes any person interacting with the Platform.
+
+"Consent"  means any freely given, specific, informed, and unambiguous indication of your 
+ agreement to the processing of your Personal Data where required under applicable law. 
+ 4. INFORMATION WE COLLECT 
+ The information we collect depends on how you interact with TravAcs. 
+ 4.1 Information You Provide 
+ When you create an account, make a booking, become a TravAcser, contact customer support, 
+ or otherwise interact with the Platform, we may collect information including: 
+ Identity Information 
+ ●  Full name. 
+ ●  Date of birth (where required). 
+ ●  Gender (optional where applicable). 
+ ●  Photograph or profile picture. 
+ ●  Government-issued identification documents where verification is required. 
+ Contact Information 
+ ●  Mobile number. 
+ ●  Email address. 
+ ●  Residential city or address where necessary. 
+ ●  Emergency contact details. 
+ Accessibility Information 
+ To provide safe and personalised services, we may collect information relating to accessibility 
+ needs, including: 
+ ●  Nature of visual impairment or accessibility requirements. 
+ ●  Preferred communication methods. 
+ ●  Preferred guiding techniques or assistance preferences. 
+ ●  Mobility-related information voluntarily shared by you. 
+ ●  Any additional accessibility information necessary to deliver requested services. 
+ We request only the minimum accessibility-related information reasonably necessary for 
+ providing our Services.
+
+Account Information 
+ ●  Username. 
+ ●  Login credentials (stored securely and in encrypted or hashed form where applicable). 
+ ●  Authentication details. 
+ ●  Verification status. 
+ ●  Profile preferences. 
+ Booking Information 
+ ●  Pickup location. 
+ ●  Destination. 
+ ●  Date and time. 
+ ●  Duration. 
+ ●  Number of participants. 
+ ●  Assigned TravAcser. 
+ ●  Special instructions. 
+ ●  Trip notes. 
+ ●  Feedback. 
+ ●  Ratings. 
+ Payment Information 
+ Where payments are made through the Platform, we may collect: 
+ ●  Transaction identifiers. 
+ ●  Payment status. 
+ ●  Amount paid. 
+ ●  Refund status. 
+ ●  Billing details where applicable. 
+ TravAcs does not intentionally store your complete debit card, credit card, UPI PIN, CVV, 
+ net banking credentials, or other sensitive payment authentication information. Such 
+ information is processed by authorised payment service providers. 
+ Communications 
+ When you contact us, we may collect: 
+ ●  Emails. 
+ ●  Chat messages. 
+ ●  Customer support interactions. 
+ ●  Call recordings where disclosed. 
+ ●  Complaint details. 
+ ●  Feedback.
+
+●  Survey responses. 
+ 5. INFORMATION COLLECTED 
+ AUTOMATICALLY 
+ When you use the Platform, certain information may be collected automatically. 
+ This may include: 
+ Device Information 
+ ●  Device model. 
+ ●  Device manufacturer. 
+ ●  Operating system. 
+ ●  Browser type. 
+ ●  App version. 
+ ●  Language settings. 
+ ●  Device identifiers. 
+ Technical Information 
+ ●  IP address. 
+ ●  Internet service provider. 
+ ●  Network information. 
+ ●  Crash reports. 
+ ●  Error logs. 
+ ●  Performance diagnostics. 
+ ●  Session information. 
+ Usage Information 
+ We may collect information about how you interact with the Platform, including: 
+ ●  Features accessed. 
+ ●  Pages visited. 
+ ●  Time spent. 
+ ●  Buttons clicked. 
+ ●  Search activity. 
+ ●  Booking activity. 
+ ●  Navigation patterns.
+
+●  General analytics information. 
+ This information helps us improve accessibility, performance, and reliability. 
+ 6. LOCATION INFORMATION 
+ Because TravAcs facilitates real-world mobility assistance, location information plays an 
+ important role in delivering Services. 
+ Subject to your device permissions and applicable law, we may collect: 
+ ●  Current location. 
+ ●  Pickup location. 
+ ●  Destination. 
+ ●  GPS coordinates. 
+ ●  Route information. 
+ ●  Approximate location based on your device. 
+ ●  Location history associated with completed bookings where operationally necessary. 
+ Location information may be used for purposes including: 
+ ●  Matching users with nearby TravAcsers. 
+ ●  Coordinating trips. 
+ ●  Improving safety. 
+ ●  Providing emergency assistance. 
+ ●  Preventing fraud. 
+ ●  Improving service quality. 
+ You may disable location permissions through your device settings. However, certain features of 
+ the Platform may not function correctly or may become unavailable. 
+ TravAcs does not guarantee the accuracy of GPS or third-party location technologies. 
+ 7. INFORMATION FROM THIRD PARTIES 
+ TravAcs may receive information from trusted third-party sources including: 
+ ●  Payment gateway providers. 
+ ●  Identity verification partners.
+
+●  Background verification agencies. 
+ ●  Government databases where legally authorised. 
+ ●  Social login providers (where available). 
+ ●  Analytics providers. 
+ ●  Communication service providers. 
+ ●  Customer support partners. 
+ ●  Referral partners. 
+ Any information received shall be processed in accordance with this Privacy Policy and 
+ applicable law. 
+ 8. WHY WE COLLECT YOUR 
+ INFORMATION 
+ TravAcs collects and processes Personal Data only for legitimate and lawful purposes, 
+ including: 
+ ●  Creating and managing user accounts. 
+ ●  Facilitating bookings. 
+ ●  Matching Users and TravAcsers. 
+ ●  Providing accessibility services. 
+ ●  Customer support. 
+ ●  Identity verification. 
+ ●  Fraud prevention. 
+ ●  Safety and emergency response. 
+ ●  Payment processing. 
+ ●  Service improvement. 
+ ●  Research and analytics. 
+ ●  Product development. 
+ ●  Legal compliance. 
+ ●  Internal administration. 
+ ●  Resolving disputes. 
+ ●  Protecting the rights, safety, and property of TravAcs and its users. 
+ We collect only the information reasonably necessary for these purposes and strive to minimise 
+ unnecessary collection of personal data.
+
+9. HOW WE USE YOUR PERSONAL DATA 
+ TravAcs processes Personal Data only for legitimate, lawful, and operational purposes 
+ connected with the provision and improvement of our Services. 
+ Depending on your interaction with the Platform, we may use your Personal Data for the 
+ following purposes: 
+ 9.1 Providing Our Services 
+ We use your information to: 
+ ●  Create and maintain your account. 
+ ●  Verify your identity where required. 
+ ●  Process bookings and service requests. 
+ ●  Match Users with appropriate TravAcsers. 
+ ●  Coordinate travel assistance. 
+ ●  Facilitate communication between Users and TravAcsers where necessary for a 
+ booking. 
+ ●  Manage payments, refunds, reimbursements, and settlements. 
+ ●  Provide customer support. 
+ ●  Maintain trip records and service history. 
+ 9.2 Accessibility and Personalisation 
+ Accessibility is central to TravAcs' mission. 
+ We may use accessibility-related information to: 
+ ●  Better understand your assistance requirements. 
+ ●  Recommend suitable TravAcsers. 
+ ●  Improve navigation support. 
+ ●  Provide a more personalised and comfortable experience. 
+ ●  Reduce safety risks during trips. 
+ ●  Improve future accessibility features. 
+ Accessibility-related information is processed only to the extent reasonably necessary for 
+ providing or improving our Services. 
+ 9.3 Safety and Security 
+ Your information may be used to:
+
+●  Verify identities. 
+ ●  Detect fraudulent activity. 
+ ●  Prevent misuse of the Platform. 
+ ●  Investigate complaints. 
+ ●  Respond to emergencies. 
+ ●  Protect Users and TravAcsers. 
+ ●  Maintain Platform security. 
+ ●  Enforce our Terms and Policies. 
+ 9.4 Legal and Regulatory Compliance 
+ We may process Personal Data where necessary to: 
+ ●  Comply with applicable laws. 
+ ●  Respond to lawful requests from government authorities. 
+ ●  Comply with court orders or legal proceedings. 
+ ●  Meet accounting, taxation, audit, and regulatory obligations. 
+ ●  Protect our legal rights. 
+ 9.5 Service Improvement 
+ We continuously improve our Platform. 
+ Information may be used to: 
+ ●  Analyse usage trends. 
+ ●  Identify accessibility barriers. 
+ ●  Improve user experience. 
+ ●  Develop new products or services. 
+ ●  Improve training programmes. 
+ ●  Enhance operational efficiency. 
+ ●  Conduct internal quality assurance. 
+ Where reasonably practicable, we may use aggregated or anonymised information for analytics 
+ and research. 
+ 10. HOW WE SHARE YOUR INFORMATION 
+ TravAcs does not sell your Personal Data.
+
+We share Personal Data only where reasonably necessary for providing Services, complying 
+ with legal obligations, protecting legitimate interests, or with your consent where required. 
+ 10.1 Sharing with TravAcsers 
+ Where you book a service, TravAcs may share limited information with the assigned TravAcser, 
+ including: 
+ ●  Your name. 
+ ●  Pickup and destination details. 
+ ●  Booking schedule. 
+ ●  Accessibility requirements relevant to the trip. 
+ ●  Emergency information where necessary. 
+ ●  Special instructions relating to the booking. 
+ Only information reasonably necessary for the performance of the booking shall be shared. 
+ 10.2 Sharing with Users 
+ Where a TravAcser accepts a booking, TravAcs may share limited information with the User, 
+ including: 
+ ●  TravAcser's first name. 
+ ●  Profile photograph (where applicable). 
+ ●  Contact information required for the booking. 
+ ●  Verification status. 
+ ●  Rating or experience information where displayed on the Platform. 
+ 10.3 Service Providers 
+ TravAcs may engage trusted service providers to support our operations, including: 
+ ●  Payment gateway providers. 
+ ●  Cloud hosting providers. 
+ ●  Customer support providers. 
+ ●  Communication service providers. 
+ ●  SMS and email providers. 
+ ●  Analytics providers. 
+ ●  Background verification agencies. 
+ ●  Technology vendors. 
+ ●  IT support providers.
+
+Such service providers may access Personal Data only to the extent reasonably necessary to 
+ perform services on our behalf and are expected to protect such information through 
+ appropriate contractual and security obligations. 
+ 10.4 Legal Disclosures 
+ We may disclose Personal Data where reasonably necessary to: 
+ ●  Comply with applicable law. 
+ ●  Respond to lawful governmental requests. 
+ ●  Enforce our Terms or Policies. 
+ ●  Protect the safety of Users or TravAcsers. 
+ ●  Prevent fraud or criminal activity. 
+ ●  Protect the legal rights or property of TravAcs. 
+ 10.5 Business Changes 
+ If TravAcs undergoes a merger, restructuring, reorganisation, transfer of operations, or similar 
+ transaction, Personal Data may be transferred as part of that process, subject to applicable law 
+ and appropriate safeguards. 
+ 11. ARTIFICIAL INTELLIGENCE AND 
+ AUTOMATED PROCESSING 
+ TravAcs may use artificial intelligence ("AI"), machine learning, or automated technologies to 
+ improve accessibility, efficiency, and user experience. 
+ These technologies may assist with: 
+ ●  Customer support. 
+ ●  Accessibility descriptions. 
+ ●  Trip recommendations. 
+ ●  Booking assistance. 
+ ●  Route suggestions. 
+ ●  Fraud detection. 
+ ●  Platform analytics. 
+ ●  Service optimisation.
+
+Where AI-generated information is provided, it is intended to assist users and should not be 
+ considered professional medical, legal, or financial advice. 
+ Where significant decisions affecting users are made, TravAcs will endeavour to ensure 
+ appropriate human oversight where reasonably practicable. 
+ 12. COOKIES AND SIMILAR 
+ TECHNOLOGIES 
+ Our website and certain digital services may use cookies, pixels, SDKs, local storage, and 
+ similar technologies to improve functionality and user experience. 
+ These technologies may be used for purposes including: 
+ ●  Authentication. 
+ ●  Security. 
+ ●  Session management. 
+ ●  Remembering preferences. 
+ ●  Performance monitoring. 
+ ●  Analytics. 
+ ●  Error detection. 
+ ●  Improving accessibility. 
+ Users may manage cookie preferences through browser settings where applicable. 
+ Disabling certain cookies may affect the functionality of some Platform features. 
+ 13. DATA RETENTION 
+ TravAcs retains Personal Data only for as long as reasonably necessary to fulfil the purposes 
+ described in this Privacy Policy or as required by applicable law. 
+ Retention periods may vary depending on: 
+ ●  Active account status. 
+ ●  Legal obligations. 
+ ●  Regulatory requirements. 
+ ●  Accounting requirements.
+
+●  Taxation requirements. 
+ ●  Dispute resolution. 
+ ●  Fraud prevention. 
+ ●  Safety investigations. 
+ ●  Operational needs. 
+ When Personal Data is no longer required, TravAcs will securely delete, anonymise, or 
+ otherwise dispose of such information in accordance with applicable law and internal data 
+ retention practices. 
+ Certain records may be retained for longer periods where legally required or reasonably 
+ necessary to establish, exercise, or defend legal claims. 
+ 14. DATA SECURITY 
+ TravAcs takes reasonable technical, organisational, and administrative measures to protect 
+ Personal Data against unauthorised access, alteration, disclosure, misuse, loss, or destruction. 
+ Security measures may include: 
+ ●  Encryption where appropriate. 
+ ●  Secure servers. 
+ ●  Access controls. 
+ ●  Authentication mechanisms. 
+ ●  Role-based access. 
+ ●  Activity monitoring. 
+ ●  Secure backups. 
+ ●  Employee confidentiality obligations. 
+ ●  Periodic security assessments. 
+ Despite our efforts, no method of electronic transmission or storage is completely secure. 
+ Accordingly, TravAcs cannot guarantee absolute security, and users acknowledge the inherent 
+ risks associated with internet-based services. 
+ Users are responsible for maintaining the confidentiality of their account credentials and should 
+ promptly notify TravAcs of any suspected unauthorised access to their account. 
+ 15. YOUR PRIVACY RIGHTS
+
+Subject to applicable law, you may have the right to: 
+ ●  Access Personal Data maintained by TravAcs. 
+ ●  Request correction of inaccurate information. 
+ ●  Update your account information. 
+ ●  Request deletion of Personal Data where legally permissible. 
+ ●  Withdraw consent where processing is based on consent. 
+ ●  Request information regarding the processing of your Personal Data. 
+ ●  Lodge complaints regarding privacy concerns. 
+ TravAcs may request reasonable verification of identity before processing such requests. 
+ Certain requests may be declined where retention or continued processing is required under 
+ applicable law or for legitimate operational purposes. 
+ 16. CHILDREN'S PRIVACY 
+ TravAcs recognises that certain Services may be used by or for minors with visual impairments. 
+ Where Services are requested for a person below the age prescribed under applicable law for 
+ providing independent consent, the booking, registration, or consent should ordinarily be 
+ completed by a parent, legal guardian, or other authorised representative. 
+ TravAcs does not knowingly collect Personal Data from children in a manner inconsistent with 
+ applicable law. 
+ Parents and guardians who believe that Personal Data has been collected contrary to this 
+ Policy may contact TravAcs for appropriate review. 
+ 17. INTERNATIONAL DATA TRANSFERS 
+ TravAcs primarily operates in India. 
+ However, certain technology providers, cloud infrastructure providers, communication services, 
+ or software vendors engaged by TravAcs may process or store information outside India. 
+ Where such transfers occur, TravAcs shall take reasonable steps to ensure that Personal Data 
+ continues to receive an appropriate level of protection in accordance with applicable law and 
+ contractual safeguards.
+
+18. THIRD-PARTY WEBSITES AND 
+ SERVICES 
+ The Platform may contain links to third-party websites, applications, or services. 
+ TravAcs does not control such third-party platforms and is not responsible for their privacy 
+ practices, content, or security. 
+ Users are encouraged to review the privacy policies of third-party services before sharing 
+ Personal Data with them. 
+ 19. WITHDRAWAL OF CONSENT 
+ Where the processing of your Personal Data is based on your consent, you may withdraw such 
+ consent at any time by using the options available within the Platform or by contacting TravAcs 
+ through the official support channels. 
+ Withdrawal of consent shall not affect the lawfulness of any processing carried out prior to such 
+ withdrawal. 
+ Please note that withdrawing consent for certain categories of processing may affect our ability 
+ to provide some or all of the Services. For example, if location permissions or 
+ accessibility-related information essential for a booked service are withdrawn, TravAcs may be 
+ unable to coordinate or safely deliver that service. 
+ Where applicable, TravAcs may continue to retain or process certain information where required 
+ by law or for legitimate purposes such as fraud prevention, dispute resolution, accounting, 
+ taxation, regulatory compliance, or the establishment, exercise, or defence of legal claims. 
+ 20. CHANGES TO THIS PRIVACY POLICY 
+ TravAcs may update or revise this Privacy Policy from time to time to reflect: 
+ ●  Changes in applicable laws or regulations.
+
+●  New features or services. 
+ ●  Improvements in technology. 
+ ●  Changes to our operational practices. 
+ ●  Security enhancements. 
+ ●  Feedback received from users. 
+ The "Last Updated" date at the beginning of this Policy will indicate the most recent revision. 
+ Where material changes are made, TravAcs will take reasonable steps to notify users through 
+ the Platform, email, push notifications, or other appropriate communication channels. 
+ Your continued use of the Platform after such updates constitutes your acknowledgement of the 
+ revised Privacy Policy, to the extent permitted by applicable law. 
+ 21. GRIEVANCE REDRESSAL 
+ TravAcs is committed to addressing privacy-related concerns promptly, fairly, and transparently. 
+ If you have any questions, concerns, or complaints regarding the collection, use, disclosure, or 
+ protection of your Personal Data, you may contact our designated Grievance Officer or 
+ authorised privacy contact using the details published by TravAcs. 
+ When submitting a grievance, please include sufficient details to help us understand and 
+ investigate your concern. 
+ TravAcs will acknowledge and endeavour to resolve genuine privacy-related complaints within a 
+ reasonable period, subject to the complexity of the matter and applicable legal requirements. 
+ Where required under applicable law, TravAcs shall designate a Grievance Officer or other 
+ authorised person and publish the relevant contact details on the Platform. 
+ 22. COMPLIANCE WITH APPLICABLE 
+ LAWS 
+ TravAcs endeavours to process Personal Data in accordance with applicable laws relating to 
+ data protection, privacy, electronic records, cybersecurity, consumer protection, and digital 
+ services.
+
+Nothing in this Privacy Policy shall be interpreted as limiting any rights or obligations that cannot 
+ lawfully be excluded under applicable legislation. 
+ Where any provision of this Privacy Policy conflicts with mandatory legal requirements, the 
+ applicable law shall prevail to the extent of such conflict, while the remaining provisions shall 
+ continue in full force and effect. 
+ 23. CONTACT US 
+ If you have any questions regarding this Privacy Policy or our privacy practices, you may 
+ contact us through our official channels. 
+ Email:  support@travacs.in 
+ Website:  www.travacs.in 
+ Registered Office: 
+ TravAcs Welfare Foundation 
+ 128 Smith Ganj, Neer Gulzar Dary, Meerut, Uttar Pradesh – 250002, India 
+ For general support relating to bookings or platform usage, please use the customer support 
+ options available within the TravAcs mobile application or website. 
+ 24. OUR PRIVACY COMMITMENT 
+ At TravAcs, privacy is more than a legal obligation—it is a part of our commitment to building an 
+ accessible, respectful, and trustworthy community. 
+ As an organisation dedicated to improving independent mobility for visually impaired individuals, 
+ we recognise that users place significant trust in us by sharing personal information. We value 
+ that trust and strive to honour it through responsible data practices. 
+ Our commitment includes: 
+ ●  Collecting only the information reasonably necessary to provide safe, accessible, and 
+ high-quality Services. 
+ ●  Respecting the dignity, independence, and confidentiality of every individual who 
+ interacts with TravAcs.
+
+●  Processing accessibility-related information solely for improving safety, service delivery, 
+ and user experience, and not for discrimination or unrelated profiling. 
+ ●  Limiting access to Personal Data to authorised personnel and trusted service providers 
+ who require such access to perform their responsibilities. 
+ ●  Maintaining appropriate technical, organisational, and administrative safeguards to 
+ protect Personal Data. 
+ ●  Continuously reviewing and improving our privacy and security practices as our Platform 
+ and Services evolve. 
+ ●  Being transparent about how Personal Data is collected, used, shared, and protected. 
+ Privacy is an ongoing responsibility, and TravAcs remains committed to strengthening user trust 
+ through accountability, openness, and continuous improvement. 
+ 25. ACKNOWLEDGEMENT 
+ By accessing or using the TravAcs Platform, you acknowledge that you have read and 
+ understood this Privacy Policy. 
+ Where your consent is required under applicable law, you consent to the collection, use, 
+ storage, disclosure, and processing of your Personal Data in accordance with this Privacy 
+ Policy. 
+ If you do not agree with this Privacy Policy, you should discontinue use of the Platform and may 
+ request closure of your account, subject to applicable legal and operational requirements.
