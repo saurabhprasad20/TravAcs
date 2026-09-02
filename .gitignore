@@ -18,7 +18,9 @@ firebase/**/*-debug.log
 
 # Built artifacts / build logs (don't commit binaries)
 *.apk
+*.aab
 app/build_apk*.log
+app/android/build/
 
 # One-off local admin helpers (read your firebase login; not for the repo)
 enable_phone.js

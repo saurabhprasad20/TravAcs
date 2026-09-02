@@ -13,6 +13,9 @@ class AppConstants {
   static const String supportEmail = 'support@travacs.in';
   static const String supportPhone = '+91 73109 33165';
   static const String website = 'travacs.in';
+  static const String termsUrl = 'https://travacs.in/termsandconditions';
+  static const String privacyPolicyUrl =
+      'https://travacs.in/privacypolicies';
 
   /// Per-hour service charge for a TravAcser serving a SINGLE traveller.
   /// Mirrored from the server (the billing source of truth); kept here only for

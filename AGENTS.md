@@ -16,8 +16,10 @@
 - **Stack:** Flutter (Dart) front end + **Firebase** back end (Phone-OTP Auth, Cloud Firestore,
   Cloud Functions, FCM, Crashlytics). Firebase project: **`travacs-dev`**, functions region
   **`asia-south2`**.
-- **Status:** Milestones **M0–M10 are done, checkpointed, and CI-green.** **M11 (Play-Store release)
-  is documented but paused** — see [`docx/m11-store-release-plan.md`](docx/m11-store-release-plan.md).
+- **Status:** Milestones **M0–M10 are done, checkpointed, and CI-green.** **M11a Play engineering
+  is implemented locally** (API 36, upload signing, branded icons, R8, Crashlytics, permissions,
+  signed AAB); console/policy work remains — see
+  [`docx/m11-store-release-plan.md`](docx/m11-store-release-plan.md).
 - **Dev machine:** Windows 11 on **ARM64**, corporate-**managed** (no admin). Toolchain is portable
   (paths below). Shell is **PowerShell**.
 - **Golden invariant:** users must **never** see raw errors/stack traces, and **accessibility is
@@ -240,7 +242,7 @@ friction).
 | **M8** | **Graceful error handling** — Failure taxonomy, mapper, stream mapping, global boundary, Crashlytics; users never see raw errors | `master_m8` |
 | **M9** | **Accessibility pass** — text-scale clamp, status-not-colour-only, MergeSemantics, announcements, `meetsGuideline` tests | `master_m9` |
 | **M10** | **Automated tests** — M10a 53 offline tests; M10b 25 rules + 10 functions emulator tests; M10c GitHub Actions CI | `master_m10`, `master_m10a/b/c` |
-| **M11** | **Store-release prep (Android)** — **PLANNED, PAUSED.** See `docx/m11-store-release-plan.md`. | — |
+| **M11** | **Store-release prep (Android)** — engineering implemented locally; Play Console, public legal/deletion pages, reviewer access, and production submission remain. See `docx/m11-store-release-plan.md`. | pending checkpoint |
 | **M12** | **Feature-completion / gap-fill** — fixed the collection-group rules bug (My Trips), built real History tabs (replacing placeholders), made the active-trip lifecycle first-class, **removed OTP** (trips auto-start at `scheduledStartAt`; either party ends), added **reschedule** (User) + **cancel** (both sides), and redesigned the request form (gender-preference dropdown, TravAcser slider, dropped landmark + male/female split). | `master_m12` |
 | **M13** | **App menu** — centralized the AppBar in the shell with a navigation **Drawer** (`presentation/features/menu/`): Contact us, About (built-in `showAboutDialog`), Rate-us (placeholder), Terms, Privacy, Sign out + a dismiss button. Placeholder info screens; client-only (no deploy). | `master_m13` |
 | **M14** | **A11y label + control fixes** — icon-only buttons now set `Icon(semanticLabel:)` (tooltip alone isn't read as the TalkBack name); removed a merging `Semantics` wrapper on the request-form stepper; replaced the broken TravAcser **slider** with an accessible **1–10 dropdown** (decoupled from traveller count). Client-only. | `master_m14` |
@@ -324,8 +326,11 @@ $env:JAVA_HOME = "C:\Users\sauprasad\dev-tools\jdk17\jdk-17.0.19+10"
 $env:PATH      = "$env:JAVA_HOME\bin;$env:PATH"
 cd C:\Users\sauprasad\travacs\TravAcs\app
 
-# Build a release APK (currently DEBUG-signed — release signing is M11)
+# Build a signed release APK. This intentionally fails if android/key.properties is absent.
 flutter build apk --release        # -> build\app\outputs\flutter-apk\app-release.apk (~50 MB)
+
+# Build the signed, minified Play upload bundle
+flutter build appbundle --release  # -> build\app\outputs\bundle\release\app-release.aab
 
 # Refresh the shareable copy at repo root
 Copy-Item build\app\outputs\flutter-apk\app-release.apk ..\TravAcs.apk -Force
@@ -419,11 +424,11 @@ the public Actions API.
 ---
 
 ## Known gaps & next work
-- **M11 (Play-Store release) — paused.** Critical blockers documented in
-  `docx/m11-store-release-plan.md`: (a) release build still uses the **debug signing key**;
-  (b) **`INTERNET` and `POST_NOTIFICATIONS` are only in the debug/profile manifests, not the main
-  `AndroidManifest.xml`** — a *release* build would have **no network** and no FCM on Android 13+.
-  Also: default launcher icon, no R8/minify, Crashlytics Gradle plugin not applied.
+- **M11 (Play-Store release) — engineering ready, external work pending.** API 36, production upload
+  signing, release permissions, branded adaptive icons, R8/resource shrinking, and Crashlytics
+  mapping are implemented. The signed AAB is generated locally. Remaining blockers are a working
+  public Privacy/Terms URL, account deletion in-app plus a public deletion page, Play Console
+  declarations/listing assets, Play App Signing enrollment, and reviewer/tester access.
 - **Deferred on-device passes:** the M8 error-handling runtime check (airplane mode, full-slot
   accept, denied permission, forced crash → friendly fallback) and the M9 TalkBack end-to-end pass
   were never run on a physical device. Also re-verify the full trip flow on-device
@@ -441,9 +446,9 @@ the public Actions API.
   - *Partial multi-TravAcser lifecycle* — a partially-filled request stays `broadcast`; starting one
     assignment doesn't freeze the remaining slots, and some complete+cancel combinations don't cleanly
     reconcile the parent status. Needs a focused lifecycle rework.
-- **Next planned step:** on-device E2E of the **live Razorpay** payment flow (end trip → order →
-  checkout → verify → paid) with a small real transaction, then continue iterating on the trip
-  lifecycle; M11 store-release remains paused.
+- **Next planned step:** publish working legal and account-deletion pages, test the minified signed
+  release on a physical device, then upload the AAB to Play internal testing and register Play's
+  app-signing SHA fingerprints with Firebase.
 
 ---
 

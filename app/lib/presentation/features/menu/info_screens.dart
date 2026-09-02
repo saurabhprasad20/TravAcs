@@ -171,10 +171,31 @@ class _ContactRow extends StatelessWidget {
 /// Scrollable policy content loaded from the legal documents bundled with the
 /// app. Selectable text lets assistive-technology users copy or inspect clauses.
 class _PolicyScreen extends StatelessWidget {
-  const _PolicyScreen({required this.title, required this.assetPath});
+  const _PolicyScreen({
+    required this.title,
+    required this.assetPath,
+    required this.onlineUrl,
+  });
 
   final String title;
   final String assetPath;
+  final String onlineUrl;
+
+  Future<void> _openOnline(BuildContext context) async {
+    final opened = await launchUrl(
+      Uri.parse(onlineUrl),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!context.mounted || opened) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'The online document could not be opened. The complete document is '
+          'available on this screen.',
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -198,14 +219,31 @@ class _PolicyScreen extends StatelessWidget {
                 ),
               );
             }
-            return SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: SelectionArea(
-                child: Text(
-                  snapshot.data!,
-                  style: Theme.of(context).textTheme.bodyMedium,
+            return Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _openOnline(context),
+                      icon: const Icon(Icons.open_in_new),
+                      label: const Text('View current document online'),
+                    ),
+                  ),
                 ),
-              ),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(20),
+                    child: SelectionArea(
+                      child: Text(
+                        snapshot.data!,
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             );
           },
         ),
@@ -222,6 +260,7 @@ class TermsScreen extends StatelessWidget {
     return const _PolicyScreen(
       title: 'Terms & Conditions',
       assetPath: LegalDocuments.termsAsset,
+      onlineUrl: AppConstants.termsUrl,
     );
   }
 }
@@ -234,6 +273,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
     return const _PolicyScreen(
       title: 'Privacy Policy',
       assetPath: LegalDocuments.privacyAsset,
+      onlineUrl: AppConstants.privacyPolicyUrl,
     );
   }
 }
