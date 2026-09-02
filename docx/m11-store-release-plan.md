@@ -44,9 +44,9 @@ upload-key backup outside the repository and protect it as a release credential.
    - `https://travacs.in/termsandconditions`
    - `https://travacs.in/privacypolicies`
    Publish these exact routes or provide replacement public HTTPS URLs before submission.
-2. **Account deletion:** implement an authenticated in-app deletion request and publish a public
-   deletion-request page. Decide which profile data is deleted and which completed trip, payment,
-   accounting, or safety records are retained, for how long, and for what legal purpose.
+2. **Account deletion:** authenticated in-app deletion is implemented. It removes Auth, profile,
+   and device-token data and anonymizes retained trip history. Publish the public deletion-request
+   page and document the retention period and legal purpose before submission.
 3. **Physical-device release test:** install the minified signed APK and test Phone Auth,
    notifications, agreements, legal links, receipt upload, Razorpay, and TalkBack.
 4. **Play Console details:** confirm developer display name/contact/address, app category, release

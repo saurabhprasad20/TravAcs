@@ -30,6 +30,7 @@ const finalizePaymentReview = fft.wrap(fns.finalizePaymentReview);
 const submitTravelExpense = fft.wrap(fns.submitTravelExpense);
 const setTravelCompensation = fft.wrap(fns.setTravelCompensation);
 const setAccountBan = fft.wrap(fns.setAccountBan);
+const deleteAccount = fft.wrap(fns.deleteAccount);
 const logManualTrip = fft.wrap(fns.logManualTrip);
 const widenGenderRequests = fft.wrap(fns.widenGenderRequests);
 const expireStaleRequests = fft.wrap(fns.expireStaleRequests);
@@ -966,6 +967,102 @@ describe("temporary account bans", () => {
     await setAccountBan(call({uid: "vol"}, "admin", {admin: true}));
     const profile = (await db.doc("profiles/vol").get()).data()!;
     assert.equal(profile.bannedUntil, undefined);
+  });
+});
+
+describe("account deletion", () => {
+  it("requires an authenticated account", async () => {
+    await assert.rejects(
+      () => deleteAccount(call({})),
+      /sign in/i
+    );
+  });
+
+  it("blocks deletion while the account has an active trip", async () => {
+    await db.doc("profiles/alice").set({
+      role: "requester",
+      fullName: "Alice",
+    });
+    await db.doc("requests/active").set({
+      requesterId: "alice",
+      requesterName: "Alice",
+      status: "assigned",
+    });
+    let authDeleted = false;
+
+    await assert.rejects(
+      () => fns.deleteAccountData("alice", async () => {
+        authDeleted = true;
+      }),
+      /complete or cancel your active trips/i
+    );
+
+    assert.equal(authDeleted, false);
+    assert.equal((await db.doc("profiles/alice").get()).exists, true);
+  });
+
+  it("deletes profile data and preserves anonymized trip history", async () => {
+    await db.doc("profiles/alice").set({
+      role: "requester",
+      fullName: "Alice",
+      phone: "+91999",
+    });
+    await db.doc("devices/alice/tokens/token-1").set({createdAt: Timestamp.now()});
+    await db.doc("requests/completed").set({
+      requesterId: "alice",
+      requesterName: "Alice",
+      requesterGender: "female",
+      status: "completed",
+    });
+    await db.doc("requests/completed/assignments/vol").set({
+      requesterId: "alice",
+      requesterName: "Alice",
+      requesterPhone: "+91999",
+      volunteerId: "vol",
+      volunteerName: "Vijay",
+      volunteerPhone: "+91888",
+      tripStatus: "completed",
+    });
+    await db.doc("requests/other/assignments/alice").set({
+      requesterId: "bob",
+      requesterName: "Bob",
+      requesterPhone: "+91777",
+      volunteerId: "alice",
+      volunteerName: "Alice",
+      volunteerPhone: "+91999",
+      tripStatus: "completed",
+    });
+    let deletedUid: string | undefined;
+
+    await fns.deleteAccountData("alice", async (uid) => {
+      deletedUid = uid;
+    });
+
+    assert.equal(deletedUid, "alice");
+    assert.equal((await db.doc("profiles/alice").get()).exists, false);
+    assert.equal(
+      (await db.doc("devices/alice/tokens/token-1").get()).exists,
+      false
+    );
+
+    const request = (await db.doc("requests/completed").get()).data()!;
+    assert.equal(request.requesterName, "Deleted user");
+    assert.equal(request.requesterGender, undefined);
+    assert.equal(request.requesterAccountDeleted, true);
+
+    const requesterAssignment = (
+      await db.doc("requests/completed/assignments/vol").get()
+    ).data()!;
+    assert.equal(requesterAssignment.requesterName, "Deleted user");
+    assert.equal(requesterAssignment.requesterPhone, null);
+    assert.equal(requesterAssignment.volunteerName, "Vijay");
+
+    const volunteerAssignment = (
+      await db.doc("requests/other/assignments/alice").get()
+    ).data()!;
+    assert.equal(volunteerAssignment.volunteerName, "Deleted user");
+    assert.equal(volunteerAssignment.volunteerPhone, null);
+    assert.equal(volunteerAssignment.requesterName, "Bob");
   });
 });
 

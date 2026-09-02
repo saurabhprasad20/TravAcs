@@ -18,8 +18,8 @@
 
 - [ ] Terms URL returns a public page instead of HTTP 404.
 - [ ] Privacy URL returns a public page instead of HTTP 404.
-- [ ] Account-retention and deletion behavior approved.
-- [ ] Authenticated in-app account deletion implemented.
+- [x] Account-retention and deletion behavior approved: preserve anonymized trip history.
+- [x] Authenticated in-app account deletion implemented.
 - [ ] Public account-deletion request URL published.
 - [ ] Privacy policy and Play Data Safety answers match actual collection, sharing, and retention.
 

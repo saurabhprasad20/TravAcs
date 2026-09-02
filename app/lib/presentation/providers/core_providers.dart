@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -27,6 +28,11 @@ final firebaseAuthProvider = Provider<FirebaseAuth>(
 /// The shared [FirebaseFirestore] instance (overridable in tests).
 final firestoreProvider = Provider<FirebaseFirestore>(
   (ref) => FirebaseFirestore.instance,
+);
+
+/// Cloud Functions client, pinned to the deployed callable region.
+final functionsProvider = Provider<FirebaseFunctions>(
+  (ref) => FirebaseFunctions.instanceFor(region: 'asia-south2'),
 );
 
 final firebaseStorageProvider = Provider<FirebaseStorage>(

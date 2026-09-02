@@ -28,4 +28,7 @@ abstract interface class AuthRepository {
 
   /// Signs the current user out.
   FutureResult<Unit> signOut();
+
+  /// Permanently removes the signed-in account and its profile data.
+  FutureResult<Unit> deleteAccount();
 }

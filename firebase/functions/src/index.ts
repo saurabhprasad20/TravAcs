@@ -4,6 +4,7 @@ import {onSchedule} from "firebase-functions/v2/scheduler";
 import {logger} from "firebase-functions/v2";
 import {defineSecret} from "firebase-functions/params";
 import {initializeApp} from "firebase-admin/app";
+import {getAuth} from "firebase-admin/auth";
 import {getFirestore, FieldValue, Timestamp} from "firebase-admin/firestore";
 import {getMessaging} from "firebase-admin/messaging";
 import * as crypto from "crypto";
@@ -1431,6 +1432,95 @@ export const setVerification = onCall({region: REGION}, async (req) => {
   ).catch(() => {});
   return {ok: true, code: decision.toUpperCase()};
 });
+
+type DeleteAuthUser = (uid: string) => Promise<void>;
+
+/**
+ * Removes account/profile data while preserving anonymized trip history.
+ * Exported separately so emulator tests can inject Auth deletion without
+ * requiring the Auth emulator.
+ */
+export async function deleteAccountData(
+  uid: string,
+  deleteAuthUser: DeleteAuthUser = async (id) => getAuth().deleteUser(id)
+): Promise<void> {
+  const requesterRequests = await db
+    .collection("requests")
+    .where("requesterId", "==", uid)
+    .get();
+  const hasActiveRequest = requesterRequests.docs.some(
+    (doc) => !["completed", "cancelled"].includes(doc.data().status)
+  );
+  if (hasActiveRequest) {
+    throw new HttpsError(
+      "failed-precondition",
+      "Please complete or cancel your active trips before deleting your account."
+    );
+  }
+
+  const volunteerAssignments = await db
+    .collectionGroup("assignments")
+    .where("volunteerId", "==", uid)
+    .get();
+  const hasActiveAssignment = volunteerAssignments.docs.some(
+    (doc) => ["assigned", "started"].includes(doc.data().tripStatus)
+  );
+  if (hasActiveAssignment) {
+    throw new HttpsError(
+      "failed-precondition",
+      "Please complete or cancel your active trips before deleting your account."
+    );
+  }
+
+  const writer = db.bulkWriter();
+  for (const requestDoc of requesterRequests.docs) {
+    writer.update(requestDoc.ref, {
+      requesterName: "Deleted user",
+      requesterGender: FieldValue.delete(),
+      requesterAccountDeleted: true,
+      requesterAccountDeletedAt: FieldValue.serverTimestamp(),
+    });
+    const assignments = await requestDoc.ref.collection("assignments").get();
+    for (const assignment of assignments.docs) {
+      writer.update(assignment.ref, {
+        requesterName: "Deleted user",
+        requesterPhone: null,
+        requesterAccountDeleted: true,
+      });
+    }
+  }
+  for (const assignment of volunteerAssignments.docs) {
+    writer.update(assignment.ref, {
+      volunteerName: "Deleted user",
+      volunteerPhone: null,
+      volunteerAccountDeleted: true,
+    });
+  }
+  await writer.close();
+
+  await db.recursiveDelete(db.collection("devices").doc(uid));
+  await db.recursiveDelete(db.collection("profiles").doc(uid));
+  await deleteAuthUser(uid);
+}
+
+/** Permanently removes the signed-in normal account and its profile data. */
+export const deleteAccount = onCall(
+  {region: REGION, invoker: "public"},
+  async (req) => {
+    const uid = req.auth?.uid;
+    if (!uid) {
+      throw new HttpsError("unauthenticated", "Please sign in.");
+    }
+    if (req.auth?.token?.admin === true) {
+      throw new HttpsError(
+        "permission-denied",
+        "Administrator accounts cannot be deleted in the app."
+      );
+    }
+    await deleteAccountData(uid);
+    return {ok: true, code: "ACCOUNT_DELETED"};
+  }
+);
 
 /** Admin temporarily bans or immediately unbans a normal account. */
 export const setAccountBan = onCall({region: REGION, invoker: "public"}, async (req) => {

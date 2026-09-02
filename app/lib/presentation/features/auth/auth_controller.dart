@@ -64,6 +64,23 @@ class AuthController extends Notifier<AsyncValue<void>> {
     phone = null;
     await _repo.signOut();
   }
+
+  Future<bool> deleteAccount() async {
+    state = const AsyncLoading();
+    final res = await _repo.deleteAccount();
+    return res.match(
+      (f) {
+        state = AsyncError(f, StackTrace.current);
+        return false;
+      },
+      (_) {
+        _verificationId = null;
+        phone = null;
+        state = const AsyncData(null);
+        return true;
+      },
+    );
+  }
 }
 
 final authControllerProvider =

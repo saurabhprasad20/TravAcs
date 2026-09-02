@@ -1,4 +1,3 @@
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/repositories/firestore_request_repository.dart';
@@ -8,11 +7,6 @@ import '../../domain/repositories/request_repository.dart';
 import 'auth_providers.dart';
 import 'core_providers.dart';
 import 'profile_providers.dart';
-
-/// Cloud Functions client, pinned to the function region.
-final functionsProvider = Provider<FirebaseFunctions>(
-  (ref) => FirebaseFunctions.instanceFor(region: 'asia-south2'),
-);
 
 final requestRepositoryProvider = Provider<RequestRepository>((ref) {
   return FirestoreRequestRepository(

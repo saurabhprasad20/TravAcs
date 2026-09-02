@@ -229,13 +229,14 @@ void main() {
 
   group('FirebaseAuthRepository', () {
     test('isAdmin is false when signed out', () async {
-      final repo = FirebaseAuthRepository(MockFirebaseAuth());
+      final repo = FirebaseAuthRepository(MockFirebaseAuth(), _MockFunctions());
       expect(await repo.isAdmin(), isFalse);
     });
 
     test('currentUserId reflects the signed-in user', () {
       final repo = FirebaseAuthRepository(
         MockFirebaseAuth(signedIn: true, mockUser: MockUser(uid: 'u9')),
+        _MockFunctions(),
       );
       expect(repo.currentUserId, 'u9');
     });
@@ -245,10 +246,60 @@ void main() {
         signedIn: true,
         mockUser: MockUser(uid: 'u9'),
       );
-      final repo = FirebaseAuthRepository(auth);
+      final repo = FirebaseAuthRepository(auth, _MockFunctions());
       final r = await repo.signOut();
       expect(r.isRight(), isTrue);
       expect(auth.currentUser, isNull);
     });
+
+    test('deleteAccount calls the backend then clears the session', () async {
+      final auth = MockFirebaseAuth(
+        signedIn: true,
+        mockUser: MockUser(uid: 'u9'),
+      );
+      final functions = _MockFunctions();
+      final callable = _MockCallable();
+      when(() => functions.httpsCallable('deleteAccount')).thenReturn(callable);
+      when(
+        () => callable.call<dynamic>(any()),
+      ).thenAnswer((_) async => _FakeCallableResult());
+
+      final repo = FirebaseAuthRepository(auth, functions);
+      final r = await repo.deleteAccount();
+
+      expect(r.isRight(), isTrue);
+      expect(auth.currentUser, isNull);
+      verify(() => callable.call<dynamic>({})).called(1);
+    });
+
+    test(
+      'deleteAccount keeps the session when the backend rejects it',
+      () async {
+        final auth = MockFirebaseAuth(
+          signedIn: true,
+          mockUser: MockUser(uid: 'u9'),
+        );
+        final functions = _MockFunctions();
+        final callable = _MockCallable();
+        when(
+          () => functions.httpsCallable('deleteAccount'),
+        ).thenReturn(callable);
+        when(() => callable.call<dynamic>(any())).thenThrow(
+          FirebaseFunctionsException(
+            code: 'failed-precondition',
+            message: 'Please complete or cancel your active trips first.',
+          ),
+        );
+
+        final repo = FirebaseAuthRepository(auth, functions);
+        final r = await repo.deleteAccount();
+
+        r.fold(
+          (f) => expect(f, isA<ConflictFailure>()),
+          (_) => fail('expected Left'),
+        );
+        expect(auth.currentUser, isNotNull);
+      },
+    );
   });
 }

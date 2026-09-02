@@ -8,8 +8,7 @@ import '../../domain/entities/request.dart';
 import '../../domain/repositories/admin_repository.dart';
 import 'auth_providers.dart';
 import 'core_providers.dart';
-import 'request_providers.dart'
-    show functionsProvider, requestRepositoryProvider;
+import 'request_providers.dart' show requestRepositoryProvider;
 
 final adminRepositoryProvider = Provider<AdminRepository>((ref) {
   return FirestoreAdminRepository(

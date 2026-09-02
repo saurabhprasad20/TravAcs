@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cloud_functions/cloud_functions.dart' show FirebaseFunctions;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fpdart/fpdart.dart';
 
@@ -9,9 +10,10 @@ import '../../domain/repositories/auth_repository.dart';
 
 /// Firebase Phone Auth implementation of [AuthRepository] (design §7).
 class FirebaseAuthRepository implements AuthRepository {
-  FirebaseAuthRepository(this._auth);
+  FirebaseAuthRepository(this._auth, this._functions);
 
   final FirebaseAuth _auth;
+  final FirebaseFunctions _functions;
 
   @override
   String? get currentUserId => _auth.currentUser?.uid;
@@ -49,7 +51,9 @@ class FirebaseAuthRepository implements AuthRepository {
         },
       );
     } catch (e) {
-      if (!completer.isCompleted) completer.complete(failure(mapFirebaseError(e)));
+      if (!completer.isCompleted) {
+        completer.complete(failure(mapFirebaseError(e)));
+      }
     }
     return completer.future;
   }
@@ -86,6 +90,17 @@ class FirebaseAuthRepository implements AuthRepository {
   @override
   FutureResult<Unit> signOut() async {
     try {
+      await _auth.signOut();
+      return success(unit);
+    } catch (e) {
+      return failure(mapFirebaseError(e));
+    }
+  }
+
+  @override
+  FutureResult<Unit> deleteAccount() async {
+    try {
+      await _functions.httpsCallable('deleteAccount').call<dynamic>({});
       await _auth.signOut();
       return success(unit);
     } catch (e) {

@@ -242,7 +242,7 @@ friction).
 | **M8** | **Graceful error handling** — Failure taxonomy, mapper, stream mapping, global boundary, Crashlytics; users never see raw errors | `master_m8` |
 | **M9** | **Accessibility pass** — text-scale clamp, status-not-colour-only, MergeSemantics, announcements, `meetsGuideline` tests | `master_m9` |
 | **M10** | **Automated tests** — M10a 53 offline tests; M10b 25 rules + 10 functions emulator tests; M10c GitHub Actions CI | `master_m10`, `master_m10a/b/c` |
-| **M11** | **Store-release prep (Android)** — engineering implemented locally; Play Console, public legal/deletion pages, reviewer access, and production submission remain. See `docx/m11-store-release-plan.md`. | pending checkpoint |
+| **M11** | **Store-release prep (Android)** — engineering and authenticated in-app account deletion are implemented; Play Console, public legal/deletion pages, reviewer access, and production submission remain. See `docx/m11-store-release-plan.md`. | `master_m11a` |
 | **M12** | **Feature-completion / gap-fill** — fixed the collection-group rules bug (My Trips), built real History tabs (replacing placeholders), made the active-trip lifecycle first-class, **removed OTP** (trips auto-start at `scheduledStartAt`; either party ends), added **reschedule** (User) + **cancel** (both sides), and redesigned the request form (gender-preference dropdown, TravAcser slider, dropped landmark + male/female split). | `master_m12` |
 | **M13** | **App menu** — centralized the AppBar in the shell with a navigation **Drawer** (`presentation/features/menu/`): Contact us, About (built-in `showAboutDialog`), Rate-us (placeholder), Terms, Privacy, Sign out + a dismiss button. Placeholder info screens; client-only (no deploy). | `master_m13` |
 | **M14** | **A11y label + control fixes** — icon-only buttons now set `Icon(semanticLabel:)` (tooltip alone isn't read as the TalkBack name); removed a merging `Semantics` wrapper on the request-form stepper; replaced the broken TravAcser **slider** with an accessible **1–10 dropdown** (decoupled from traveller count). Client-only. | `master_m14` |
@@ -427,8 +427,8 @@ the public Actions API.
 - **M11 (Play-Store release) — engineering ready, external work pending.** API 36, production upload
   signing, release permissions, branded adaptive icons, R8/resource shrinking, and Crashlytics
   mapping are implemented. The signed AAB is generated locally. Remaining blockers are a working
-  public Privacy/Terms URL, account deletion in-app plus a public deletion page, Play Console
-  declarations/listing assets, Play App Signing enrollment, and reviewer/tester access.
+  public Privacy/Terms URL, a public deletion page, Play Console declarations/listing assets,
+  Play App Signing enrollment, and reviewer/tester access.
 - **Deferred on-device passes:** the M8 error-handling runtime check (airplane mode, full-slot
   accept, denied permission, forced crash → friendly fallback) and the M9 TalkBack end-to-end pass
   were never run on a physical device. Also re-verify the full trip flow on-device

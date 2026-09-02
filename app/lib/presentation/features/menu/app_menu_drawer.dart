@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/accessibility/announce.dart';
 import '../../../core/config/constants.dart';
+import '../../../core/error/failure.dart';
 import '../../providers/messaging_providers.dart';
 import '../auth/auth_controller.dart';
 import 'info_screens.dart';
@@ -27,8 +28,11 @@ class AppMenuDrawer extends ConsumerWidget {
               child: Row(
                 children: [
                   ExcludeSemantics(
-                    child: Icon(Icons.accessibility_new,
-                        size: 36, color: scheme.onPrimaryContainer),
+                    child: Icon(
+                      Icons.accessibility_new,
+                      size: 36,
+                      color: scheme.onPrimaryContainer,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -37,16 +41,16 @@ class AppMenuDrawer extends ConsumerWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(AppConstants.appName,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleLarge
-                                  ?.copyWith(color: scheme.onPrimaryContainer)),
-                          Text('Version ${AppConstants.appVersion}',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
-                                  ?.copyWith(color: scheme.onPrimaryContainer)),
+                          Text(
+                            AppConstants.appName,
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(color: scheme.onPrimaryContainer),
+                          ),
+                          Text(
+                            'Version ${AppConstants.appVersion}',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: scheme.onPrimaryContainer),
+                          ),
                         ],
                       ),
                     ),
@@ -102,6 +106,12 @@ class AppMenuDrawer extends ConsumerWidget {
                     label: 'Sign out',
                     onTap: () => _signOut(context, ref),
                   ),
+                  _item(
+                    context,
+                    icon: Icons.delete_forever_outlined,
+                    label: 'Delete account',
+                    onTap: () => _deleteAccount(context, ref),
+                  ),
                 ],
               ),
             ),
@@ -154,8 +164,10 @@ class AppMenuDrawer extends ConsumerWidget {
           'amount for the whole trip.',
         ),
         SizedBox(height: 12),
-        Text('Made in India, for travellers across India. Visit '
-            '${AppConstants.website}.'),
+        Text(
+          'Made in India, for travellers across India. Visit '
+          '${AppConstants.website}.',
+        ),
       ],
     );
   }
@@ -165,38 +177,46 @@ class AppMenuDrawer extends ConsumerWidget {
     Navigator.of(context).pop();
     showDialog<void>(
       context: root.context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Rate us'),
-        content: const Text(
-            'We’re not on the Play Store yet — you’ll be able to rate us there '
-            'once we launch. In the meantime we’d love your feedback: email us '
-            'at ${AppConstants.supportEmail} and tell us what’s working and '
-            'what we can improve. Thank you for your support!'),
-        actions: [
-          FilledButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('OK')),
-        ],
-      ),
+      builder:
+          (ctx) => AlertDialog(
+            title: const Text('Rate us'),
+            content: const Text(
+              'We’re not on the Play Store yet — you’ll be able to rate us there '
+              'once we launch. In the meantime we’d love your feedback: email us '
+              'at ${AppConstants.supportEmail} and tell us what’s working and '
+              'what we can improve. Thank you for your support!',
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
     );
   }
 
   Future<void> _signOut(BuildContext context, WidgetRef ref) async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Sign out?'),
-        content: const Text('You’ll need to verify your number again to sign '
-            'back in.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Stay')),
-          FilledButton(
-              onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('Sign out')),
-        ],
-      ),
+      builder:
+          (ctx) => AlertDialog(
+            title: const Text('Sign out?'),
+            content: const Text(
+              'You’ll need to verify your number again to sign '
+              'back in.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Stay'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: const Text('Sign out'),
+              ),
+            ],
+          ),
     );
     if (confirm != true || !context.mounted) return;
     A11y.announce(context, 'Signing out.');
@@ -206,5 +226,41 @@ class AppMenuDrawer extends ConsumerWidget {
     Navigator.of(context).pop(); // dismiss the drawer
     await messaging.unregisterToken();
     await auth.signOut(); // authStateChanges -> router redirects to /auth/phone
+  }
+
+  Future<void> _deleteAccount(BuildContext context, WidgetRef ref) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder:
+          (ctx) => AlertDialog(
+            title: const Text('Delete account?'),
+            content: const Text(
+              'Confirming will remove your user details and profile data from '
+              'the app. This cannot be undone.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Keep account'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: const Text('Delete account'),
+              ),
+            ],
+          ),
+    );
+    if (confirm != true || !context.mounted) return;
+
+    A11y.announce(context, 'Deleting account.');
+    final auth = ref.read(authControllerProvider.notifier);
+    final deleted = await auth.deleteAccount();
+    if (!deleted && context.mounted) {
+      final message = failureMessage(ref.read(authControllerProvider).error);
+      A11y.announce(context, message);
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text(message)));
+    }
   }
 }

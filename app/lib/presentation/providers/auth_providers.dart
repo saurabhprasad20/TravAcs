@@ -6,7 +6,10 @@ import 'core_providers.dart';
 
 /// Provides the [AuthRepository] implementation. Overridable in tests.
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
-  return FirebaseAuthRepository(ref.watch(firebaseAuthProvider));
+  return FirebaseAuthRepository(
+    ref.watch(firebaseAuthProvider),
+    ref.watch(functionsProvider),
+  );
 });
 
 /// Streams the current uid (null = signed out). The router and profile
