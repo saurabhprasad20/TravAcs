@@ -18,6 +18,8 @@ class AppConstants {
   static const String privacyPolicyUrl = '$publicPolicyBaseUrl/privacypolicies';
   static const String accountDeletionUrl =
       '$publicPolicyBaseUrl/accountdeletion';
+  static const String playStoreUrl =
+      'https://play.google.com/store/apps/details?id=com.travacs.travacs';
 
   /// Per-hour service charge for a TravAcser serving a SINGLE traveller.
   /// Mirrored from the server (the billing source of truth); kept here only for

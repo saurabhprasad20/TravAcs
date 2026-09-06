@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/accessibility/announce.dart';
 import '../../../core/config/constants.dart';
@@ -12,7 +13,9 @@ import 'info_screens.dart';
 /// Holds support/legal links + Sign out, with an explicit close (dismiss)
 /// button in the header. Placeholder items are clearly marked.
 class AppMenuDrawer extends ConsumerWidget {
-  const AppMenuDrawer({super.key});
+  const AppMenuDrawer({super.key, this.launchExternal});
+
+  final Future<bool> Function(Uri uri)? launchExternal;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -172,28 +175,27 @@ class AppMenuDrawer extends ConsumerWidget {
     );
   }
 
-  void _rate(BuildContext context) {
+  Future<void> _rate(BuildContext context) async {
     final root = Navigator.of(context, rootNavigator: true);
+    final messenger = ScaffoldMessenger.of(context);
     Navigator.of(context).pop();
-    showDialog<void>(
-      context: root.context,
-      builder:
-          (ctx) => AlertDialog(
-            title: const Text('Rate us'),
-            content: const Text(
-              'We’re not on the Play Store yet — you’ll be able to rate us there '
-              'once we launch. In the meantime we’d love your feedback: email us '
-              'at ${AppConstants.supportEmail} and tell us what’s working and '
-              'what we can improve. Thank you for your support!',
-            ),
-            actions: [
-              FilledButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('OK'),
-              ),
-            ],
-          ),
-    );
+    var opened = false;
+    try {
+      final uri = Uri.parse(AppConstants.playStoreUrl);
+      opened =
+          await launchExternal?.call(uri) ??
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      opened = false;
+    }
+    if (opened || !root.mounted) return;
+
+    const message =
+        'The Play Store listing could not be opened. Please try again later.';
+    A11y.announce(root.context, message);
+    messenger
+      ..clearSnackBars()
+      ..showSnackBar(const SnackBar(content: Text(message)));
   }
 
   Future<void> _signOut(BuildContext context, WidgetRef ref) async {

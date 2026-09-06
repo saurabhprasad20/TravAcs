@@ -9,17 +9,18 @@ import 'package:travacs/presentation/features/menu/app_menu_drawer.dart';
 void main() {
   final scaffoldKey = GlobalKey<ScaffoldState>();
 
-  Widget host() => ProviderScope(
-    child: MaterialApp(
-      theme: AppTheme.light(),
-      home: Scaffold(
-        key: scaffoldKey,
-        appBar: AppBar(title: const Text('Home')),
-        drawer: const AppMenuDrawer(),
-        body: const SizedBox.expand(),
-      ),
-    ),
-  );
+  Widget host({Future<bool> Function(Uri uri)? launchExternal}) =>
+      ProviderScope(
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: Scaffold(
+            key: scaffoldKey,
+            appBar: AppBar(title: const Text('Home')),
+            drawer: AppMenuDrawer(launchExternal: launchExternal),
+            body: const SizedBox.expand(),
+          ),
+        ),
+      );
 
   testWidgets('shows every menu item', (tester) async {
     await tester.pumpWidget(host());
@@ -51,6 +52,50 @@ void main() {
     await tester.tap(find.byTooltip('Close menu'));
     await tester.pumpAndSettle();
     expect(find.text('Sign out'), findsNothing); // drawer gone
+  });
+
+  testWidgets('Rate us opens the permanent Play Store listing', (tester) async {
+    Uri? openedUri;
+    await tester.pumpWidget(
+      host(
+        launchExternal: (uri) async {
+          openedUri = uri;
+          return true;
+        },
+      ),
+    );
+    scaffoldKey.currentState!.openDrawer();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Rate us on Play Store'));
+    await tester.pumpAndSettle();
+
+    expect(
+      openedUri,
+      Uri.parse(
+        'https://play.google.com/store/apps/details?id=com.travacs.travacs',
+      ),
+    );
+    expect(find.text('Rate us on Play Store'), findsNothing);
+    expect(find.textContaining('not on the Play Store yet'), findsNothing);
+  });
+
+  testWidgets('Rate us reports when the listing cannot be opened', (
+    tester,
+  ) async {
+    await tester.pumpWidget(host(launchExternal: (_) async => false));
+    scaffoldKey.currentState!.openDrawer();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Rate us on Play Store'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        'The Play Store listing could not be opened. Please try again later.',
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('delete account requires explicit confirmation', (tester) async {

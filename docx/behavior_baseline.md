@@ -441,7 +441,7 @@ requests: `status+createdAt↓`, `status+serviceCity+createdAt↓`, `requesterId
   point, destination, live estimate — **plus a required "TravAcser names (one or more)" field**; the
   server validates/normalizes the structured fields). Drawer = `AppMenuDrawer`.
 - **AppMenuDrawer:** header (icon, name+version, Close), items: Contact us → `ContactUsScreen`; About
-  → `showAboutDialog`; Rate us → "not on Play Store yet, email feedback" dialog; Terms → `TermsScreen`;
+  → `showAboutDialog`; Rate us → permanent Google Play listing for `com.travacs.travacs`; Terms → `TermsScreen`;
   Privacy → `PrivacyPolicyScreen`; Sign out → confirm → announce + `unregisterToken()` + `signOut()`.
   Terms and Privacy render the complete supplied, selectable policy assets rather than abbreviated
   hardcoded summaries. Real support details live in

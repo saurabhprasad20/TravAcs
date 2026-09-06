@@ -23,6 +23,10 @@ void main() {
       AppConstants.accountDeletionUrl,
       'https://travacs-dev.web.app/accountdeletion',
     );
+    expect(
+      AppConstants.playStoreUrl,
+      'https://play.google.com/store/apps/details?id=com.travacs.travacs',
+    );
   });
 
   testWidgets(
