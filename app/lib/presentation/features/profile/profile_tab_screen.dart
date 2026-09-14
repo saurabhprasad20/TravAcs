@@ -8,6 +8,7 @@ import '../../../domain/entities/city.dart';
 import '../../../domain/entities/enums.dart';
 import '../../../domain/entities/profile.dart';
 import '../auth/auth_controller.dart';
+import 'emergency_contact_card.dart';
 import 'profile_controller.dart';
 import '../../providers/messaging_providers.dart';
 import '../../providers/profile_providers.dart';
@@ -25,52 +26,161 @@ class ProfileTabScreen extends ConsumerWidget {
       body: profileAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => _ProfileError(message: failureMessage(e)),
-        data: (my) => my == null
-            ? const Center(child: CircularProgressIndicator())
-            : ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                _InfoTile(label: 'Name', value: my.profile.fullName),
-                _InfoTile(label: 'Role', value: my.profile.role.label),
-                if (my.profile.phone != null)
-                  _InfoTile(label: 'Phone', value: my.profile.phone!),
-                _InfoTile(
-                    label: 'Gender',
-                    value: my.profile.gender?.label ?? 'Not set'),
-                _RegionTile(
-                  state: my.profile.serviceArea,
-                  city: my.profile.serviceCity,
-                ),
-                Builder(builder: (context) {
-                  final avg = my.volunteer?.ratingAvg ?? my.requester?.ratingAvg ?? 0;
-                  final count =
-                      my.volunteer?.ratingCount ?? my.requester?.ratingCount ?? 0;
-                  return _InfoTile(
-                    label: 'Rating',
-                    value: count > 0
-                        ? '$avg★ ($count review${count == 1 ? '' : 's'})'
-                        : 'No ratings yet',
-                  );
-                }),
-                if (my.volunteer != null) ...[
-                  const Divider(height: 32),
-                  _VerificationCard(volunteer: my.volunteer!),
-                  const SizedBox(height: 8),
-                  _AvailabilityTile(isActive: my.profile.isActive),
-                ],
-                const Divider(height: 32),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.logout),
-                  label: const Text('Sign out'),
-                  onPressed: () async {
-                    await ref
-                        .read(messagingRepositoryProvider)
-                        .unregisterToken();
-                    await ref.read(authControllerProvider.notifier).signOut();
-                  },
-                ),
-              ],
-            ),
+        data:
+            (my) =>
+                my == null
+                    ? const Center(child: CircularProgressIndicator())
+                    : ListView(
+                      padding: const EdgeInsets.all(16),
+                      children: [
+                        _InfoTile(label: 'Name', value: my.profile.fullName),
+                        _InfoTile(label: 'Role', value: my.profile.role.label),
+                        if (my.profile.phone != null)
+                          _InfoTile(label: 'Phone', value: my.profile.phone!),
+                        _InfoTile(
+                          label: 'Gender',
+                          value: my.profile.gender?.label ?? 'Not set',
+                        ),
+                        _RegionTile(
+                          state: my.profile.serviceArea,
+                          city: my.profile.serviceCity,
+                        ),
+                        const SizedBox(height: 8),
+                        _EmergencyContactProfileCard(
+                          contact: my.profile.emergencyContact,
+                        ),
+                        Builder(
+                          builder: (context) {
+                            final avg =
+                                my.volunteer?.ratingAvg ??
+                                my.requester?.ratingAvg ??
+                                0;
+                            final count =
+                                my.volunteer?.ratingCount ??
+                                my.requester?.ratingCount ??
+                                0;
+                            return _InfoTile(
+                              label: 'Rating',
+                              value:
+                                  count > 0
+                                      ? '$avg★ ($count review${count == 1 ? '' : 's'})'
+                                      : 'No ratings yet',
+                            );
+                          },
+                        ),
+                        if (my.volunteer != null) ...[
+                          const Divider(height: 32),
+                          _VerificationCard(volunteer: my.volunteer!),
+                          const SizedBox(height: 8),
+                          _AvailabilityTile(isActive: my.profile.isActive),
+                        ],
+                        const Divider(height: 32),
+                        OutlinedButton.icon(
+                          icon: const Icon(Icons.logout),
+                          label: const Text('Sign out'),
+                          onPressed: () async {
+                            await ref
+                                .read(messagingRepositoryProvider)
+                                .unregisterToken();
+                            await ref
+                                .read(authControllerProvider.notifier)
+                                .signOut();
+                          },
+                        ),
+                      ],
+                    ),
+      ),
+    );
+  }
+}
+
+class _EmergencyContactProfileCard extends ConsumerStatefulWidget {
+  const _EmergencyContactProfileCard({required this.contact});
+
+  final EmergencyContact? contact;
+
+  @override
+  ConsumerState<_EmergencyContactProfileCard> createState() =>
+      _EmergencyContactProfileCardState();
+}
+
+class _EmergencyContactProfileCardState
+    extends ConsumerState<_EmergencyContactProfileCard> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _nameController;
+  late final TextEditingController _relationController;
+  late final TextEditingController _phoneController;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.contact?.name);
+    _relationController = TextEditingController(text: widget.contact?.relation);
+    _phoneController = TextEditingController(text: widget.contact?.phone);
+  }
+
+  @override
+  void didUpdateWidget(covariant _EmergencyContactProfileCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.contact == widget.contact) return;
+    _nameController.text = widget.contact?.name ?? '';
+    _relationController.text = widget.contact?.relation ?? '';
+    _phoneController.text = widget.contact?.phone ?? '';
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _relationController.dispose();
+    _phoneController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    final name = _nameController.text.trim();
+    final contact =
+        name.isEmpty
+            ? null
+            : EmergencyContact(
+              name: name,
+              relation: _relationController.text.trim(),
+              phone: _phoneController.text.trim(),
+            );
+    final ok = await ref
+        .read(profileControllerProvider.notifier)
+        .setEmergencyContact(contact);
+    if (!mounted) return;
+    final message =
+        ok
+            ? contact == null
+                ? 'Emergency contact removed.'
+                : 'Emergency contact saved.'
+            : failureMessage(ref.read(profileControllerProvider).error);
+    A11y.announce(context, message);
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final busy = ref.watch(profileControllerProvider).isLoading;
+    final contact = widget.contact;
+    final hint =
+        contact == null
+            ? 'Not provided. Expand to add one.'
+            : '${contact.name}, ${contact.relation}. Expand to edit or remove.';
+    return Form(
+      key: _formKey,
+      child: EmergencyContactCard(
+        nameController: _nameController,
+        relationController: _relationController,
+        phoneController: _phoneController,
+        hint: hint,
+        initiallyExpanded: false,
+        enabled: !busy,
+        onSave: _save,
       ),
     );
   }
@@ -140,9 +250,10 @@ class _RegionTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final value = (city != null && state != null)
-        ? '${city!.label}, ${state!.label}'
-        : 'Not set';
+    final value =
+        (city != null && state != null)
+            ? '${city!.label}, ${state!.label}'
+            : 'Not set';
     final busy = ref.watch(profileControllerProvider).isLoading;
     return Semantics(
       button: true,
@@ -150,8 +261,10 @@ class _RegionTile extends ConsumerWidget {
       label: 'Your city / location: $value. Double tap to change.',
       child: ListTile(
         contentPadding: EdgeInsets.zero,
-        title: Text('Your city / location',
-            style: Theme.of(context).textTheme.labelMedium),
+        title: Text(
+          'Your city / location',
+          style: Theme.of(context).textTheme.labelMedium,
+        ),
         subtitle: Text(value, style: Theme.of(context).textTheme.bodyLarge),
         trailing: const Icon(Icons.edit_outlined),
         enabled: !busy,
@@ -165,7 +278,8 @@ class _RegionTile extends ConsumerWidget {
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (_) => _RegionPickerSheet(initialState: state, initialCity: city),
+      builder:
+          (_) => _RegionPickerSheet(initialState: state, initialCity: city),
     );
     if (result == null) return;
     final notifier = ref.read(profileControllerProvider.notifier);
@@ -220,42 +334,50 @@ class _RegionPickerSheetState extends State<_RegionPickerSheet> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 8),
-              Text('Select your city / location',
-                  style: Theme.of(context).textTheme.titleMedium),
+              Text(
+                'Select your city / location',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
               const SizedBox(height: 16),
               DropdownButtonFormField<Region>(
                 value: _state,
                 isExpanded: true,
                 decoration: const InputDecoration(labelText: 'State'),
-                items: Region.options
-                    .map((r) =>
-                        DropdownMenuItem(value: r, child: Text(r.label)))
-                    .toList(),
-                onChanged: (r) => setState(() {
-                  _state = r;
-                  _city = null;
-                }),
+                items:
+                    Region.options
+                        .map(
+                          (r) =>
+                              DropdownMenuItem(value: r, child: Text(r.label)),
+                        )
+                        .toList(),
+                onChanged:
+                    (r) => setState(() {
+                      _state = r;
+                      _city = null;
+                    }),
               ),
               const SizedBox(height: 12),
               Expanded(
-                child: cities.isEmpty
-                    ? const Center(child: Text('Pick a state first'))
-                    : ListView(
-                        children: [
-                          for (final c in cities)
-                            RadioListTile<City>(
-                              value: c,
-                              groupValue: _city,
-                              title: Text(c.label),
-                              onChanged: (v) => setState(() => _city = v),
-                            ),
-                        ],
-                      ),
+                child:
+                    cities.isEmpty
+                        ? const Center(child: Text('Pick a state first'))
+                        : ListView(
+                          children: [
+                            for (final c in cities)
+                              RadioListTile<City>(
+                                value: c,
+                                groupValue: _city,
+                                title: Text(c.label),
+                                onChanged: (v) => setState(() => _city = v),
+                              ),
+                          ],
+                        ),
               ),
               FilledButton(
-                onPressed: (_state != null && _city != null)
-                    ? () => Navigator.pop(context, (_state!, _city!))
-                    : null,
+                onPressed:
+                    (_state != null && _city != null)
+                        ? () => Navigator.pop(context, (_state!, _city!))
+                        : null,
                 child: const Text('Save'),
               ),
             ],
@@ -302,25 +424,23 @@ class _VerificationCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            Text(
-              switch (status) {
-                VerificationStatus.approved =>
-                  'You are verified. You can view and accept assistance '
-                      'requests.',
-                VerificationStatus.pending =>
-                  'Your details are awaiting verification by the TravAcs team. '
-                      'To request verification, contact us at '
-                      '${AppConstants.supportEmail} or '
-                      '${AppConstants.supportPhone}. You will get a '
-                      'notification once you are approved.',
-                VerificationStatus.rejected => volunteer.rejectionReason == null
+            Text(switch (status) {
+              VerificationStatus.approved =>
+                'You are verified. You can view and accept assistance '
+                    'requests.',
+              VerificationStatus.pending =>
+                'Your details are awaiting verification by the TravAcs team. '
+                    'To request verification, contact us at '
+                    '${AppConstants.supportEmail} or '
+                    '${AppConstants.supportPhone}. You will get a '
+                    'notification once you are approved.',
+              VerificationStatus.rejected =>
+                volunteer.rejectionReason == null
                     ? 'Your verification was rejected. Please contact the '
                         'TravAcs team at ${AppConstants.supportEmail} or '
                         '${AppConstants.supportPhone}.'
                     : 'Rejected: ${volunteer.rejectionReason}',
-              },
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
+            }, style: Theme.of(context).textTheme.bodyMedium),
           ],
         ),
       ),
@@ -340,28 +460,33 @@ class _AvailabilityTile extends ConsumerWidget {
       title: const Text('Available for requests'),
       subtitle: Text(isActive ? 'You are visible to users' : 'Hidden'),
       value: isActive,
-      onChanged: busy
-          ? null
-          : (value) async {
-              final ok = await ref
-                  .read(profileControllerProvider.notifier)
-                  .setAvailability(value);
-              if (!context.mounted) return;
-              if (ok) {
-                A11y.announce(
-                  context,
-                  value ? 'You are now available.' : 'You are now unavailable.',
-                );
-              } else {
-                // The switch silently snaps back on failure — a sighted user
-                // sees it, but a TalkBack user gets nothing unless we say so.
-                final msg =
-                    failureMessage(ref.read(profileControllerProvider).error);
-                A11y.announce(context, msg);
-                ScaffoldMessenger.of(context)
-                    .showSnackBar(SnackBar(content: Text(msg)));
-              }
-            },
+      onChanged:
+          busy
+              ? null
+              : (value) async {
+                final ok = await ref
+                    .read(profileControllerProvider.notifier)
+                    .setAvailability(value);
+                if (!context.mounted) return;
+                if (ok) {
+                  A11y.announce(
+                    context,
+                    value
+                        ? 'You are now available.'
+                        : 'You are now unavailable.',
+                  );
+                } else {
+                  // The switch silently snaps back on failure — a sighted user
+                  // sees it, but a TalkBack user gets nothing unless we say so.
+                  final msg = failureMessage(
+                    ref.read(profileControllerProvider).error,
+                  );
+                  A11y.announce(context, msg);
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text(msg)));
+                }
+              },
     );
   }
 }

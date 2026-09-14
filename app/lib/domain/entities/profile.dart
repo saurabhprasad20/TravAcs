@@ -11,6 +11,18 @@ class AccountBan {
       bannedUntil != null && bannedUntil!.isAfter(DateTime.now());
 }
 
+class EmergencyContact {
+  const EmergencyContact({
+    required this.name,
+    required this.relation,
+    required this.phone,
+  });
+
+  final String name;
+  final String relation;
+  final String phone;
+}
+
 /// Core user profile (design §5.2 `profiles`). Pure domain entity — no
 /// framework or SDK dependencies.
 class Profile {
@@ -26,6 +38,7 @@ class Profile {
     this.banReason,
     this.serviceArea,
     this.serviceCity,
+    this.emergencyContact,
   });
 
   final String id;
@@ -37,6 +50,7 @@ class Profile {
   final bool isActive;
   final DateTime? bannedUntil;
   final String? banReason;
+  final EmergencyContact? emergencyContact;
 
   /// Service **state** (e.g. Delhi NCR, Maharashtra). Nullable for legacy docs.
   final Region? serviceArea;
@@ -64,6 +78,7 @@ class Profile {
     String? banReason,
     Region? serviceArea,
     City? serviceCity,
+    EmergencyContact? emergencyContact,
   }) {
     return Profile(
       id: id,
@@ -77,6 +92,7 @@ class Profile {
       banReason: banReason ?? this.banReason,
       serviceArea: serviceArea ?? this.serviceArea,
       serviceCity: serviceCity ?? this.serviceCity,
+      emergencyContact: emergencyContact ?? this.emergencyContact,
     );
   }
 }

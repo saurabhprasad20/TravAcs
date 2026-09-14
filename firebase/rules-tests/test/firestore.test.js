@@ -23,6 +23,7 @@ const {
   setDoc,
   updateDoc,
   deleteDoc,
+  deleteField,
   collection,
   collectionGroup,
   query,
@@ -134,6 +135,72 @@ describe("profiles", () => {
   it("can create own profile with zeroed ratings", async () => {
     const alice = testEnv.authenticatedContext("alice").firestore();
     await assertSucceeds(setDoc(doc(alice, "profiles/alice"), profile("requester")));
+  });
+
+  it("can create and update a complete emergency contact", async () => {
+    const alice = testEnv.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      setDoc(
+        doc(alice, "profiles/alice"),
+        profile("requester", {
+          emergencyContact: {
+            name: "Ravi",
+            relation: "Brother",
+            phone: "919876543210",
+          },
+        })
+      )
+    );
+    await assertSucceeds(
+      updateDoc(doc(alice, "profiles/alice"), {
+        emergencyContact: {
+          name: "Meera",
+          relation: "Friend",
+          phone: "9876543210",
+        },
+      })
+    );
+    await assertSucceeds(
+      updateDoc(doc(alice, "profiles/alice"), {
+        emergencyContact: deleteField(),
+      })
+    );
+  });
+
+  it("rejects incomplete or non-numeric emergency contacts", async () => {
+    const alice = testEnv.authenticatedContext("alice").firestore();
+    await assertFails(
+      setDoc(
+        doc(alice, "profiles/alice"),
+        profile("requester", {
+          emergencyContact: { name: "Ravi", phone: "9876543210" },
+        })
+      )
+    );
+    await assertFails(
+      setDoc(
+        doc(alice, "profiles/alice"),
+        profile("requester", {
+          emergencyContact: {
+            name: "Ravi",
+            relation: "Brother",
+            phone: "+91 98765 43210",
+          },
+        })
+      )
+    );
+    await assertFails(
+      setDoc(
+        doc(alice, "profiles/alice"),
+        profile("requester", {
+          emergencyContact: {
+            name: "   ",
+            relation: "\t",
+            phone: "9876543210",
+          },
+        })
+      )
+    );
   });
 
   it("cannot create a profile with non-zero ratings", async () => {

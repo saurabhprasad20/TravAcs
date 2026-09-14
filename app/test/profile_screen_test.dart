@@ -13,7 +13,8 @@ import 'package:travacs/presentation/providers/profile_providers.dart';
 void main() {
   final city = City.fromWire('delhi_ncr')!;
 
-  MyProfile profile({Gender? gender}) => MyProfile(
+  MyProfile profile({Gender? gender, EmergencyContact? emergencyContact}) =>
+      MyProfile(
         profile: Profile(
           id: 'u1',
           role: UserRole.requester,
@@ -22,17 +23,15 @@ void main() {
           serviceArea: Region.delhiNcr,
           serviceCity: city,
           isActive: true,
+          emergencyContact: emergencyContact,
         ),
         requester: const RequesterProfile(profileId: 'u1'),
       );
 
   Widget host(MyProfile p) => ProviderScope(
-        overrides: [myProfileProvider.overrideWith((ref) async => p)],
-        child: MaterialApp(
-          theme: AppTheme.light(),
-          home: const ProfileTabScreen(),
-        ),
-      );
+    overrides: [myProfileProvider.overrideWith((ref) async => p)],
+    child: MaterialApp(theme: AppTheme.light(), home: const ProfileTabScreen()),
+  );
 
   testWidgets('shows "Not set" for a profile with no gender', (tester) async {
     await tester.pumpWidget(host(profile()));
@@ -48,8 +47,9 @@ void main() {
     expect(find.text('Female'), findsOneWidget);
   });
 
-  testWidgets('city/location is announced only once (no double read)',
-      (tester) async {
+  testWidgets('city/location is announced only once (no double read)', (
+    tester,
+  ) async {
     final handle = tester.ensureSemantics();
     try {
       await tester.pumpWidget(host(profile()));
@@ -58,13 +58,42 @@ void main() {
       // its excludeSemantics wrapper — the ListTile's own title/subtitle must
       // not add a second announcement.
       expect(
-          find.bySemanticsLabel(RegExp('Your city / location:.*Delhi.*')),
-          findsOneWidget);
+        find.bySemanticsLabel(RegExp('Your city / location:.*Delhi.*')),
+        findsOneWidget,
+      );
       // The bare visible title text is excluded from the tree (no standalone
       // "Your city / location" node duplicating it).
       expect(find.bySemanticsLabel('Your city / location'), findsNothing);
     } finally {
       handle.dispose();
     }
+  });
+
+  testWidgets('existing emergency contact can be expanded for editing', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      host(
+        profile(
+          emergencyContact: const EmergencyContact(
+            name: 'Ravi',
+            relation: 'Brother',
+            phone: '9876543210',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Ravi, Brother. Expand to edit or remove.'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Emergency contact (optional)'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(TextFormField, 'Ravi'), findsOneWidget);
+    expect(find.widgetWithText(TextFormField, 'Brother'), findsOneWidget);
+    expect(find.widgetWithText(TextFormField, '9876543210'), findsOneWidget);
   });
 }

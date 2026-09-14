@@ -1001,6 +1001,59 @@ describe("account deletion", () => {
     assert.equal((await db.doc("profiles/alice").get()).exists, true);
   });
 
+  it("blocks a User from deleting an account with an unpaid trip", async () => {
+    await db.doc("profiles/alice").set({
+      role: "requester",
+      fullName: "Alice",
+    });
+    await db.doc("requests/unpaid").set({
+      requesterId: "alice",
+      requesterName: "Alice",
+      status: "completed",
+      tripAmountInr: 498,
+      paymentStatus: "pending",
+      paymentReviewStatus: "ready",
+    });
+    let authDeleted = false;
+
+    await assert.rejects(
+      () => fns.deleteAccountData("alice", async () => {
+        authDeleted = true;
+      }),
+      /clear your pending trip payments/i
+    );
+
+    assert.equal(authDeleted, false);
+    assert.equal((await db.doc("profiles/alice").get()).exists, true);
+  });
+
+  it("allows deletion after a billed trip has been paid", async () => {
+    const paidAt = Timestamp.now();
+    await db.doc("profiles/alice").set({
+      role: "requester",
+      fullName: "Alice",
+    });
+    await db.doc("requests/paid").set({
+      requesterId: "alice",
+      requesterName: "Alice",
+      status: "completed",
+      tripAmountInr: 498,
+      paymentStatus: "confirmed",
+      requesterPaidAt: paidAt,
+    });
+    let deletedUid: string | undefined;
+
+    await fns.deleteAccountData("alice", async (uid) => {
+      deletedUid = uid;
+    });
+
+    assert.equal(deletedUid, "alice");
+    assert.equal((await db.doc("profiles/alice").get()).exists, false);
+    const request = (await db.doc("requests/paid").get()).data()!;
+    assert.equal(request.requesterName, "Deleted user");
+    assert.equal(request.requesterPaidAt.toMillis(), paidAt.toMillis());
+  });
+
   it("deletes profile data and preserves anonymized trip history", async () => {
     await db.doc("profiles/alice").set({
       role: "requester",
@@ -1031,6 +1084,8 @@ describe("account deletion", () => {
       volunteerName: "Alice",
       volunteerPhone: "+91999",
       tripStatus: "completed",
+      paymentStatus: "confirmed",
+      requesterPaidAt: Timestamp.now(),
     });
     let deletedUid: string | undefined;
 

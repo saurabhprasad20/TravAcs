@@ -1457,6 +1457,21 @@ export async function deleteAccountData(
       "Please complete or cancel your active trips before deleting your account."
     );
   }
+  const hasPendingRequesterPayment = requesterRequests.docs.some((doc) => {
+    const data = doc.data();
+    return (
+      data.status === "completed" &&
+      !data.requesterPaidAt &&
+      typeof data.tripAmountInr === "number" &&
+      data.tripAmountInr > 0
+    );
+  });
+  if (hasPendingRequesterPayment) {
+    throw new HttpsError(
+      "failed-precondition",
+      "Please clear your pending trip payments before deleting your account."
+    );
+  }
 
   const volunteerAssignments = await db
     .collectionGroup("assignments")
@@ -1471,7 +1486,6 @@ export async function deleteAccountData(
       "Please complete or cancel your active trips before deleting your account."
     );
   }
-
   const writer = db.bulkWriter();
   for (const requestDoc of requesterRequests.docs) {
     writer.update(requestDoc.ref, {

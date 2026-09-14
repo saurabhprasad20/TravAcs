@@ -29,10 +29,14 @@ abstract interface class ProfileRepository {
     String? phone,
     String? address,
     String? homeLocationText,
+    EmergencyContact? emergencyContact,
   });
 
   /// Updates the caller's service state + city (`serviceArea` + `serviceCity`).
   FutureResult<Unit> setServiceArea(Region state, City city);
+
+  /// Adds, replaces, or removes the caller's optional emergency contact.
+  FutureResult<Unit> setEmergencyContact(EmergencyContact? contact);
 
   /// Toggles a volunteer's availability (`profiles.is_active`).
   FutureResult<Unit> setAvailability(bool isActive);

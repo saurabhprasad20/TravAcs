@@ -10,6 +10,7 @@ import 'package:travacs/data/repositories/firestore_profile_repository.dart';
 import 'package:travacs/data/repositories/firestore_request_repository.dart';
 import 'package:travacs/domain/entities/city.dart';
 import 'package:travacs/domain/entities/enums.dart';
+import 'package:travacs/domain/entities/profile.dart';
 
 class _MockFunctions extends Mock implements FirebaseFunctions {}
 
@@ -64,6 +65,11 @@ void main() {
           state: Region.delhiNcr,
           city: city,
           address: 'Some address',
+          emergencyContact: const EmergencyContact(
+            name: 'Ravi',
+            relation: 'Brother',
+            phone: '9876543210',
+          ),
         );
         expect(saved.isRight(), isTrue);
 
@@ -72,9 +78,15 @@ void main() {
         expect(doc['verificationStatus'], 'pending');
         expect(doc['isActive'], true);
         expect(doc['ratingAvg'], 0);
+        expect(doc['emergencyContact'], {
+          'name': 'Ravi',
+          'relation': 'Brother',
+          'phone': '9876543210',
+        });
 
         final me = (await repo.getMyProfile()).getOrElse((_) => throw 'left')!;
         expect(me.profile.isVolunteer, isTrue);
+        expect(me.profile.emergencyContact?.name, 'Ravi');
         expect(me.volunteer!.isApproved, isFalse);
       },
     );
@@ -119,6 +131,30 @@ void main() {
       await repo.setAvailability(false);
       final doc = (await db.collection('profiles').doc('u1').get()).data()!;
       expect(doc['isActive'], false);
+    });
+
+    test('setEmergencyContact adds and removes the optional contact', () async {
+      await repo.saveProfile(
+        role: UserRole.requester,
+        fullName: 'Asha',
+        agreementVersion: '2026-08-06',
+        agreementTypedName: 'ASHA',
+        state: Region.delhiNcr,
+        city: city,
+      );
+      await repo.setEmergencyContact(
+        const EmergencyContact(
+          name: 'Meera',
+          relation: 'Friend',
+          phone: '919999999999',
+        ),
+      );
+      var doc = (await db.collection('profiles').doc('u1').get()).data()!;
+      expect(doc['emergencyContact']['name'], 'Meera');
+
+      await repo.setEmergencyContact(null);
+      doc = (await db.collection('profiles').doc('u1').get()).data()!;
+      expect(doc.containsKey('emergencyContact'), isFalse);
     });
   });
 

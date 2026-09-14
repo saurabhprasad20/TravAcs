@@ -39,6 +39,20 @@ service cloud.firestore {
     function requestData(requestId) {
       return get(/databases/$(database)/documents/requests/$(requestId)).data;
     }
+    function hasValidEmergencyContact(data) {
+      return !data.keys().hasAny(['emergencyContact'])
+        || (data.emergencyContact is map
+            && data.emergencyContact.keys()
+                 .hasOnly(['name', 'relation', 'phone'])
+            && data.emergencyContact.name is string
+            && data.emergencyContact.name.matches('.*[^\\s].*')
+            && data.emergencyContact.name.size() <= 80
+            && data.emergencyContact.relation is string
+            && data.emergencyContact.relation.matches('.*[^\\s].*')
+            && data.emergencyContact.relation.size() <= 50
+            && data.emergencyContact.phone is string
+            && data.emergencyContact.phone.matches('^[0-9]{7,15}$'));
+    }
 
     // ---- profiles ---------------------------------------------------------
     match /profiles/{uid} {
@@ -55,6 +69,7 @@ service cloud.firestore {
         && request.resource.data.agreementAcceptedAt == request.time
         && request.resource.data.ratingAvg == 0
         && request.resource.data.ratingCount == 0
+        && hasValidEmergencyContact(request.resource.data)
         && (request.resource.data.role != 'volunteer'
             || request.resource.data.verificationStatus == 'pending');
 
@@ -79,7 +94,8 @@ service cloud.firestore {
         && request.resource.data.get('agreementTypedName', '')
              == resource.data.get('agreementTypedName', '')
         && request.resource.data.get('agreementAcceptedAt', null)
-             == resource.data.get('agreementAcceptedAt', null);
+             == resource.data.get('agreementAcceptedAt', null)
+        && hasValidEmergencyContact(request.resource.data);
 
       allow delete: if false;
     }

@@ -6,8 +6,10 @@ import '../../../core/error/failure.dart';
 import '../../../core/legal/legal_documents.dart';
 import '../../../domain/entities/city.dart';
 import '../../../domain/entities/enums.dart';
+import '../../../domain/entities/profile.dart';
 import '../../providers/core_providers.dart';
 import 'agreement_dialog.dart';
+import 'emergency_contact_card.dart';
 import 'profile_controller.dart';
 
 /// One-time registration after first phone-OTP sign-in (design §7, §10).
@@ -27,6 +29,10 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
   final _nameController = TextEditingController();
   final _addressController = TextEditingController();
   final _homeLocationController = TextEditingController();
+  final _emergencyNameController = TextEditingController();
+  final _emergencyRelationController = TextEditingController();
+  final _emergencyPhoneController = TextEditingController();
+  final _emergencyExpansionController = ExpansionTileController();
 
   UserRole _role = UserRole.requester;
   Region? _serviceState;
@@ -47,6 +53,9 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
     _nameController.dispose();
     _addressController.dispose();
     _homeLocationController.dispose();
+    _emergencyNameController.dispose();
+    _emergencyRelationController.dispose();
+    _emergencyPhoneController.dispose();
     super.dispose();
   }
 
@@ -63,7 +72,16 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
   }
 
   Future<void> _submit() async {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
+    if (!(_formKey.currentState?.validate() ?? false)) {
+      if (_hasStartedEmergencyContact) {
+        _emergencyExpansionController.expand();
+        A11y.announce(
+          context,
+          'Emergency contact is incomplete. Please review all three fields.',
+        );
+      }
+      return;
+    }
     final agreement = _agreement;
     if (agreement == null) {
       await _reviewAgreement();
@@ -93,6 +111,14 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
               _role == UserRole.requester
                   ? _homeLocationController.text.trim()
                   : null,
+          emergencyContact:
+              _emergencyNameController.text.trim().isEmpty
+                  ? null
+                  : EmergencyContact(
+                    name: _emergencyNameController.text.trim(),
+                    relation: _emergencyRelationController.text.trim(),
+                    phone: _emergencyPhoneController.text.trim(),
+                  ),
         );
     if (!mounted) return;
 
@@ -106,6 +132,11 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
         ..showSnackBar(SnackBar(content: Text(message)));
     }
   }
+
+  bool get _hasStartedEmergencyContact =>
+      _emergencyNameController.text.trim().isNotEmpty ||
+      _emergencyRelationController.text.trim().isNotEmpty ||
+      _emergencyPhoneController.text.trim().isNotEmpty;
 
   Future<void> _reviewAgreement() async {
     if (_agreementDialogOpen || !mounted) return;
@@ -296,6 +327,13 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
                       labelText: 'Home location (optional)',
                     ),
                   ),
+                const SizedBox(height: 16),
+                EmergencyContactCard(
+                  nameController: _emergencyNameController,
+                  relationController: _emergencyRelationController,
+                  phoneController: _emergencyPhoneController,
+                  expansionController: _emergencyExpansionController,
+                ),
                 const SizedBox(height: 28),
                 FilledButton(
                   onPressed: isLoading || _agreement == null ? null : _submit,

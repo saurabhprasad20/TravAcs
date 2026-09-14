@@ -66,6 +66,7 @@ class FirestoreProfileRepository implements ProfileRepository {
     String? phone,
     String? address,
     String? homeLocationText,
+    EmergencyContact? emergencyContact,
   }) async {
     final uid = _uid;
     if (uid == null) {
@@ -85,6 +86,8 @@ class FirestoreProfileRepository implements ProfileRepository {
             dateOfBirth == null ? null : Timestamp.fromDate(dateOfBirth),
         'phone': phone,
         'updatedAt': FieldValue.serverTimestamp(),
+        if (emergencyContact != null)
+          'emergencyContact': _emergencyContactData(emergencyContact),
         if (role == UserRole.volunteer) 'address': address,
         if (role == UserRole.requester) 'homeLocationText': homeLocationText,
       };
@@ -107,6 +110,26 @@ class FirestoreProfileRepository implements ProfileRepository {
       }
 
       await ref.set(data, SetOptions(merge: true));
+      return success(unit);
+    } catch (e) {
+      return failure(mapFirebaseError(e));
+    }
+  }
+
+  @override
+  FutureResult<Unit> setEmergencyContact(EmergencyContact? contact) async {
+    final uid = _uid;
+    if (uid == null) {
+      return failure(const AuthFailure('You are not signed in.'));
+    }
+    try {
+      await _profiles.doc(uid).update({
+        'emergencyContact':
+            contact == null
+                ? FieldValue.delete()
+                : _emergencyContactData(contact),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
       return success(unit);
     } catch (e) {
       return failure(mapFirebaseError(e));
@@ -164,6 +187,7 @@ class FirestoreProfileRepository implements ProfileRepository {
       banReason: d['banReason'] as String?,
       serviceArea: Region.fromWireOrNull(d['serviceArea'] as String?),
       serviceCity: City.fromWire(d['serviceCity'] as String?),
+      emergencyContact: _toEmergencyContact(d['emergencyContact']),
     );
 
     RequesterProfile? requester;
@@ -196,4 +220,31 @@ class FirestoreProfileRepository implements ProfileRepository {
 
   static double _toDouble(Object? v) =>
       v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
+
+  static Map<String, String> _emergencyContactData(EmergencyContact contact) =>
+      {
+        'name': contact.name.trim(),
+        'relation': contact.relation.trim(),
+        'phone': contact.phone.trim(),
+      };
+
+  static EmergencyContact? _toEmergencyContact(Object? value) {
+    if (value is! Map) return null;
+    final name = value['name'];
+    final relation = value['relation'];
+    final phone = value['phone'];
+    if (name is! String ||
+        relation is! String ||
+        phone is! String ||
+        name.trim().isEmpty ||
+        relation.trim().isEmpty ||
+        phone.trim().isEmpty) {
+      return null;
+    }
+    return EmergencyContact(
+      name: name.trim(),
+      relation: relation.trim(),
+      phone: phone.trim(),
+    );
+  }
 }

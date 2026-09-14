@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../domain/entities/city.dart';
 import '../../../domain/entities/enums.dart';
+import '../../../domain/entities/profile.dart';
 import '../../../domain/repositories/profile_repository.dart';
 import '../../providers/profile_providers.dart';
 
@@ -25,6 +26,7 @@ class ProfileController extends Notifier<AsyncValue<void>> {
     String? phone,
     String? address,
     String? homeLocationText,
+    EmergencyContact? emergencyContact,
   }) async {
     state = const AsyncLoading();
     final res = await _repo.saveProfile(
@@ -39,7 +41,24 @@ class ProfileController extends Notifier<AsyncValue<void>> {
       phone: phone,
       address: address,
       homeLocationText: homeLocationText,
+      emergencyContact: emergencyContact,
     );
+    return res.match(
+      (f) {
+        state = AsyncError(f, StackTrace.current);
+        return false;
+      },
+      (_) {
+        state = const AsyncData(null);
+        ref.invalidate(myProfileProvider);
+        return true;
+      },
+    );
+  }
+
+  Future<bool> setEmergencyContact(EmergencyContact? contact) async {
+    state = const AsyncLoading();
+    final res = await _repo.setEmergencyContact(contact);
     return res.match(
       (f) {
         state = AsyncError(f, StackTrace.current);

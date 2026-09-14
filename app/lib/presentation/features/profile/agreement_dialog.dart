@@ -78,39 +78,37 @@ class _AgreementDialogState extends State<_AgreementDialog> {
                 },
               ),
               const SizedBox(height: 12),
-              Semantics(
-                label: '${LegalDocuments.agreementTitle(_role)} text',
-                child: Container(
-                  height: 280,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    border: Border.all(
-                      color: Theme.of(context).colorScheme.outlineVariant,
-                    ),
-                    borderRadius: BorderRadius.circular(8),
+              Container(
+                height: 280,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.outlineVariant,
                   ),
-                  child: FutureBuilder<String>(
-                    future: rootBundle.loadString(
-                      LegalDocuments.agreementAsset(_role),
-                    ),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState != ConnectionState.done) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-                      if (snapshot.hasError || snapshot.data == null) {
-                        return const Center(
-                          child: Text(
-                            'The agreement could not be loaded. Please contact '
-                            'support.',
-                            textAlign: TextAlign.center,
-                          ),
-                        );
-                      }
-                      return SingleChildScrollView(
-                        child: SelectionArea(child: Text(snapshot.data!)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: FutureBuilder<String>(
+                  future: rootBundle.loadString(
+                    LegalDocuments.agreementAsset(_role),
+                  ),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState != ConnectionState.done) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (snapshot.hasError || snapshot.data == null) {
+                      return const Center(
+                        child: Text(
+                          'The agreement could not be loaded. Please contact '
+                          'support.',
+                          textAlign: TextAlign.center,
+                        ),
                       );
-                    },
-                  ),
+                    }
+                    return AgreementTextView(
+                      title: LegalDocuments.agreementTitle(_role),
+                      text: snapshot.data!,
+                    );
+                  },
                 ),
               ),
               const SizedBox(height: 12),
@@ -142,6 +140,38 @@ class _AgreementDialogState extends State<_AgreementDialog> {
             child: const Text('Submit and proceed'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class AgreementTextView extends StatelessWidget {
+  const AgreementTextView({required this.title, required this.text, super.key});
+
+  final String title;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final parts = LegalDocuments.agreementParts(text);
+    return SelectionArea(
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (var index = 0; index < parts.length; index++) ...[
+              if (index > 0) const SizedBox(height: 20),
+              Semantics(
+                key: ValueKey('agreement-part-${index + 1}'),
+                container: true,
+                label:
+                    '$title, part ${index + 1} of ${parts.length}. '
+                    '${parts[index]}',
+                child: ExcludeSemantics(child: Text(parts[index])),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
