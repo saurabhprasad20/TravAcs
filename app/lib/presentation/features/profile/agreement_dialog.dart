@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/accessibility/announce.dart';
 import '../../../core/legal/legal_documents.dart';
 import '../../../domain/entities/enums.dart';
 
@@ -28,12 +29,34 @@ class _AgreementDialog extends StatefulWidget {
 class _AgreementDialogState extends State<_AgreementDialog> {
   final _nameController = TextEditingController();
   late UserRole _role = widget.initialRole;
+  bool _accepted = false;
 
   bool get _canSubmit {
     final name = _nameController.text.trim();
-    return name.isNotEmpty &&
+    return _accepted &&
+        name.isNotEmpty &&
         RegExp('[A-Z]').hasMatch(name) &&
         name == name.toUpperCase();
+  }
+
+  Future<void> _openAgreement() async {
+    var opened = false;
+    try {
+      opened = await launchUrl(
+        Uri.parse(LegalDocuments.agreementUrl(_role)),
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {
+      opened = false;
+    }
+    if (!mounted || opened) return;
+    const message =
+        'The agreement webpage could not be opened. Please try again or visit '
+        'the TravAcs website.';
+    A11y.announce(context, message);
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(const SnackBar(content: Text(message)));
   }
 
   @override
@@ -50,80 +73,76 @@ class _AgreementDialogState extends State<_AgreementDialog> {
         title: Text(LegalDocuments.agreementTitle(_role)),
         content: SizedBox(
           width: 560,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'Choose your role, read the agreement, then type your full '
-                'name in CAPITAL LETTERS to confirm.',
-              ),
-              const SizedBox(height: 12),
-              SegmentedButton<UserRole>(
-                segments: const [
-                  ButtonSegment(
-                    value: UserRole.requester,
-                    label: Text('User'),
-                    icon: Icon(Icons.accessibility_new),
-                  ),
-                  ButtonSegment(
-                    value: UserRole.volunteer,
-                    label: Text('TravAcser'),
-                    icon: Icon(Icons.volunteer_activism),
-                  ),
-                ],
-                selected: {_role},
-                onSelectionChanged: (roles) {
-                  setState(() => _role = roles.first);
-                },
-              ),
-              const SizedBox(height: 12),
-              Container(
-                height: 280,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: Theme.of(context).colorScheme.outlineVariant,
-                  ),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: FutureBuilder<String>(
-                  future: rootBundle.loadString(
-                    LegalDocuments.agreementAsset(_role),
-                  ),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState != ConnectionState.done) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    if (snapshot.hasError || snapshot.data == null) {
-                      return const Center(
-                        child: Text(
-                          'The agreement could not be loaded. Please contact '
-                          'support.',
-                          textAlign: TextAlign.center,
-                        ),
-                      );
-                    }
-                    return AgreementTextView(
-                      title: LegalDocuments.agreementTitle(_role),
-                      text: snapshot.data!,
-                    );
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SegmentedButton<UserRole>(
+                  segments: const [
+                    ButtonSegment(
+                      value: UserRole.requester,
+                      label: Text('User'),
+                      icon: Icon(Icons.accessibility_new),
+                    ),
+                    ButtonSegment(
+                      value: UserRole.volunteer,
+                      label: Text('TravAcser'),
+                      icon: Icon(Icons.volunteer_activism),
+                    ),
+                  ],
+                  selected: {_role},
+                  onSelectionChanged: (roles) {
+                    setState(() {
+                      _role = roles.first;
+                      _accepted = false;
+                    });
                   },
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _nameController,
-                textCapitalization: TextCapitalization.characters,
-                autocorrect: false,
-                decoration: const InputDecoration(
-                  labelText: 'Full name in CAPITAL LETTERS',
-                  helperText:
-                      'Submit is enabled only when the name is in capitals.',
+                const SizedBox(height: 12),
+                const Text(
+                  'By using TravAcs, you consent to the applicable agreement, '
+                  'Terms & Conditions, Privacy Policy, and all safety and '
+                  'service guidelines. Please visit our website to read the '
+                  'complete documents before continuing.',
                 ),
-                onChanged: (_) => setState(() {}),
-              ),
-            ],
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: _openAgreement,
+                    icon: const Icon(Icons.open_in_new),
+                    label: Text(
+                      'Read ${LegalDocuments.agreementTitle(_role)} online',
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _nameController,
+                  textCapitalization: TextCapitalization.characters,
+                  autocorrect: false,
+                  decoration: const InputDecoration(
+                    labelText: 'Full name in CAPITAL LETTERS',
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
+                const SizedBox(height: 8),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  value: _accepted,
+                  onChanged: (value) {
+                    setState(() => _accepted = value ?? false);
+                  },
+                  title: Text(
+                    'I agree to the ${LegalDocuments.agreementTitle(_role)}, '
+                    'Terms & Conditions, Privacy Policy, and TravAcs '
+                    'guidelines.',
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
         actions: [
@@ -137,41 +156,9 @@ class _AgreementDialogState extends State<_AgreementDialog> {
                       ),
                     )
                     : null,
-            child: const Text('Submit and proceed'),
+            child: const Text('Continue'),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class AgreementTextView extends StatelessWidget {
-  const AgreementTextView({required this.title, required this.text, super.key});
-
-  final String title;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final parts = LegalDocuments.agreementParts(text);
-    return SelectionArea(
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (var index = 0; index < parts.length; index++) ...[
-              if (index > 0) const SizedBox(height: 20),
-              Semantics(
-                key: ValueKey('agreement-part-${index + 1}'),
-                container: true,
-                label:
-                    '$title, part ${index + 1} of ${parts.length}. '
-                    '${parts[index]}',
-                child: ExcludeSemantics(child: Text(parts[index])),
-              ),
-            ],
-          ],
-        ),
       ),
     );
   }

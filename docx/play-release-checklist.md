@@ -18,6 +18,7 @@
 
 - [x] Terms URL published on the owned Firebase Hosting site.
 - [x] Privacy URL published on the owned Firebase Hosting site.
+- [x] User and TravAcser agreement URLs published on the owned Firebase Hosting site.
 - [x] Account-retention and deletion behavior approved: preserve anonymized trip history.
 - [x] Authenticated in-app account deletion implemented.
 - [x] Public account-deletion request URL published.

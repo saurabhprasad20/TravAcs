@@ -17,6 +17,9 @@
 - The Firebase Crashlytics Gradle plugin injects the mapping ID and wires the release mapping upload.
 - The app includes accessible links for the hosted Terms and Privacy documents while retaining the
   bundled copies for offline reading.
+- Registration uses a compact accessible consent dialog; complete role agreements are published at
+  `https://travacs-dev.web.app/useragreement` and
+  `https://travacs-dev.web.app/travacseragreement`.
 - The upload key SHA-1 and SHA-256 are registered with Firebase Android app
   `1:376835689559:android:168901aad38debf4f42712`.
 
@@ -43,6 +46,8 @@ upload-key backup outside the repository and protect it as a release credential.
 1. **Legal pages:** published on the owned Firebase Hosting site:
    - `https://travacs-dev.web.app/termsandconditions`
    - `https://travacs-dev.web.app/privacypolicies`
+   - `https://travacs-dev.web.app/useragreement`
+   - `https://travacs-dev.web.app/travacseragreement`
 2. **Account deletion:** authenticated in-app deletion is implemented. It removes Auth, profile,
    and device-token data and anonymizes retained trip history. The public instructions are at
    `https://travacs-dev.web.app/accountdeletion`. Document the retention period and legal purpose

@@ -16,6 +16,9 @@ class AppConstants {
   static const String publicPolicyBaseUrl = 'https://travacs-dev.web.app';
   static const String termsUrl = '$publicPolicyBaseUrl/termsandconditions';
   static const String privacyPolicyUrl = '$publicPolicyBaseUrl/privacypolicies';
+  static const String userAgreementUrl = '$publicPolicyBaseUrl/useragreement';
+  static const String travAcserAgreementUrl =
+      '$publicPolicyBaseUrl/travacseragreement';
   static const String accountDeletionUrl =
       '$publicPolicyBaseUrl/accountdeletion';
   static const String playStoreUrl =

@@ -20,6 +20,14 @@ void main() {
       'https://travacs-dev.web.app/privacypolicies',
     );
     expect(
+      AppConstants.userAgreementUrl,
+      'https://travacs-dev.web.app/useragreement',
+    );
+    expect(
+      AppConstants.travAcserAgreementUrl,
+      'https://travacs-dev.web.app/travacseragreement',
+    );
+    expect(
       AppConstants.accountDeletionUrl,
       'https://travacs-dev.web.app/accountdeletion',
     );

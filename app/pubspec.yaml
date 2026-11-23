@@ -83,7 +83,8 @@ flutter:
 
   assets:
     - assets/icon/
-    - assets/legal/
+    - assets/legal/terms_and_conditions.txt
+    - assets/legal/privacy_policy.txt
 
 flutter_launcher_icons:
   android: true

@@ -213,7 +213,7 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
                   readOnly: true,
                   decoration: const InputDecoration(
                     labelText: 'Confirmed full name',
-                    helperText: 'Change this name by reviewing the agreement.',
+                    helperText: 'Change this name by reviewing your consent.',
                   ),
                   validator:
                       (v) =>
@@ -225,7 +225,7 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
                   alignment: Alignment.centerRight,
                   child: TextButton(
                     onPressed: _reviewAgreement,
-                    child: const Text('Review or change agreement'),
+                    child: const Text('Review or change consent'),
                   ),
                 ),
                 const SizedBox(height: 16),

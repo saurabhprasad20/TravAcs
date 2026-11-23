@@ -343,9 +343,11 @@ requests: `status+createdAt↓`, `status+serviceCity+createdAt↓`, `requesterId
   the code now." at 0.
 
 ### 14.2 Profile
-- **CompleteProfileScreen:** immediately opens a non-dismissible role-specific agreement loaded from
-  `assets/legal`; the User or TravAcser must read it and type their name in capital letters before
-  continuing. The accepted role/name populate the form and versioned acceptance is persisted.
+- **CompleteProfileScreen:** immediately opens a non-dismissible, compact role-specific consent
+  dialog. It gives a short consent summary, links to the complete role agreement on the owned
+  Firebase Hosting site, and requires both an explicit checkbox and the person's name in capital
+  letters before continuing. Changing role clears consent. The accepted role/name populate the form
+  and versioned acceptance is persisted; the large agreement text is not rendered during registration.
   Fields: full name
   (required), state (required; changing it resets city), city (required; disabled until state),
   **gender (REQUIRED — validator "Please select your gender")**, DOB (optional; picker default now−25y,

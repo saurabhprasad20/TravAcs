@@ -246,6 +246,7 @@ friction).
 | **M12** | **Feature-completion / gap-fill** — fixed the collection-group rules bug (My Trips), built real History tabs (replacing placeholders), made the active-trip lifecycle first-class, **removed OTP** (trips auto-start at `scheduledStartAt`; either party ends), added **reschedule** (User) + **cancel** (both sides), and redesigned the request form (gender-preference dropdown, TravAcser slider, dropped landmark + male/female split). | `master_m12` |
 | **M13** | **App menu** — centralized the AppBar in the shell with a navigation **Drawer** (`presentation/features/menu/`): Contact us, About (built-in `showAboutDialog`), Rate us on Google Play, Terms, Privacy, Sign out + a dismiss button. | `master_m13` |
 | **M14** | **A11y label + control fixes** — icon-only buttons now set `Icon(semanticLabel:)` (tooltip alone isn't read as the TalkBack name); removed a merging `Semantics` wrapper on the request-form stepper; replaced the broken TravAcser **slider** with an accessible **1–10 dropdown** (decoupled from traveller count). Client-only. | `master_m14` |
+| **M15** | **Scalable registration consent** — replaced the screen-reader-heavy embedded role agreements with a concise summary, explicit checkbox, role-specific hosted agreement link, and unchanged uppercase-name/versioned acceptance. Published the complete User and TravAcser agreements on Firebase Hosting. | `master_m15` |
 
 > Note: `docx/design_travacs.md` §17 uses an older roadmap numbering; the **branches above are the
 > authoritative record** of what actually shipped.
