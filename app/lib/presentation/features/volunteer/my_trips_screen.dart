@@ -11,6 +11,7 @@ import '../../../domain/entities/assignment.dart';
 import '../../providers/core_providers.dart';
 import '../../providers/request_providers.dart';
 import '../menu/info_screens.dart';
+import '../shared/call_phone_button.dart';
 import '../requester/request_controller.dart';
 
 /// The TravAcser's ACTIVE trips (scheduled or in progress), live. Completed
@@ -108,19 +109,25 @@ class _TripCard extends ConsumerWidget {
             const Divider(height: 20),
             Text('User contact', style: Theme.of(context).textTheme.labelMedium),
             Semantics(
-              label: 'User ${a.requesterName}, phone '
-                  '${a.requesterPhone ?? 'not available'}',
+              label: 'User ${a.requesterName}',
+              excludeSemantics: true,
               child: Row(
                 children: [
                   const Icon(Icons.person_outline, size: 18),
                   const SizedBox(width: 8),
                   Expanded(child: Text(a.requesterName)),
-                  if (a.requesterPhone != null)
-                    Text(a.requesterPhone!,
-                        style: const TextStyle(fontWeight: FontWeight.w600)),
                 ],
               ),
             ),
+            const SizedBox(height: 8),
+            if (a.requesterPhone != null && a.requesterPhone!.trim().isNotEmpty)
+              CallPhoneButton(
+                contactRole: 'User',
+                contactName: a.requesterName,
+                phone: a.requesterPhone!,
+              )
+            else
+              const Text('Phone not available'),
             const SizedBox(height: 12),
             Text(
               inProgress

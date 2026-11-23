@@ -247,6 +247,7 @@ friction).
 | **M13** | **App menu** — centralized the AppBar in the shell with a navigation **Drawer** (`presentation/features/menu/`): Contact us, About (built-in `showAboutDialog`), Rate us on Google Play, Terms, Privacy, Sign out + a dismiss button. | `master_m13` |
 | **M14** | **A11y label + control fixes** — icon-only buttons now set `Icon(semanticLabel:)` (tooltip alone isn't read as the TalkBack name); removed a merging `Semantics` wrapper on the request-form stepper; replaced the broken TravAcser **slider** with an accessible **1–10 dropdown** (decoupled from traveller count). Client-only. | `master_m14` |
 | **M15** | **Scalable registration consent** — replaced the screen-reader-heavy embedded role agreements with a concise summary, explicit checkbox, role-specific hosted agreement link, and unchanged uppercase-name/versioned acceptance. Published the complete User and TravAcser agreements on Firebase Hosting. | `master_m15` |
+| **M16** | **Active-trip calling** — added explicit, accessible call controls so Users can open the dialler for their TravAcser and TravAcsers can call their User. Phone numbers are normalized into `tel:` URIs; failed launches copy the number with a friendly announcement. Client-only. | `master_m16` |
 
 > Note: `docx/design_travacs.md` §17 uses an older roadmap numbering; the **branches above are the
 > authoritative record** of what actually shipped.

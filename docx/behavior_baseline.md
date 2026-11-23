@@ -382,7 +382,9 @@ requests: `status+createdAt↓`, `status+serviceCity+createdAt↓`, `requesterId
   `!isPaid && tripAmountInr>0`) as compact tiles: date·time, `RequestStatusChip` (or a
   **`_PaymentPendingChip`** + "Tap to pay ₹amount" for a completed-unpaid trip), a code/status line
   when `acceptedCount>0`, chevron. Tap → `RequestDetailScreen` (full-screen, scrollable, live).
-  Detail shows the status chip + labeled rows + `Your TravAcser(s)`. **The User can NOT end a trip.**
+  Detail shows the status chip + labeled rows + `Your TravAcser(s)`. Each active assignment has an
+  accessible **Call TravAcser** button that opens the system dialler with the normalized phone number.
+  **The User can NOT end a trip.**
   When any assignment is in progress the detail shows an informational note ("This trip is in
   progress. Your TravAcser will end it… then you can pay here.").   Once the TravAcser has ended the trip, the detail explains the 90-minute amount review and keeps
   payment disabled until `paymentReviewStatus=='ready'`. A **"Pay now"** button then runs the single
@@ -407,7 +409,8 @@ requests: `status+createdAt↓`, `status+serviceCity+createdAt↓`, `requesterId
 - **MyTripsScreen:** `myAssignmentsProvider` filtered to `isActive`. `_TripCard` header: date·time +
   `_StatusPill` (In progress / Ready to start / Scheduled). Reschedule banner if
   `needsRescheduleConfirm` (Continue → `respondReschedule(true)`, Cancel trip → `respondReschedule
-  (false)`). Actions `Wrap` includes **Get help** (→ Contact us). Details + User contact (Semantics).
+  (false)`). Actions `Wrap` includes **Get help** (→ Contact us). Details + User contact, including an
+  accessible **Call User** button that opens the system dialler with the normalized phone number.
   Flags: `inProgress=isInProgress(now)`,
   `canStart=!inProgress && !needsRescheduleConfirm`, `canEnd=inProgress &&
   !now.isBefore(effectiveStartAt)`. **Start:** `_StartCodeEntry` (shown when `canStart`) →
@@ -499,6 +502,7 @@ functions test"` = **54 functions tests**; `… "npm --prefix rules-tests test"`
 | `app/test/repository_test.dart` | create writes `estimatedAmountInr==520`, error→Failure mapping, callable wiring |
 | `app/test/accessibility_test.dart` | `meetsGuideline` (tap-target/labeled/contrast) + semantic labels — **`RequestCard` MergeSemantics is guarded here; do not remove it** |
 | `app/test/my_requests_flow_test.dart` | compact list → detail navigation; per-TravAcser start-code labels |
+| `app/test/active_trip_call_test.dart` | normalized `tel:` launch, copy fallback, accessibility guidelines, and both User→TravAcser and TravAcser→User active-trip flows |
 | `app/test/new_request_gate_test.dart` | New Request wizard blocked while a trip is in progress / payment pending; loader while requests load; duration slider present |
 | `app/test/request_lifecycle_test.dart` | `isActiveRequest` / `Request.isPaymentPending` (completed-unpaid stays active, paid/legacy don't) |
 | `app/test/notification_routing_test.dart` | `notificationTargetTab` per type + role (reschedule → My Trips, etc.) |

@@ -11,6 +11,7 @@ import '../../../domain/entities/request.dart';
 import '../../providers/core_providers.dart';
 import '../../providers/request_providers.dart';
 import '../menu/info_screens.dart';
+import '../shared/call_phone_button.dart';
 import '../shared/request_card.dart';
 import '../shared/trip_payment.dart';
 import 'request_controller.dart';
@@ -667,9 +668,7 @@ class _AssignmentTile extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Semantics(
-              label:
-                  'TravAcser ${a.volunteerName}, phone '
-                  '${a.volunteerPhone ?? 'not available'}, status $statusText',
+              label: 'TravAcser ${a.volunteerName}, status $statusText',
               excludeSemantics: true,
               child: Row(
                 children: [
@@ -683,10 +682,6 @@ class _AssignmentTile extends ConsumerWidget {
                           a.volunteerName,
                           style: Theme.of(context).textTheme.titleSmall,
                         ),
-                        Text(
-                          a.volunteerPhone ?? 'Phone not available',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
                       ],
                     ),
                   ),
@@ -697,6 +692,15 @@ class _AssignmentTile extends ConsumerWidget {
                 ],
               ),
             ),
+            const SizedBox(height: 8),
+            if (a.volunteerPhone != null && a.volunteerPhone!.trim().isNotEmpty)
+              CallPhoneButton(
+                contactRole: 'TravAcser',
+                contactName: a.volunteerName,
+                phone: a.volunteerPhone!,
+              )
+            else
+              const Text('Phone not available'),
             if (inProgress) ...[
               // The trip is in progress. Ending + paying is a single trip-level
               // action (one payment covers all TravAcsers), handled below the
