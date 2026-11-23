@@ -585,6 +585,6 @@ functions test"` = **54 functions tests**; `… "npm --prefix rules-tests test"`
   TravAcser abandons the trip, the request stays `started` forever — the User can't pay and the
   creation gate keeps blocking them. Accepted for now (the normal flow is the TravAcser ends); a
   future admin-assisted transition or a stuck-trip timeout/dispute flow would close this.
-- Functions runtime Node 20 deprecated (decommission 2026-10-30) — bump to 22.
+- Functions runtime is Node 22 (migrated after Node 20 was decommissioned on 2026-10-30).
 - M11 store-release paused (debug signing key; `INTERNET`/`POST_NOTIFICATIONS` only in debug/profile
   manifests) — see `docx/m11-store-release-plan.md`.

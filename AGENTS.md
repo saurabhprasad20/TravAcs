@@ -105,7 +105,7 @@ TravAcs/
 │   ├── firestore.rules            # Security Rules (default-deny, function-only writes)
 │   ├── firestore.indexes.json     # composite indexes for the watch queries
 │   ├── TESTING.md                 # how to run the emulator test suites
-│   ├── functions/                 # Cloud Functions (TypeScript, Node 20, firebase-functions v5)
+│   ├── functions/                 # Cloud Functions (TypeScript, Node 22, firebase-functions v5)
 │   │   ├── src/index.ts           # the 8 functions
 │   │   └── test/index.test.ts     # 54 functions tests (firebase-functions-test + emulator)
 │   └── rules-tests/test/firestore.test.js  # 39 rules tests (@firebase/rules-unit-testing)
@@ -288,7 +288,7 @@ portable ZIP install. Shell is **PowerShell**.
 Key build values (from `app/android/app/build.gradle.kts` + `settings.gradle.kts`):
 `applicationId`/`namespace` = **`com.travacs.travacs`**, **minSdk 23**, **ndkVersion 27.0.12077973**,
 **Kotlin 2.2.0**, **AGP 8.7.0**. Firebase project **`travacs-dev`** (number `376835689559`), functions
-**Node 20**, region **`asia-south2`**.
+**Node 22**, region **`asia-south2`**.
 
 **Gotchas to know:**
 - **Gitignored config must be regenerated** before building (see below) — `firebase_options.dart`
@@ -434,8 +434,7 @@ the public Actions API.
   accept, denied permission, forced crash → friendly fallback) and the M9 TalkBack end-to-end pass
   were never run on a physical device. Also re-verify the full trip flow on-device
   (create → accept → start via offline code → end → pay → rate; reschedule; cancel from both sides).
-- **Functions runtime:** Node 20 is deprecated (decommission 2026-10-30) — bump `engines.node` to 22
-  and redeploy when convenient.
+- **Functions runtime:** Node 22 (migrated after Node 20 was decommissioned on 2026-10-30).
 - **Deferred review findings (documented known gaps):**
   - *Offline start-code has no true physical-presence guarantee* — both parties can compute the
     deterministic code without meeting. Kept intentionally (offline, no SMS). Harden later with a

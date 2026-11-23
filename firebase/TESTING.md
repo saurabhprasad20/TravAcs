@@ -4,7 +4,7 @@ These run against the **Firebase Emulator Suite** (Firestore emulator only — t
 Cloud Functions are invoked in-process via `firebase-functions-test`).
 
 ## Prerequisites
-- **Node 20+** and **Java 17+** (the Firestore emulator is a Java process).
+- **Node 22+** and **Java 17+** (the Firestore emulator is a Java process).
 - This repo's portable JDK lives at
   `C:\Users\sauprasad\dev-tools\jdk17\jdk-17.0.19+10` (Windows). The global
   `firebase-tools` (v15) requires **Java 21+**, so the commands below pin
